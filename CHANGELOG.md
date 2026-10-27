@@ -2,6 +2,12 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.2 - 2026-10-27 (pre-release)
+
+- REVamp's desktop part (sidebar entry, player, status-bar controls) is now switched on by default after installing. In alpha.1 it shipped switched off, so testers on macOS and Windows saw no player.
+- README explains the two parts in Capabilities → Plugins (agent part and Desktop part).
+- Radio: when Radio Browser can't be reached, the built-in stations show within seconds instead of an error.
+
 ## 1.0.0-alpha.1 - 2026-10-27 (pre-release)
 
 - First alpha of REVamp for Hermes Agent.

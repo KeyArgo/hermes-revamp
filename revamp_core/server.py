@@ -31,7 +31,7 @@ from .config import (data_dir, library_dirs, library_dirs_custom, library_folder
 
 logger = logging.getLogger("revamp.server")
 
-VERSION = "1.0.0-alpha.1"
+VERSION = "1.0.0-alpha.2"
 APP_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = APP_ROOT / "web"
 

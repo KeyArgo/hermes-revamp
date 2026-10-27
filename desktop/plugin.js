@@ -2520,7 +2520,7 @@ export default {
   id: ID,
   name: 'REVamp',
   description: 'Winamp-style player that plays inside Hermes: your MP3/FLAC library, playlists and internet radio from the status bar, the full player page, or popped out as a floating Winamp. The agent can DJ.',
-  defaultEnabled: false,
+  defaultEnabled: true, // installed on purpose = shown; Capabilities → Plugins can still turn it off
   register(ctx) {
     ctxRef = ctx
     engine = null

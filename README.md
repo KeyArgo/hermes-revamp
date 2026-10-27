@@ -40,7 +40,7 @@ For a checkout or a git URL, use Hermes’s git install flow:
 hermes plugins install https://github.com/KeyArgo/hermes-revamp
 ```
 
-REVamp requires Hermes Agent 0.22.5 or newer. **After installing, open Capabilities → Plugins in Hermes Desktop and switch REVamp on** (a new install is not always enabled), then open REVamp from the sidebar. `ffprobe` (from FFmpeg) enables richer tags, durations, and audiobook chapters. A Chrome/Chromium-family browser is only needed for the optional external pop-out window.
+REVamp requires Hermes Agent 0.22.5 or newer. **After installing, open Capabilities → Plugins in Hermes Desktop and make sure REVamp is switched on.** REVamp has two parts there: the agent part (under General) and the Desktop part (click the **Desktop** filter), which adds the sidebar entry, the player and the status-bar controls. Both should be on. Then open REVamp from the sidebar. `ffprobe` (from FFmpeg) enables richer tags, durations, and audiobook chapters. A Chrome/Chromium-family browser is only needed for the optional external pop-out window.
 
 ## Use from other agent apps
 

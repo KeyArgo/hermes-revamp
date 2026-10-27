@@ -80,7 +80,7 @@ Item.url for a track is `/api/media/<id>`; for a stream it is the ORIGINAL strea
 (the page converts it to the proxy URL).
 
 ### Routes
-- `GET /api/health` → `{"app":"revamp","version":"1.0.0-alpha.1"}` (no token).
+- `GET /api/health` → `{"app":"revamp","version":"1.0.0-alpha.2"}` (no token).
 - Library (`library.py`, `tags.py`): scans `library_dirs` recursively (follow symlinks, guard loops)
   for `.mp3 .flac .ogg .oga .opus .m4a .m4b .aac .wav .webm`. Incremental: reuse cached entries
   whose (size, mtime) are unchanged. Scan runs in a background thread on start and on rescan.
@@ -144,7 +144,7 @@ and (later) the Claude Code MCP server. Keep it stdlib (urllib), 5 s timeout.
 
 ## Hermes glue (lane A, root `__init__.py`, `plugin.yaml`)
 
-`plugin.yaml`: `name: revamp`, `label: Revamp`, `kind: standalone`, `version: 1.0.0-alpha.1`, `author: Argo`,
+`plugin.yaml`: `name: revamp`, `label: Revamp`, `kind: standalone`, `version: 1.0.0-alpha.2`, `author: Argo`,
 description, `provides_tools` (4 below), `hooks` list (below).
 
 `register(ctx)`: register tools (toolset `revamp`) with handler signature `handler(args: dict, **kwargs) -> str`
