@@ -2400,6 +2400,7 @@ function Page() {
   const t = usePluginI18n(ID)
   const where = useValue($where)
   const desktop = useValue($desktop)
+  const location = useValue($playerLocation)
   const hostRef = useRef(null)
   const np = nowPlaying(useValue($live))
 
@@ -2428,6 +2429,12 @@ function Page() {
             style: { flex: '1 1 100px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ui-text-secondary)' },
             children: label(np) || t('nothing')
           }),
+          // The page borrowed the live player ("Bring the player here"): offer the way back.
+          where === 'page' && location !== 'mini'
+            ? jsx(Button, { variant: 'ghost', size: 'sm', title: 'Return the player to its home',
+                onClick: () => setPlayerLocation(location),
+                children: location === 'floating' ? 'Return to pop-out' : location === 'desktop' ? 'Return to desktop' : 'Return to frame' })
+            : null,
           np.online ? jsx(LikeButton, { np }) : null,
           np.online ? jsx(SleepSelect, { np }) : null,
           jsx('div', { style: { flex: '0 1 260px', minWidth: 0 }, children: jsx(Transport, { np }) })
