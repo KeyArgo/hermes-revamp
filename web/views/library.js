@@ -49,7 +49,7 @@ export async function render(root, api, kind = "music") {
   bar.innerHTML = `
     <div class="searchbox" style="flex:1;min-width:160px">
       <span class="icon" aria-hidden="true">⌕</span>
-      <input id="lib-q" type="search" placeholder="${books ? "Search your audiobooks…" : "Search your music…"}  (press /)" aria-label="${books ? "Search audiobooks" : "Search music"}"/>
+      <input id="lib-q" type="search" placeholder="${books ? "Search audiobooks…" : "Search music…"}" title="Press / to search" aria-label="${books ? "Search audiobooks" : "Search music"}"/>
     </div>
     <div class="tabs" role="tablist">
       <button data-t="tracks" class="active" role="tab">Tracks</button>
@@ -63,13 +63,22 @@ export async function render(root, api, kind = "music") {
   actions.style.margin = "0 0 10px";
   actions.innerHTML = `
     <button class="btn sm btn-primary" id="lib-play" title="Play selected (or double-click a row)">▶ Play</button>
-    <button class="btn sm" id="lib-enqueue">＋ Enqueue</button>
-    <button class="btn sm" id="lib-addpl" title="Add the selected songs (or all shown) to a playlist">♫ Add to playlist…</button>
+    <details class="lib-more">
+      <summary class="btn sm" aria-label="More actions">⋯ More</summary>
+      <div class="lib-more-menu">
+        <button class="btn sm" id="lib-enqueue">＋ Enqueue</button>
+        <button class="btn sm" id="lib-addpl" title="Add the selected songs (or all shown) to a playlist">♫ Add to playlist…</button>
+        <button class="btn sm" id="lib-folders" aria-expanded="false">📁 Folders</button>
+        <button class="btn sm" id="lib-rescan">Rescan</button>
+      </div>
+    </details>
     <span class="spacer" style="flex:1"></span>
-    <span class="muted" id="lib-status"></span>
-    <button class="btn sm" id="lib-folders" aria-expanded="false">📁 Folders</button>
-    <button class="btn sm" id="lib-rescan">Rescan</button>`;
+    <span class="muted" id="lib-status"></span>`;
   root.appendChild(actions);
+  // Narrow panes fold the secondary actions into a dropdown; close it after a pick or outside click.
+  const moreEl = actions.querySelector(".lib-more");
+  moreEl.addEventListener("click", (e) => { if (e.target.closest(".lib-more-menu button")) moreEl.open = false; });
+  document.addEventListener("click", (e) => { if (moreEl.open && !moreEl.contains(e.target)) moreEl.open = false; });
 
   // ---- this view's folders (Music or Books), shown on demand or when there are none
   const foldersEl = document.createElement("div");

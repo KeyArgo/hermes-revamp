@@ -9,6 +9,7 @@ import { render as renderAgent } from "./views/agent.js";
 import { render as renderFocus } from "./views/focus.js";
 import { maybeOfferRestore } from "./views/backups.js";
 import { toast } from "./views/modal.js";
+import { mountThemeButton } from "./theme.js";
 
 // ---------------------------------------------------------------- token
 const TOKEN =
@@ -250,6 +251,21 @@ function applyLayoutClasses() {
   document.body.classList.toggle("mobile", innerWidth < 520);
   document.body.classList.toggle("mode-winamp", mode === "winamp");
   document.body.classList.toggle("float-desktop", desktopFloat);
+  fitClassicStack();
+}
+
+// A docked Hermes pane can be narrower than the 275px classic stack. Scale it down
+// to the stage instead of letting it overflow (and crop) on both sides.
+function fitClassicStack() {
+  const stage = document.querySelector(".stage");
+  if (!stage || !document.body.classList.contains("embed")) {
+    document.documentElement.style.removeProperty("--revamp-fit");
+    return;
+  }
+  const cs = getComputedStyle(stage);
+  const room = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const fit = room > 0 ? Math.min(1, room / 275) : 1;
+  document.documentElement.style.setProperty("--revamp-fit", fit.toFixed(3));
 }
 
 function setMode(next, placement) {
@@ -265,8 +281,17 @@ function reportBox() {
   const wins = [...document.querySelectorAll("#webamp-host [id$='-window'], #webamp-host .gen-window")].filter((w) => w.offsetParent !== null);
   if (!wins.length) return;
   const r = wins.map((w) => w.getBoundingClientRect());
+  // The player windows alone (no transient menus): the host sizes its scale from this.
+  const bx = Math.min(...r.map((b) => b.left)), by = Math.min(...r.map((b) => b.top));
+  const base = { bw: Math.ceil(Math.max(...r.map((b) => b.right)) - bx), bh: Math.ceil(Math.max(...r.map((b) => b.bottom)) - by) };
+  // An open context menu (EQ presets) must not be clipped by the overlay: count it
+  // and its visible submenu in the frame Hermes sizes the pop-out to.
+  for (const m of document.querySelectorAll("#webamp-context-menu ul")) {
+    const b = m.getBoundingClientRect();
+    if (b.width > 1 && b.height > 1 && getComputedStyle(m).visibility !== "hidden") r.push(b);
+  }
   const x = Math.min(...r.map((b) => b.left)), y = Math.min(...r.map((b) => b.top));
-  const box = { x: Math.floor(x), y: Math.floor(y),
+  const box = { x: Math.floor(x), y: Math.floor(y), ...base,
     w: Math.ceil(Math.max(...r.map((b) => b.right)) - x), h: Math.ceil(Math.max(...r.map((b) => b.bottom)) - y) };
   const key = JSON.stringify(box);
   if (key === lastBox) return;
@@ -421,6 +446,117 @@ function kickDesktopFit() {
   setTimeout(fitDesktopWindow, 700);
 }
 
+// Webamp positions its context menus from the click point. The EQ's presets
+// button sits at x=217 inside the 275px EQ window, so that menu (and the preset
+// submenu it opens to the right) ran past the stack edge and the winamp stage
+// clipped it. Pull any menu that overflows back inside and flip its submenus to
+// the left, where the freed space is. Menus that already fit are left alone.
+const FLIP_CLASS = "revamp-flip";
+
+/** Size of a menu's submenu, measured without showing it. Webamp hides
+ *  submenus until hover, and a hidden element reports 0. */
+function submenuBox(menu) {
+  const ul = menu.querySelector("ul");
+  if (!ul) return { w: 0, h: 0 };
+  const prev = ul.getAttribute("style") || "";
+  ul.style.visibility = "hidden";
+  ul.style.display = "block";
+  const r = ul.getBoundingClientRect();
+  const size = { w: Math.round(r.width || 0), h: Math.round(r.height || 0) };
+  if (prev) ul.setAttribute("style", prev);
+  else ul.removeAttribute("style");
+  return size;
+}
+
+function fitContextMenus() {
+  const host = document.getElementById("webamp-context-menu");
+  const stack = document.getElementById("webamp-host");
+  if (!host || !stack) return;
+  // Fit to the classic windows themselves: the docked Hermes pane and the pop-out clip the
+  // iframe to the stack (275 wide), and the iframe can be wider than what is visible.
+  const wins = [...stack.querySelectorAll("#main-window, #equalizer-window, #playlist-window")]
+    .map((w) => w.getBoundingClientRect()).filter((b) => b.width > 1 && b.height > 1);
+  const frame = stack.getBoundingClientRect();
+  const box = wins.length
+    ? { left: Math.min(...wins.map((b) => b.left)), right: Math.max(...wins.map((b) => b.right)),
+        top: Math.min(...wins.map((b) => b.top)), bottom: Math.max(...wins.map((b) => b.bottom)) }
+    : frame;
+  box.width = box.right - box.left;
+  if (box.width < 2) return;
+  for (const menu of host.querySelectorAll(".context-menu")) {
+    const style = getComputedStyle(menu);
+    if (style.display === "none") continue;
+    const r = menu.getBoundingClientRect();
+    if (r.width < 2) continue;
+    // Judge the menu where Webamp put it, not where we last moved it, so a
+    // repeat pass reaches the same answer instead of chasing itself.
+    const applied = parseFloat(style.marginLeft) || 0;
+    const naturalRight = r.right - applied;
+    const over = Math.round(naturalRight - box.right);
+    const want = over > 0 ? -(over + 2) : 0;
+    if (Math.abs(applied - want) > 0.5) menu.style.marginLeft = want ? `${want}px` : "";
+    const sub = submenuBox(menu);
+    // A submenu opens 184px wide: flip it left whenever opening right would
+    // leave the stage, even when the menu row itself still fits.
+    const fitsRight = sub.w === 0 || naturalRight + sub.w <= box.right;
+    menu.classList.toggle(FLIP_CLASS, !fitsRight);
+    // In a 275px stack the presets menu sits at x~137: the 184px list fits neither
+    // right (25px free) nor left (137px free). Then align it with the stack's left
+    // edge and cap its width to the stack, overlapping the menu like a drawer.
+    const menuLeft = r.left - applied + want;
+    const fitsLeft = sub.w === 0 || menuLeft - sub.w >= box.left;
+    const overlay = !fitsRight && !fitsLeft;
+    menu.classList.toggle("revamp-overlay", overlay);
+    if (overlay) {
+      menu.style.setProperty("--revamp-sub-left", `${Math.round(box.left - menuLeft + 2)}px`);
+      menu.style.setProperty("--revamp-sub-w", `${Math.max(120, Math.floor(box.width - 4))}px`);
+    } else {
+      menu.style.removeProperty("--revamp-sub-left");
+      menu.style.removeProperty("--revamp-sub-w");
+    }
+    // The preset list is taller than the stack: cap it and let it scroll rather
+    // than running off the bottom edge of the stage.
+    const ul = menu.querySelector("ul");
+    if (ul && sub.h > 0) {
+      const room = Math.round(box.bottom - r.top - 16);
+      if (sub.h > room) {
+        ul.style.maxHeight = `${Math.max(96, room)}px`;
+        ul.style.overflowY = "auto";
+      } else if (ul.style.maxHeight) {
+        ul.style.maxHeight = "";
+        ul.style.overflowY = "";
+      }
+    }
+  }
+}
+
+function watchContextMenus() {
+  // Menus open and close without a window moving: refresh the reported frame too.
+  document.addEventListener("mouseover", () => requestAnimationFrame(reportBox), true);
+  const attach = () => {
+    const host = document.getElementById("webamp-context-menu");
+    if (!host) return false;
+    if (host.dataset.revampFitted) return true;
+    host.dataset.revampFitted = "1";
+    // childList only: our own marginLeft writes must not re-trigger this.
+    new MutationObserver(() => {
+      fitContextMenus();
+      requestAnimationFrame(fitContextMenus);
+    }).observe(host, { childList: true, subtree: true });
+    fitContextMenus();
+    return true;
+  };
+  if (attach()) return;
+  // The menu host is Webamp's own portal, so watch the document for it — the
+  // first menu-bearing insert attaches us, then this observer goes away.
+  const boot = new MutationObserver(() => {
+    if (attach()) boot.disconnect();
+  });
+  boot.observe(document.body, { childList: true, subtree: true });
+}
+
+watchContextMenus();
+
 function mountDesktopFloat() {
   if (!desktopFloat) return;
   const host = document.getElementById("webamp-host");
@@ -526,12 +662,20 @@ function mountControlStage() {
   const render = (place = "docked") => {
     stage.replaceChildren();
     const box = document.createElement("div");
-    box.style.cssText = "display:flex;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted,#9aa0ad);text-align:center";
+    box.style.cssText = "display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;justify-content:space-between;gap:8px;min-width:0;max-width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid var(--line,#303746);border-radius:10px;background:rgba(255,255,255,0.03);color:var(--txt,#dbe2f0)";
     const label = document.createElement("div");
-    label.textContent = copy[place] || copy.docked;
+    label.style.cssText = "display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;min-width:0;flex:1 1 auto";
+    const dot = document.createElement("span");
+    dot.style.cssText = "width:8px;height:8px;border-radius:50%;background:var(--accent,#4cc2ff);box-shadow:0 0 0 3px rgba(76,194,255,0.2)";
+    dot.style.flex = "0 0 auto";
+    const text = document.createElement("span");
+    text.style.cssText = "min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    text.textContent = copy[place] || copy.docked;
+    label.append(dot, text);
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "btn btn-ghost";
+    button.className = "btn sm";
+    button.style.cssText = "flex:0 0 auto;white-space:nowrap;font-size:11.5px;padding:3px 9px";
     button.textContent = "Bring the player here";
     button.addEventListener("click", () => window.parent.postMessage({ type: "revamp:bring-player-here" }, "*"));
     box.append(label, button);
@@ -540,7 +684,7 @@ function mountControlStage() {
   // Webamp's playlist window belongs to the real iframe, so control mode keeps
   // a small live queue here instead. Its edits are ordinary server commands.
   const queue = document.createElement("div");
-  queue.style.cssText = "position:absolute;right:16px;bottom:16px;max-width:320px;max-height:160px;overflow:auto;padding:8px;border:1px solid var(--line,#303746);border-radius:8px;background:var(--panel,#151a27);font-size:12px";
+  queue.style.cssText = "min-width:0;max-height:260px;overflow:auto;padding:8px;border:1px solid var(--line,#303746);border-radius:10px;background:var(--panel,#151a27);font-size:12px";
   const refreshQueue = async () => {
     try {
       const state = await apiGet("/api/state"), list = Array.isArray(state.playlist) ? state.playlist : [];
@@ -548,7 +692,7 @@ function mountControlStage() {
       const title = document.createElement("strong"); title.textContent = `Queue · ${list.length}`; queue.append(title);
       list.slice(0, 12).forEach((item, index) => {
         const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;align-items:center;margin-top:5px";
-        const play = document.createElement("button"); play.className = "btn btn-ghost"; play.textContent = item.title || "Untitled";
+        const play = document.createElement("button"); play.className = "btn btn-ghost"; play.textContent = item.title || "Untitled"; play.style.cssText = "flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
         play.addEventListener("click", () => apiPost("/api/command", { action: "play_index", index }));
         const remove = document.createElement("button"); remove.className = "btn btn-ghost"; remove.textContent = "×";
         remove.addEventListener("click", async () => { await apiPost("/api/command", { action: "queue_remove", index }); refreshQueue(); });
@@ -556,7 +700,7 @@ function mountControlStage() {
       });
     } catch { /* the connection pill already carries the offline state */ }
   };
-  stage.style.position = "relative";
+  stage.style.cssText += ";position:relative;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px";
   stage.append(queue); refreshQueue(); setInterval(refreshQueue, 1500);
   window.addEventListener("message", (e) => {
     if (e.source === window.parent && e.data?.type === "revamp:control-place") render(e.data.place);
@@ -564,6 +708,7 @@ function mountControlStage() {
   render();
 }
 async function boot() {
+  mountThemeButton(document.querySelector(".panel-head"), document.getElementById("conn-pill"));
   // Control mode is a complete library shell, but never imports Webamp or initializes
   // a playback backend. Its API actions operate on the one player owned by Hermes.
   if (CONTROL) {

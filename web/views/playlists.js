@@ -9,6 +9,11 @@ let refreshLive = null;
 window.addEventListener("revamp:playlists-changed", () => { if (refreshLive && document.contains(refreshLive.el)) refreshLive.fn(); });
 
 export async function render(root, api) {
+  // On the control page there is no local player: send the same commands to the live one.
+  const player = () => window.revampPlayerApi || {
+    loadTracks: (items, o = {}) => api("/api/command", "POST", { action: "load", items, mode: o.mode || "replace", play: o.play !== false }),
+    playIndex: (index) => api("/api/command", "POST", { action: "play_index", index }),
+  };
   root.innerHTML = "";
   const bar = document.createElement("div");
   bar.className = "btn-row";
@@ -102,11 +107,11 @@ export async function render(root, api) {
     };
     const playAll = async () => {
       const list = await likedItems().catch(() => []);
-      if (list.length) window.revampPlayerApi.loadTracks(list, { mode: "replace", play: true });
+      if (list.length) player().loadTracks(list, { mode: "replace", play: true });
     };
     const addAll = async () => {
       const list = await likedItems().catch(() => []);
-      if (list.length) { window.revampPlayerApi.loadTracks(list, { mode: "append" }); toast(`Appended ${list.length} items`, { kind: "ok" }); }
+      if (list.length) { player().loadTracks(list, { mode: "append" }); toast(`Appended ${list.length} items`, { kind: "ok" }); }
     };
     // A normal copy you can edit freely; the Liked list itself keeps following your hearts.
     const saveAs = async () => {
@@ -221,17 +226,17 @@ export async function render(root, api) {
   async function play(id) {
     try {
       const data = await api(`/api/playlists/${id}`);
-      window.revampPlayerApi.loadTracks(data.items, { mode: "replace", play: true });
+      player().loadTracks(data.items, { mode: "replace", play: true });
     } catch (e) { toast(e.message, { kind: "error" }); }
   }
   async function playFrom(items, i) {
-    window.revampPlayerApi.loadTracks(items, { mode: "replace", play: false });
-    window.revampPlayerApi.playIndex(i);
+    player().loadTracks(items, { mode: "replace", play: false });
+    player().playIndex(i);
   }
   async function append(id) {
     try {
       const data = await api(`/api/playlists/${id}`);
-      window.revampPlayerApi.loadTracks(data.items, { mode: "append" });
+      player().loadTracks(data.items, { mode: "append" });
       toast(`Appended ${data.items.length} items`, { kind: "ok" });
     } catch (e) { toast(e.message, { kind: "error" }); }
   }

@@ -731,12 +731,34 @@ function createEngine(ctx, url, bridgeKey = '') {
     frame.style.transform = `translate(${-box.x}px, ${-box.y}px)`
   }
   // The docked pane's clip box hugs the classic windows exactly (any skin/size).
+  // Whole-number scale (pixel art stays crisp): the classic stack grows to fill a wide or
+  // tall pane instead of sitting at 275px in the middle of a big screen.
+  function paneScale() {
+    const area = paneHost?.parentElement
+    // Scale from the player windows only (bw/bh), so an open menu or a one-off wide window
+    // never changes the zoom; the clip box still grows to hold the menu.
+    const bw = box.bw || box.w, bh = box.bh || box.h
+    if (!area || !bw || !bh) return 1
+    const fit = Math.min((area.clientWidth - 8) / bw, (area.clientHeight - 14) / bh)
+    return Math.max(1, Math.min(4, Math.floor(fit)))
+  }
+  // A skin load or change briefly re-lays-out the windows, so the reported size can jump for a
+  // moment: a new scale only commits once it has held for a beat (the first fit is immediate).
+  let curScale = 1, scaleSeen = false, scaleTimer = 0
   function fitPane() {
     if (!paneHost) return
-    paneHost.style.width = `${box.w}px`
-    paneHost.style.height = `${box.h}px`
-    frame.style.transform = `translate(${-box.x}px, ${-box.y}px)`
+    const want = paneScale()
+    if (!scaleSeen) { curScale = want; scaleSeen = true }
+    else if (want !== curScale && !scaleTimer) {
+      scaleTimer = setTimeout(() => { scaleTimer = 0; const w = paneScale(); if (w !== curScale) { curScale = w; fitPane() } }, 400)
+    }
+    const s = curScale
+    paneHost.style.width = `${box.w * s}px`
+    paneHost.style.height = `${box.h * s}px`
+    frame.style.transformOrigin = '0 0'
+    frame.style.transform = `scale(${s}) translate(${-box.x}px, ${-box.y}px)`
   }
+  let paneWatch = null
 
   let parked = false
 
@@ -782,6 +804,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       send({ type: 'revamp:mode', mode: 'winamp', placement: 'docked' })
       $where.set('pane')
     } else if (loc === 'floating') {
+      frame.style.transformOrigin = ''
       frame.style.width = `${DOCK_W}px`
       frame.style.height = `${DOCK_H}px`
       moveInto(overlay.clip, frame)
@@ -790,6 +813,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       fitOverlay()
       $where.set('winamp')
     } else {
+      frame.style.transformOrigin = ''
       frame.style.transform = ''
       frame.style.width = `${DOCK_W}px`
       frame.style.height = `${DOCK_H}px`
@@ -805,8 +829,38 @@ function createEngine(ctx, url, bridgeKey = '') {
     controlFrame.contentWindow?.postMessage({ type: 'revamp:control-place', place }, '*')
   }
 
+  // Theme: both iframes are sandboxed (opaque origin, no localStorage), so the host keeps the
+  // one saved copy and relays it: a change in either page reaches the other, and survives reloads.
+  const THEME_KEYS = { theme: 'string', grad: 'string', accent: 'string', from: 'string', to: 'string', fx: 'string', fxLevel: 'number', bgStrength: 'number', scene: 'string', look: 'string' }
+  const cleanTheme = v => {
+    if (!v || typeof v !== 'object') return null
+    const out = {}
+    for (const [k, t] of Object.entries(THEME_KEYS)) if (typeof v[k] === t && (t !== 'string' || v[k].length < 40)) out[k] = v[k]
+    return out
+  }
+  const cleanBg = v => (typeof v === 'string' && v.startsWith('data:image/') && v.length < 1_500_000 ? v : null)
+  let themeState = cleanTheme(ctx.storage.get('theme', null))
+  let themeBg = cleanBg(ctx.storage.get('themeBg', null))
+  const themeTo = (target, withBg = true) => {
+    try { target?.postMessage({ type: 'revamp:theme-set', state: themeState, ...(withBg ? { bg: themeBg } : {}) }, '*') } catch { /* frame gone */ }
+  }
+
   ctx.addEventListener(window, 'message', e => {
     if (!e.data || typeof e.data !== 'object') return
+    const fromPage = e.source === frame.contentWindow || e.source === controlFrame.contentWindow
+    if (fromPage && typeof e.data.type === 'string' && e.data.type.startsWith('revamp:theme-')) {
+      const others = [frame.contentWindow, controlFrame.contentWindow].filter(w => w && w !== e.source)
+      if (e.data.type === 'revamp:theme-get') themeTo(e.source)
+      else if (e.data.type === 'revamp:theme-save') {
+        const next = cleanTheme(e.data.state)
+        if (next) { themeState = next; ctx.storage.set('theme', next); for (const w of others) themeTo(w, false) }
+      } else if (e.data.type === 'revamp:theme-bg') {
+        themeBg = cleanBg(e.data.bg)
+        ctx.storage.set('themeBg', themeBg)
+        for (const w of others) themeTo(w)
+      }
+      return
+    }
     if (e.source === controlFrame.contentWindow) {
       if (e.data.type === 'revamp:bring-player-here') {
         $pageBorrow.set(true)
@@ -834,7 +888,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       send({ type: 'revamp:wave', on: true })
     }
     if (e.data.type === 'revamp:bbox') {
-      box = { x: e.data.x | 0, y: e.data.y | 0, w: Math.max(40, e.data.w | 0), h: Math.max(14, e.data.h | 0) }
+      box = { x: e.data.x | 0, y: e.data.y | 0, w: Math.max(40, e.data.w | 0), h: Math.max(14, e.data.h | 0), bw: e.data.bw | 0, bh: e.data.bh | 0 }
       if ($where.get() === 'winamp') fitOverlay()
       if ($where.get() === 'pane') fitPane()
     }
@@ -896,8 +950,17 @@ function createEngine(ctx, url, bridgeKey = '') {
     },
     hidePage(el) { if (pageHost === el) { pageHost = null; $pageBorrow.set(true); place() } },
     borrowPage() { $pageBorrow.set(true); place() },
-    showPane(el) { paneHost = el; place() },
-    hidePane(el) { if (paneHost === el) { paneHost = null; place() } },
+    showPane(el) {
+      paneHost = el
+      scaleSeen = false
+      paneWatch?.disconnect()
+      if (typeof ResizeObserver !== 'undefined' && el.parentElement) {
+        paneWatch = new ResizeObserver(() => { if ($where.get() === 'pane') fitPane() })
+        paneWatch.observe(el.parentElement)
+      }
+      place()
+    },
+    hidePane(el) { if (paneHost === el) { paneWatch?.disconnect(); paneWatch = null; paneHost = null; place() } },
     // Thin wrapper over the locations: the floating overlay or no player at all.
     // $winampOpen stays in sync as a derived value (see setPlayerLocation listeners).
     setWinamp(open) { setPlayerLocation(open ? 'floating' : 'mini') },
@@ -2379,6 +2442,7 @@ function Page() {
   const t = usePluginI18n(ID)
   const where = useValue($where)
   const desktop = useValue($desktop)
+  const location = useValue($playerLocation)
   const hostRef = useRef(null)
   const np = nowPlaying(useValue($live))
 
@@ -2396,19 +2460,30 @@ function Page() {
     return jsx('div', { style: { padding: 24 }, children: jsx(EmptyState, { title: t('offline'), description: t('offlineHint') }) })
   }
   return jsxs('div', {
-    style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 },
+    style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, minWidth: 0, overflow: 'hidden' },
     children: [
       jsxs('div', {
-        style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--ui-stroke-secondary)' },
+        // Wraps instead of overflowing: in a narrow pane the transport drops to its own line.
+        style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 8px', padding: '6px 10px', minWidth: 0, borderBottom: '1px solid var(--ui-stroke-secondary)' },
         children: [
           jsx(StatusDot, { tone: np.connected ? 'good' : 'muted' }),
           jsx('span', {
-            style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ui-text-secondary)' },
+            style: { flex: '1 1 100px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ui-text-secondary)' },
             children: label(np) || t('nothing')
           }),
+          // The page borrowed the live player ("Bring the player here"): offer the way back.
+          where === 'page' && location !== 'mini'
+            ? jsx(Button, { size: 'sm', title: 'Return the player to its home',
+                style: { flex: 'none', border: '1px solid var(--ui-accent, currentColor)' },
+                onClick: () => setPlayerLocation(location),
+                children: jsxs('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 }, children: [
+                  jsx(StatusDot, { tone: 'good' }),
+                  location === 'floating' ? 'Return to pop-out' : location === 'desktop' ? 'Return to desktop' : 'Return to frame'
+                ] }) })
+            : null,
           np.online ? jsx(LikeButton, { np }) : null,
           np.online ? jsx(SleepSelect, { np }) : null,
-          jsx('div', { style: { width: 260 }, children: jsx(Transport, { np }) })
+          jsx('div', { style: { flex: '0 1 260px', minWidth: 0 }, children: jsx(Transport, { np }) })
         ]
       }),
       jsx('div', { ref: hostRef, style: { flex: 1, minHeight: 0, position: 'relative' } })
