@@ -264,9 +264,22 @@ export function mountThemeButton(head, before) {
     btn.setAttribute("aria-expanded", String(on));
     if (on) { render(); pop.querySelector("button")?.focus({ preventScroll: true }); }
   };
+  btn.addEventListener("themechange", () => { if (!pop.hidden) render(); });
   btn.addEventListener("click", (e) => { e.stopPropagation(); open(pop.hidden); });
   document.addEventListener("click", (e) => { if (!pop.hidden && !e.composedPath().includes(pop) && e.target !== btn) open(false); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pop.hidden) { open(false); btn.focus(); } });
 }
+
+// The control page and the player page are separate iframes on one origin, and Hermes keeps
+// both alive: a change made in one arrives here as a storage event, so every surface
+// (including the player after "Bring the player here") shows the same theme.
+addEventListener("storage", (e) => {
+  if (e.key !== null && e.key !== KEY && e.key !== BG_KEY) return;
+  state = load();
+  try { bgData = localStorage.getItem(BG_KEY) || null; } catch { bgData = null; }
+  applyTheme();
+  const pop = document.getElementById("theme-pop");
+  if (pop && !pop.hidden) document.getElementById("theme-btn")?.dispatchEvent(new Event("themechange"));
+});
 
 applyTheme();
