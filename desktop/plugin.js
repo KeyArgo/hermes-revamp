@@ -735,13 +735,24 @@ function createEngine(ctx, url, bridgeKey = '') {
   // tall pane instead of sitting at 275px in the middle of a big screen.
   function paneScale() {
     const area = paneHost?.parentElement
-    if (!area || !box.w || !box.h) return 1
-    const fit = Math.min((area.clientWidth - 8) / box.w, (area.clientHeight - 14) / box.h)
+    // Scale from the player windows only (bw/bh), so an open menu or a one-off wide window
+    // never changes the zoom; the clip box still grows to hold the menu.
+    const bw = box.bw || box.w, bh = box.bh || box.h
+    if (!area || !bw || !bh) return 1
+    const fit = Math.min((area.clientWidth - 8) / bw, (area.clientHeight - 14) / bh)
     return Math.max(1, Math.min(4, Math.floor(fit)))
   }
+  // A skin load or change briefly re-lays-out the windows, so the reported size can jump for a
+  // moment: a new scale only commits once it has held for a beat (the first fit is immediate).
+  let curScale = 1, scaleSeen = false, scaleTimer = 0
   function fitPane() {
     if (!paneHost) return
-    const s = paneScale()
+    const want = paneScale()
+    if (!scaleSeen) { curScale = want; scaleSeen = true }
+    else if (want !== curScale && !scaleTimer) {
+      scaleTimer = setTimeout(() => { scaleTimer = 0; const w = paneScale(); if (w !== curScale) { curScale = w; fitPane() } }, 400)
+    }
+    const s = curScale
     paneHost.style.width = `${box.w * s}px`
     paneHost.style.height = `${box.h * s}px`
     frame.style.transformOrigin = '0 0'
@@ -877,7 +888,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       send({ type: 'revamp:wave', on: true })
     }
     if (e.data.type === 'revamp:bbox') {
-      box = { x: e.data.x | 0, y: e.data.y | 0, w: Math.max(40, e.data.w | 0), h: Math.max(14, e.data.h | 0) }
+      box = { x: e.data.x | 0, y: e.data.y | 0, w: Math.max(40, e.data.w | 0), h: Math.max(14, e.data.h | 0), bw: e.data.bw | 0, bh: e.data.bh | 0 }
       if ($where.get() === 'winamp') fitOverlay()
       if ($where.get() === 'pane') fitPane()
     }
@@ -941,6 +952,7 @@ function createEngine(ctx, url, bridgeKey = '') {
     borrowPage() { $pageBorrow.set(true); place() },
     showPane(el) {
       paneHost = el
+      scaleSeen = false
       paneWatch?.disconnect()
       if (typeof ResizeObserver !== 'undefined' && el.parentElement) {
         paneWatch = new ResizeObserver(() => { if ($where.get() === 'pane') fitPane() })

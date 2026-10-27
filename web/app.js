@@ -281,6 +281,9 @@ function reportBox() {
   const wins = [...document.querySelectorAll("#webamp-host [id$='-window'], #webamp-host .gen-window")].filter((w) => w.offsetParent !== null);
   if (!wins.length) return;
   const r = wins.map((w) => w.getBoundingClientRect());
+  // The player windows alone (no transient menus): the host sizes its scale from this.
+  const bx = Math.min(...r.map((b) => b.left)), by = Math.min(...r.map((b) => b.top));
+  const base = { bw: Math.ceil(Math.max(...r.map((b) => b.right)) - bx), bh: Math.ceil(Math.max(...r.map((b) => b.bottom)) - by) };
   // An open context menu (EQ presets) must not be clipped by the overlay: count it
   // and its visible submenu in the frame Hermes sizes the pop-out to.
   for (const m of document.querySelectorAll("#webamp-context-menu ul")) {
@@ -288,7 +291,7 @@ function reportBox() {
     if (b.width > 1 && b.height > 1 && getComputedStyle(m).visibility !== "hidden") r.push(b);
   }
   const x = Math.min(...r.map((b) => b.left)), y = Math.min(...r.map((b) => b.top));
-  const box = { x: Math.floor(x), y: Math.floor(y),
+  const box = { x: Math.floor(x), y: Math.floor(y), ...base,
     w: Math.ceil(Math.max(...r.map((b) => b.right)) - x), h: Math.ceil(Math.max(...r.map((b) => b.bottom)) - y) };
   const key = JSON.stringify(box);
   if (key === lastBox) return;
