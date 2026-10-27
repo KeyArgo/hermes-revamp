@@ -761,16 +761,17 @@ export async function initPlayer(ctx) {
   // must start at the iframe origin whenever either Winamp home is selected.
   function placeClassicStack() {
     if (visualizerPlacement !== "docked" && visualizerPlacement !== "floating" && visualizerPlacement !== "desktop") return;
-    // Desktop: stack from the measured heights so a shaded main window or a
-    // taller playlist does not leave a gap the OS window would have to keep.
+    // Stack from the measured heights in every home, so a closed EQ (or a shaded
+    // main window, or a taller playlist) closes the gap instead of leaving the
+    // playlist at a hardcoded y=232 with 116px of empty page above it.
     let eqY = 116;
     let plY = 232;
-    if (visualizerPlacement === "desktop") {
-      const mainH = Math.round(document.getElementById("main-window")?.getBoundingClientRect().height || 0);
-      const eqH = Math.round(document.getElementById("equalizer-window")?.getBoundingClientRect().height || 0);
-      if (mainH > 20) eqY = mainH;
-      if (mainH > 20 && eqH > 20) plY = mainH + eqH;
-    }
+    const mainH = Math.round(document.getElementById("main-window")?.getBoundingClientRect().height || 0);
+    const eqNode = document.getElementById("equalizer-window");
+    const eqShown = eqNode && getComputedStyle(eqNode).display !== "none" && getComputedStyle(eqNode).visibility !== "hidden";
+    const eqH = eqShown ? Math.round(eqNode.getBoundingClientRect().height || 0) : 0;
+    if (mainH > 20) eqY = mainH;
+    if (mainH > 20) plY = mainH + (eqH > 20 ? eqH : 0);
     try {
       webamp.store.dispatch({
         type: "UPDATE_WINDOW_POSITIONS",
@@ -789,7 +790,8 @@ export async function initPlayer(ctx) {
   function ensureClassicOpen() {
     for (const id of ["equalizer", "playlist"]) {
       try {
-        const node = webamp.store.getState().windows?.[id];
+        const wins = webamp.store.getState().windows;
+        const node = wins?.genWindows?.[id] ?? wins?.[id];
         if (node && node.open === false) webamp.store.dispatch({ type: "TOGGLE_WINDOW", windowId: id });
       } catch { /* stay as Webamp left it */ }
     }
@@ -826,6 +828,28 @@ export async function initPlayer(ctx) {
       if (visualizerPlacement === "desktop") setTimeout(desktopLayoutChanged, 0);
     });
   } catch { /* store shape changed: the button still toggles */ }
+
+  // A closed EQ unmounts its window, so the playlist would stay where the EQ
+  // used to be — 116px of empty page between the two windows. Watch the EQ's
+  // open state in the compact homes and re-place the stack when it changes.
+  // (The desktop pop-out keeps its EQ open on purpose; ensureClassicOpen owns it.)
+  function eqOpen() {
+    try { return !!webamp.store.getState().windows.genWindows.equalizer?.open; } catch { return false; }
+  }
+  let lastEq = eqOpen();
+  try {
+    webamp.store.subscribe(() => {
+      const open = eqOpen();
+      if (open === lastEq) return;
+      lastEq = open;
+      if (visualizerPlacement === "desktop") return;
+      // Off Webamp's own layout pass: let it hide the window first.
+      setTimeout(() => {
+        placeClassicStack();
+        window.dispatchEvent(new CustomEvent("revamp:desktop-layout"));
+      }, 0);
+    });
+  } catch { /* store shape changed: the EQ button still toggles */ }
 
   // Live streams report an infinite duration, which Webamp's time formatter
   // prints as "InfinityNaN:NaNNaN"; null makes it show no length instead.

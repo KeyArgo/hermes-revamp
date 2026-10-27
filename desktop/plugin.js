@@ -731,12 +731,23 @@ function createEngine(ctx, url, bridgeKey = '') {
     frame.style.transform = `translate(${-box.x}px, ${-box.y}px)`
   }
   // The docked pane's clip box hugs the classic windows exactly (any skin/size).
+  // Whole-number scale (pixel art stays crisp): the classic stack grows to fill a wide or
+  // tall pane instead of sitting at 275px in the middle of a big screen.
+  function paneScale() {
+    const area = paneHost?.parentElement
+    if (!area || !box.w || !box.h) return 1
+    const fit = Math.min((area.clientWidth - 8) / box.w, (area.clientHeight - 14) / box.h)
+    return Math.max(1, Math.min(4, Math.floor(fit)))
+  }
   function fitPane() {
     if (!paneHost) return
-    paneHost.style.width = `${box.w}px`
-    paneHost.style.height = `${box.h}px`
-    frame.style.transform = `translate(${-box.x}px, ${-box.y}px)`
+    const s = paneScale()
+    paneHost.style.width = `${box.w * s}px`
+    paneHost.style.height = `${box.h * s}px`
+    frame.style.transformOrigin = '0 0'
+    frame.style.transform = `scale(${s}) translate(${-box.x}px, ${-box.y}px)`
   }
+  let paneWatch = null
 
   let parked = false
 
@@ -782,6 +793,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       send({ type: 'revamp:mode', mode: 'winamp', placement: 'docked' })
       $where.set('pane')
     } else if (loc === 'floating') {
+      frame.style.transformOrigin = ''
       frame.style.width = `${DOCK_W}px`
       frame.style.height = `${DOCK_H}px`
       moveInto(overlay.clip, frame)
@@ -790,6 +802,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       fitOverlay()
       $where.set('winamp')
     } else {
+      frame.style.transformOrigin = ''
       frame.style.transform = ''
       frame.style.width = `${DOCK_W}px`
       frame.style.height = `${DOCK_H}px`
@@ -896,8 +909,16 @@ function createEngine(ctx, url, bridgeKey = '') {
     },
     hidePage(el) { if (pageHost === el) { pageHost = null; $pageBorrow.set(true); place() } },
     borrowPage() { $pageBorrow.set(true); place() },
-    showPane(el) { paneHost = el; place() },
-    hidePane(el) { if (paneHost === el) { paneHost = null; place() } },
+    showPane(el) {
+      paneHost = el
+      paneWatch?.disconnect()
+      if (typeof ResizeObserver !== 'undefined' && el.parentElement) {
+        paneWatch = new ResizeObserver(() => { if ($where.get() === 'pane') fitPane() })
+        paneWatch.observe(el.parentElement)
+      }
+      place()
+    },
+    hidePane(el) { if (paneHost === el) { paneWatch?.disconnect(); paneWatch = null; paneHost = null; place() } },
     // Thin wrapper over the locations: the floating overlay or no player at all.
     // $winampOpen stays in sync as a derived value (see setPlayerLocation listeners).
     setWinamp(open) { setPlayerLocation(open ? 'floating' : 'mini') },
@@ -2396,19 +2417,20 @@ function Page() {
     return jsx('div', { style: { padding: 24 }, children: jsx(EmptyState, { title: t('offline'), description: t('offlineHint') }) })
   }
   return jsxs('div', {
-    style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 },
+    style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, minWidth: 0, overflow: 'hidden' },
     children: [
       jsxs('div', {
-        style: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--ui-stroke-secondary)' },
+        // Wraps instead of overflowing: in a narrow pane the transport drops to its own line.
+        style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 8px', padding: '6px 10px', minWidth: 0, borderBottom: '1px solid var(--ui-stroke-secondary)' },
         children: [
           jsx(StatusDot, { tone: np.connected ? 'good' : 'muted' }),
           jsx('span', {
-            style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ui-text-secondary)' },
+            style: { flex: '1 1 100px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ui-text-secondary)' },
             children: label(np) || t('nothing')
           }),
           np.online ? jsx(LikeButton, { np }) : null,
           np.online ? jsx(SleepSelect, { np }) : null,
-          jsx('div', { style: { width: 260 }, children: jsx(Transport, { np }) })
+          jsx('div', { style: { flex: '0 1 260px', minWidth: 0 }, children: jsx(Transport, { np }) })
         ]
       }),
       jsx('div', { ref: hostRef, style: { flex: 1, minHeight: 0, position: 'relative' } })
