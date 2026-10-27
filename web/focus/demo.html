@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Focus engine demo</title>
+  <link rel="icon" href="data:," />
+  <!-- Standalone test bench for engine.js; not linked from the app. -->
+  <style>
+    body { font: 14px system-ui, sans-serif; background: #15171c; color: #ddd; max-width: 520px; margin: 24px auto; padding: 0 16px; }
+    label { display: grid; grid-template-columns: 110px 1fr 56px; gap: 8px; align-items: center; margin: 10px 0; }
+    button { font: inherit; padding: 6px 14px; margin-right: 6px; }
+    #status { font-family: monospace; white-space: pre; color: #9ab; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Focus engine</h1>
+  <p>
+    <button id="start">Start</button><button id="pause">Pause/Resume</button><button id="stop">Stop</button>
+  </p>
+  <div id="controls"></div>
+  <div id="status"></div>
+  <script type="module">
+    import { FocusEngine, FOCUS_LIMITS, FOCUS_TIMERS, estimateRms, buildFocusGraph, cleanParams } from "./engine.js";
+
+    const engine = new FocusEngine();
+    // Test hooks.
+    window.focusEngine = engine;
+    window.FocusLib = { FocusEngine, estimateRms, buildFocusGraph, cleanParams };
+
+    const steps = { warmth: 0.01, noise: 0.01, depth: 0.01, rate: 0.5, volume: 0.01 };
+    const controls = document.getElementById("controls");
+    for (const k of Object.keys(steps)) {
+      const lab = document.createElement("label");
+      const [lo, hi] = FOCUS_LIMITS[k];
+      lab.innerHTML = `<span>${k}</span><input type="range" min="${lo}" max="${hi}" step="${steps[k]}" data-k="${k}"><output></output>`;
+      const input = lab.querySelector("input"), out = lab.querySelector("output");
+      input.value = engine.params[k];
+      out.textContent = input.value;
+      input.addEventListener("input", () => { out.textContent = input.value; engine.set({ [k]: Number(input.value) }); });
+      controls.appendChild(lab);
+    }
+    const timer = document.createElement("label");
+    timer.innerHTML = `<span>timer</span><select data-k="timer">${FOCUS_TIMERS.map((m) => `<option value="${m}">${m ? m + " min" : "off"}</option>`).join("")}</select><output></output>`;
+    timer.querySelector("select").addEventListener("change", (e) => engine.setTimer(Number(e.target.value)));
+    controls.appendChild(timer);
+
+    document.getElementById("start").onclick = () => engine.start();
+    document.getElementById("pause").onclick = () => engine.toggle();
+    document.getElementById("stop").onclick = () => engine.stop();
+    const st = document.getElementById("status");
+    const show = (s) => { st.textContent = JSON.stringify(s, null, 2); };
+    engine.on(show);
+    show(engine.status());
+  </script>
+</body>
+</html>

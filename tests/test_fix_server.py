@@ -1,0 +1,179 @@
+"""Regression tests for confirmed server bug-hunt findings."""
+
+from __future__ import annotations
+
+import json
+import socket
+import time
+
+import pytest
+
+
+def test_prune_keeps_all_fresh_snapshots(tmp_path):
+    from revamp_core import backup
+
+    now = time.time()
+    for number in range(61):
+        folder = tmp_path / f"snapshot-{number}"
+        folder.mkdir()
+        (folder / "manifest.json").write_text(json.dumps({
+            "id": folder.name,
+            "created": now - number * 600,
+            "files": {},
+        }))
+    assert backup.prune(tmp_path) == 0
+    assert len(backup.list_backups(tmp_path)) == 61
+
+
+def test_snapshot_skips_unchanged_data(tmp_path):
+    from revamp_core import backup
+
+    data = tmp_path / "data"
+    root = tmp_path / "backups"
+    data.mkdir()
+    (data / "state.json").write_text(json.dumps({"volume": 55}))
+    assert backup.snapshot(data, root=root, now=1_700_000_000)
+    assert backup.snapshot(data, root=root, now=1_700_000_600) is None
+    assert len(backup.list_backups(root)) == 1
+
+
+def test_failed_state_write_does_not_change_memory(tmp_path, monkeypatch):
+    from revamp_core import store
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    monkeypatch.setattr(store, "_STATE", {"volume": 80, "live": {}})
+    monkeypatch.setattr(store, "_atomic_write", lambda *_args: (_ for _ in ()).throw(OSError("full")))
+    with pytest.raises(store.StoreWriteError):
+        store.update({"volume": 33})
+    assert store.get_state()["volume"] == 80
+
+
+def test_resume_only_backup_is_not_empty(tmp_path):
+    from revamp_core import backup
+
+    (tmp_path / "state.json").write_text(json.dumps({"resume": {"local:track:abc": 12}}))
+    assert backup.is_empty(tmp_path) is False
+
+
+def test_corrupt_favorites_are_not_overwritten(tmp_path, monkeypatch):
+    from revamp_core import radio
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    broken = tmp_path / "radio_favorites.json"
+    broken.write_text("{not json")
+    with pytest.raises(radio.RadioError):
+        radio.add_favorite({"url": "https://example.test/live"})
+    assert broken.read_text() == "{not json"
+
+
+def test_bad_lyrics_cache_entry_is_ignored(tmp_path, monkeypatch):
+    from revamp_core import lyrics
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    (tmp_path / "lyrics-cache.json").write_text(json.dumps({"bad": "record"}))
+    lyrics._CACHE.clear()
+    lyrics._loaded = False
+    lyrics._load()
+    assert lyrics._cache_get(("artist", "title", "", 0)) is None
+
+
+def test_library_folder_limit_is_not_silently_truncated(tmp_path):
+    from revamp_core import server
+
+    folders = []
+    for number in range(51):
+        folder = tmp_path / str(number)
+        folder.mkdir()
+        folders.append(str(folder))
+    assert len(server._clean_library_folders(folders)) == 51
+
+
+def test_relative_import_uses_origin_directory(tmp_path, monkeypatch):
+    from revamp_core import playlists
+
+    song = tmp_path / "song.mp3"
+    song.write_bytes(b"audio")
+    monkeypatch.setattr("revamp_core.library.get_track", lambda _id: None)
+    item = playlists.item_from_line("song.mp3", tmp_path)
+    assert item["path"] == str(song)
+
+
+def test_export_uses_saved_offline_path():
+    from revamp_core import playlists
+
+    item = {"id": "local:track:aaaaaaaaaaaaaaaa", "source": "local", "kind": "music",
+            "playback": {"backend": "webamp", "url": "/api/media/aaaaaaaaaaaaaaaa"},
+            "path": "/music/offline.mp3"}
+    assert playlists.item_path(item) == "/music/offline.mp3"
+
+
+def test_startup_always_schedules_a_reconciliation_scan(tmp_path, monkeypatch):
+    from revamp_core import backup, library, server
+
+    port_socket = socket.socket()
+    port_socket.bind(("127.0.0.1", 0))
+    port = port_socket.getsockname()[1]
+    port_socket.close()
+    scans = []
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("REVAMP_LIBRARY_DIRS", str(tmp_path / "music"))
+    monkeypatch.setattr(server, "_started", False)
+    monkeypatch.setattr(server, "_owned", False)
+    monkeypatch.setattr(server, "_probe_health", lambda _port: None)
+    monkeypatch.setattr(server, "_foreign_holder", lambda _port: False)
+    monkeypatch.setattr(server, "get_token", lambda: "token")
+    monkeypatch.setattr(server.window, "reap_orphan", lambda: False)
+    monkeypatch.setattr(backup, "seed_index", lambda _data: False)
+    monkeypatch.setattr(backup, "start_thread", lambda _data: None)
+    monkeypatch.setattr(library, "load_index", lambda: None)
+    monkeypatch.setattr(library, "all_tracks", lambda: [{"id": "saved-track"}])
+    monkeypatch.setattr(library, "index_complete", lambda: True)
+    monkeypatch.setattr(library, "scan_async", lambda roots: scans.append(roots))
+
+    assert server.ensure_server(port) == port
+    assert scans == [server.library_dirs()]
+
+
+def test_playlist_id_export_opens(server):
+    code, _, playlist = server.client.post("/api/playlists", {
+        "name": "Export",
+        "items": [{"kind": "stream", "title": "Station", "url": "https://example.test/live"}],
+    })
+    assert code == 201
+    code, _, opened = server.client.get("/api/playlists/export")
+    assert code == 200
+    assert opened["id"] == playlist["id"] == "export"
+
+
+def test_client_surfaces_server_http_error_body(server):
+    from revamp_core.client import RevampClient, RevampUnavailable
+
+    client = RevampClient(base=server.base, token=server.token)
+    with pytest.raises(RuntimeError, match="HTTP 404: no such playlist") as exc_info:
+        client.get("/api/playlists/not-a-playlist")
+    assert not isinstance(exc_info.value, RevampUnavailable)
+
+
+def test_korean_and_thai_substrings_match():
+    from revamp_core import library
+
+    assert library._matches({"title": "사랑한글"}, ["한글"])
+    assert library._matches({"title": "เพลงไทยเพราะ"}, ["ไทย"])
+
+
+def test_dashboard_port_is_clamped(monkeypatch):
+    pytest.importorskip("fastapi")
+    from dashboard import plugin_api
+
+    monkeypatch.setenv("REVAMP_PORT", "99999")
+    assert plugin_api._port() == 65535
+
+
+def test_orphan_lease_survives_unverified_process(tmp_path, monkeypatch):
+    from revamp_core import window
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    (tmp_path / window.LEASE).write_text(json.dumps({"pid": 999999, "ts": 0}))
+    assert window.reap_orphan() is False
+    assert (tmp_path / window.LEASE).exists()

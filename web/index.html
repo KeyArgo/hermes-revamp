@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Revamp</title>
+  <!-- Token injected by the server on GET / -->
+  <meta name="revamp-token" content="" />
+  <link rel="stylesheet" href="/web/app.css" />
+  <link rel="icon" type="image/svg+xml" href="/web/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/web/img/icons/favicon-16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/web/img/icons/favicon-32.png" />
+  <link rel="apple-touch-icon" sizes="256x256" href="/web/img/icons/icon-256.png" />
+  <link rel="manifest" href="/web/manifest.webmanifest" />
+</head>
+<body>
+  <div id="app">
+    <div class="shell">
+      <aside class="sidebar glass" id="sidebar" aria-label="Navigation">
+        <div class="brand"><span class="txt">RE<span class="accent">Vamp</span></span><small>1.0 alpha 1</small></div>
+        <nav class="nav" id="nav" aria-label="Views"></nav>
+        <div class="nowplaying-card" id="np-card" aria-live="polite">
+          <img class="np-art" id="np-art" alt="" hidden />
+          <div class="np-meta">
+            <div class="np-title" id="np-title">Nothing playing</div>
+            <div class="np-artist" id="np-artist"></div>
+            <div class="np-time"><span class="np-live" id="np-live" hidden>LIVE</span> <span id="np-time"></span></div>
+          </div>
+          <div class="np-extras">
+            <button class="np-like" id="np-like" type="button" aria-pressed="false" title="Like" hidden>♡</button>
+            <select id="np-sleep" class="np-sleep" aria-label="Sleep timer" title="Sleep timer">
+              <option value="0">☾ Sleep: off</option>
+              <option value="15">15 min</option>
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">60 min</option>
+              <option value="track">End of track</option>
+            </select>
+            <span class="np-sleep-left" id="np-sleep-left" aria-live="polite"></span>
+          </div>
+        </div>
+      </aside>
+
+      <section class="stage-wrap" aria-label="Player">
+        <div class="stage" id="stage">
+          <div id="webamp-host"></div>
+        </div>
+      </section>
+
+      <section class="panel glass" id="panel" aria-label="Panel">
+        <div class="panel-head">
+          <h1 id="panel-title">Library</h1>
+          <div class="spacer"></div>
+          <span class="status-pill" id="conn-pill" title="Server connection">…</span>
+          <button class="btn btn-ghost panel-toggle" id="panel-close" aria-label="Close panel">✕</button>
+        </div>
+        <div class="panel-body" id="panel-body"></div>
+      </section>
+      <div class="panel-scrim" id="panel-scrim"></div>
+    </div>
+
+    <footer class="ticker glass" id="ticker" aria-label="Agent activity">
+      <span class="activity-dot" title="Agent activity"></span>
+      <span class="approval-banner" id="approval-banner">⏸ Hermes is waiting for approval…</span>
+      <div class="ticker-viewport" style="overflow:hidden;flex:1;min-width:0">
+        <div class="ticker-track" id="ticker-track"><span class="muted">No agent activity yet</span></div>
+      </div>
+    </footer>
+
+    <nav class="tabbar glass" id="tabbar" aria-label="Views (small)"></nav>
+  </div>
+
+  <script type="module" src="/web/app.js"></script>
+</body>
+</html>

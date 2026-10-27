@@ -1,0 +1,36 @@
+name: revamp
+label: REVamp
+kind: standalone
+version: 1.0.0-alpha.1
+author: Argo
+description: >
+  REVamp is a Winamp-style music, audiobook and radio player for Hermes, with
+  the MilkDrop visualizer, classic skins, playlists, lyrics, and four agent
+  tools so the agent can DJ. Unofficial; not affiliated with Nous Research.
+  Disclosure: when Hermes loads it, it runs a token-protected loopback server
+  for Hermes's lifetime; scans ~/Music by default (change or add folders in
+  settings); reads Hermes config; makes private 10-minute backups; and keeps a
+  short, credential-masked local activity ticker. On Linux, opening the optional
+  pop-out writes two small desktop entries (X11 and Wayland) under ~/.local/share/applications and icons in its data folder so its
+  window shows the REVamp icon. It contacts Radio Browser,
+  the radio streams you pick (built-in or custom) and their favicon hosts,
+  LRCLIB, and the Webamp Skin Museum; runs low-priority ffprobe; and can open
+  an optional local Chrome-family pop-out. No accounts, telemetry, or stored
+  passwords. See README.md for details.
+# Verified and tested on Hermes 0.22.5. REVamp's
+# manifest is also exercised by the repository's manifest-integrity tests.
+requires_hermes: ">=0.22.5"
+license: MIT
+provides_tools:
+  - revamp_player
+  - revamp_library
+  - revamp_playlist
+  - revamp_radio
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call
+  - on_session_start
+  - on_session_end
+  - pre_approval_request
+  - post_approval_response
+dashboard: dashboard

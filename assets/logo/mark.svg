@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 104 104" role="img" aria-label="REVamp">
+  <title>REVamp</title>
+  <defs>
+    <linearGradient id="mk-rew" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5ff2c6"/><stop offset="1" stop-color="#d8ff5c"/>
+    </linearGradient>
+    <linearGradient id="mk-play" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff4fd8"/><stop offset="0.5" stop-color="#ffffff"/><stop offset="1" stop-color="#5ff2c6"/>
+    </linearGradient>
+  </defs>
+  <polygon points="32.00,0.00 0.00,24.00 32.00,48.00" fill="url(#mk-rew)"/><polygon points="32.00,52.00 0.00,76.00 32.00,100.00" fill="url(#mk-rew)"/><path d="M 36.00 0.00 100.00 24.00 36.00 48.00 Z M 44.32 12.00 76.32 24.00 44.32 36.00 Z" fill="url(#mk-play)" fill-rule="evenodd"/><polygon points="36.00,52.00 64.00,52.00 100.00,100.00 72.00,100.00" fill="#d8ff5c"/>
+</svg>

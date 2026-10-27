@@ -1,0 +1,637 @@
+/* Revamp shell — dark modern glass UI around the classic Webamp windows.
+   Layout: sidebar | stage | panel, ticker along the bottom. */
+
+/* ---------- design tokens ---------- */
+:root {
+  --bg: #0b0e14;
+  --bg-2: #10141d;
+  --panel: rgba(22, 27, 39, 0.94);
+  --panel-solid: #161b27;
+  --glass-brd: rgba(255, 255, 255, 0.08);
+  --txt: #dbe2f0;
+  --txt-dim: #8a94aa;
+  --accent: #4cc2ff;
+  --accent-2: #b18cff;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --err: #f87171;
+  --stage: #070910;
+  --radius: 12px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eef1f7;
+    --bg-2: #e7ebf2;
+    --panel: rgba(255, 255, 255, 0.95);
+    --panel-solid: #ffffff;
+    --glass-brd: rgba(20, 30, 50, 0.12);
+    --txt: #1d2536;
+    --txt-dim: #5b6478;
+    --accent: #0a86c8;
+    --stage: #dfe4ee;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--txt);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(76, 194, 255, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 10% 110%, rgba(177, 140, 255, 0.07), transparent 60%),
+    var(--bg);
+  overflow: hidden;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* ---------- app frame ---------- */
+#app {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  height: 100vh;
+  min-width: 0;
+}
+.shell {
+  display: grid;
+  grid-template-columns: 216px minmax(320px, 1fr) minmax(360px, 460px);
+  gap: 12px;
+  padding: 12px;
+  min-height: 0;
+}
+
+/* glass panel primitive */
+.glass {
+  background: var(--panel);
+  border: 1px solid var(--glass-brd);
+  border-radius: var(--radius);
+  /* No backdrop blur here. Blurring what is behind the panels made the browser redraw the blur
+     every frame. Under software graphics (Hermes on many NVIDIA setups) that alone cost
+     more than a full CPU core. Near-opaque panels look the same and cost nothing. */
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- sidebar ---------- */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  min-height: 0;
+}
+.brand {
+  display: flex; align-items: baseline; gap: 6px;
+  font-weight: 700; font-size: 18px; letter-spacing: 0.5px;
+  padding: 2px 4px 8px;
+}
+.brand .accent { color: var(--accent); }
+.brand small { color: var(--txt-dim); font-weight: 400; font-size: 11px; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav button {
+  display: flex; align-items: center; gap: 10px;
+  background: none; border: 0; border-radius: 8px;
+  padding: 8px 10px; color: var(--txt-dim);
+  text-align: left; font-size: 13.5px;
+  transition: background 0.15s, color 0.15s;
+}
+.nav button:hover { background: rgba(255, 255, 255, 0.05); color: var(--txt); }
+.nav button.active { background: rgba(76, 194, 255, 0.14); color: var(--accent); }
+.nav .icon { width: 18px; text-align: center; }
+
+.nowplaying-card {
+  margin-top: auto;
+  padding: 10px;
+  display: flex; gap: 10px; align-items: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-brd);
+  min-width: 0;
+}
+.np-art { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--bg-2); flex: none; }
+.np-meta { min-width: 0; }
+.np-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-artist { font-size: 12px; color: var(--txt-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-time { font-size: 11px; color: var(--accent); font-family: var(--mono); }
+.np-live { font-size: 10px; color: var(--ok); letter-spacing: 1px; }
+.nowplaying-card { flex-wrap: wrap; }
+.np-extras { flex-basis: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.np-like { background: none; border: 1px solid var(--glass-brd); border-radius: 6px; color: var(--txt-dim); cursor: pointer; font-size: 14px; line-height: 20px; width: 28px; padding: 0; }
+.np-like[aria-pressed="true"] { color: var(--err); border-color: var(--err); }
+.np-sleep { min-width: 0; max-width: 120px; font: 11px var(--font); color: var(--txt); background: var(--bg-2); border: 1px solid var(--glass-brd); border-radius: 6px; padding: 2px 4px; }
+.np-sleep-left { font-size: 11px; color: var(--accent); font-family: var(--mono); white-space: nowrap; }
+/* Library rows: the heart column. */
+.list td.like-cell { width: 28px; text-align: center; padding-left: 0; padding-right: 0; }
+.like-btn { background: none; border: 0; cursor: pointer; color: var(--txt-dim); font-size: 14px; line-height: 1; padding: 2px 4px; opacity: .55; }
+.trow:hover .like-btn, .like-btn:focus-visible { opacity: 1; }
+.like-btn[aria-pressed="true"] { color: var(--err); opacity: 1; }
+
+/* ---------- stage ---------- */
+.stage-wrap { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.stage {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(800px 400px at 50% 0%, rgba(76, 194, 255, 0.05), transparent 55%),
+    var(--stage);
+  border: 1px solid var(--glass-brd);
+  padding: 18px;
+}
+#webamp-host { position: relative; height: 100%; min-height: 470px; }
+#webamp-host .window { /* keep webamp windows inside */ }
+
+/* ---------- panel (right view) ---------- */
+.panel {
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
+}
+.panel-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px 8px;
+}
+.panel-head h1 { font-size: 16px; margin: 0; font-weight: 650; }
+.panel-head .spacer { flex: 1; }
+.panel-body { flex: 1; overflow: auto; padding: 4px 14px 14px; min-height: 0; }
+
+/* search inputs */
+.searchbox {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-brd);
+  border-radius: 8px; padding: 6px 10px;
+}
+.searchbox input {
+  background: none; border: 0; outline: none; color: var(--txt);
+  font: inherit; width: 100%;
+}
+.searchbox .icon { color: var(--txt-dim); }
+
+/* tabs */
+.tabs { display: flex; gap: 4px; }
+.tabs button {
+  background: none; border: 0; border-radius: 7px;
+  padding: 5px 12px; color: var(--txt-dim); font-size: 13px;
+}
+.tabs button.active { background: rgba(76, 194, 255, 0.14); color: var(--accent); }
+
+/* tables */
+table.list { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+table.list th:first-child, table.list td:first-child { width: 36px; }
+table.list th:nth-child(2) { width: 42%; }
+table.list th:last-child { width: 64px; }
+table.list.books th:last-child { width: 136px; }
+table.list th.like-cell { width: 28px; }
+table.list th.time { width: 64px; }
+table.list.books th.time { width: 136px; }
+table.list td { max-width: none; }
+table.list th {
+  text-align: left; font-weight: 500; color: var(--txt-dim);
+  font-size: 11.5px; letter-spacing: 0.4px; text-transform: uppercase;
+  padding: 6px 8px; position: sticky; top: 0; background: var(--panel-solid);
+  border-bottom: 1px solid var(--glass-brd);
+}
+table.list td { padding: 6px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+table.list tr.trow { cursor: pointer; }
+table.list tr.trow:hover { background: rgba(255, 255, 255, 0.04); }
+table.list tr.selected { background: rgba(76, 194, 255, 0.12); }
+table.list tr.playing td.title-cell { color: var(--accent); font-weight: 600; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-size: 12px; color: var(--txt-dim); }
+
+/* album grid */
+.album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.album-card { border-radius: 10px; overflow: hidden; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-brd); cursor: pointer; transition: transform .12s, border-color .12s; }
+.album-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.album-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--bg-2); }
+.album-card .a-name { padding: 8px 10px 2px; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.album-card .a-artist { padding: 0 10px 8px; color: var(--txt-dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* artist list */
+.artist-row { display: flex; justify-content: space-between; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.artist-row:hover { background: rgba(255,255,255,0.05); }
+.artist-row .count { color: var(--txt-dim); font-size: 12px; }
+
+/* buttons */
+.btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-brd);
+  border-radius: 8px; padding: 6px 14px; font-size: 13px;
+  transition: background 0.15s;
+}
+.btn:hover { background: rgba(255, 255, 255, 0.12); }
+.btn-primary { background: var(--accent); border-color: transparent; color: #04222f; font-weight: 600; }
+.btn-primary:hover { filter: brightness(1.1); background: var(--accent); }
+.btn-danger { color: var(--err); }
+.btn-ghost { background: none; border-color: transparent; color: var(--txt-dim); }
+.btn-ghost:hover { color: var(--txt); background: rgba(255,255,255,0.06); }
+.btn.sm { padding: 3px 9px; font-size: 12px; }
+.btn[disabled] { opacity: 0.45; cursor: default; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* playlist / radio / skins cards */
+.card-list { display: flex; flex-direction: column; gap: 8px; }
+.card-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-brd);
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.card-row:hover { border-color: rgba(76, 194, 255, 0.5); background: rgba(76, 194, 255, 0.05); }
+.card-row .grow { flex: 1; min-width: 0; }
+.card-row .name { font-weight: 600; font-size: 13.5px; }
+.card-row .sub { color: var(--txt-dim); font-size: 12px; }
+.fav-star { background: none; border: 0; font-size: 16px; color: var(--txt-dim); padding: 2px 4px; }
+.fav-star.on { color: var(--warn); }
+
+.skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.skin-card { border: 1px solid var(--glass-brd); border-radius: 10px; overflow: hidden; cursor: pointer; background: rgba(255,255,255,0.03); transition: border-color .15s, transform .12s; }
+.skin-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.skin-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.skin-card img { width: 100%; display: block; aspect-ratio: 275 / 116; object-fit: cover; object-position: top; image-rendering: pixelated; background: var(--bg-2); }
+.skin-card .s-name { padding: 8px 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.skin-card .s-name > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skin-card .s-name a { text-decoration: none; font-weight: 400; }
+.skin-card .s-badge { font-size: 10px; font-weight: 500; color: var(--txt-dim); border: 1px solid var(--glass-brd); border-radius: 6px; padding: 0 5px; }
+.skin-card.busy { opacity: .55; pointer-events: none; }
+.skin-head { margin: 4px 0 10px; font-size: 14px; }
+.skin-grid + .skin-head { margin-top: 22px; }
+
+/* settings rows */
+.setting-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.setting-row label { flex: 1; }
+.setting-row .hint { color: var(--txt-dim); font-size: 12px; }
+input[type="range"] { accent-color: var(--accent); width: 160px; }
+
+/* toggle switch */
+.switch { position: relative; width: 38px; height: 22px; flex: none; }
+.switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.switch .track { position: absolute; inset: 0; border-radius: 999px; background: rgba(255,255,255,0.12); transition: background .15s; }
+.switch .knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch input:checked ~ .track { background: var(--accent); }
+.switch input:checked ~ .knob { transform: translateX(16px); }
+.switch input:focus-visible ~ .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- agent ticker ---------- */
+.ticker {
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 12px 10px; padding: 6px 14px;
+  font-size: 12px; color: var(--txt-dim);
+  overflow: hidden; white-space: nowrap;
+}
+.ticker .t-item { display: inline-flex; gap: 6px; margin-right: 26px; }
+.ticker .t-ok { color: var(--ok); }
+.ticker .t-err { color: var(--err); }
+.ticker .t-tool { color: var(--accent); font-family: var(--mono); }
+.ticker-track { display: inline-flex; animation: ticker-scroll 40s linear infinite; will-change: transform; }
+.ticker-track:has(> .muted) { animation: none; } /* placeholder only: nothing to scroll */
+.ticker:hover .ticker-track, body.reduce-motion .ticker-track { animation-play-state: paused; }
+@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; }
+  .ticker { overflow-x: auto; }
+}
+
+.activity-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--txt-dim); flex: none; }
+body.agent-busy .activity-dot { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.3; transform: scale(1.4); } }
+
+.approval-banner {
+  display: none; align-items: center; gap: 8px;
+  background: rgba(251, 191, 36, 0.12); color: var(--warn);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 8px; padding: 4px 10px; font-size: 12px;
+}
+body.approval-wait .approval-banner { display: inline-flex; }
+
+/* ---------- modals ---------- */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(4, 6, 12, 0.6);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  background: var(--panel-solid);
+  border: 1px solid var(--glass-brd);
+  border-radius: 14px;
+  padding: 18px 20px;
+  width: min(430px, calc(100vw - 40px));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  animation: modal-in 0.16s ease-out;
+}
+.modal-wide { width: min(620px, calc(100vw - 40px)); }
+.modal-closing { opacity: 0; transform: scale(0.97); transition: all 0.13s; }
+@keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+.modal-title { margin: 0 0 10px; font-size: 15px; }
+.modal-body { color: var(--txt); font-size: 13.5px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.form-row { display: flex; flex-direction: column; gap: 6px; }
+.form-row label { font-size: 12px; color: var(--txt-dim); }
+.form-row input, .form-row select, .form-row textarea {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--glass-brd);
+  color: var(--txt); border-radius: 8px; padding: 8px 10px; font: inherit;
+}
+.form-row input:focus { outline: 1px solid var(--accent); }
+
+/* toasts */
+.toast-host { position: fixed; bottom: 54px; right: 18px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  background: var(--panel-solid); border: 1px solid var(--glass-brd);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px; padding: 10px 14px; font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  opacity: 0; transform: translateX(12px); transition: all 0.25s;
+  max-width: 340px;
+}
+.toast-show { opacity: 1; transform: none; }
+.toast-error { border-left-color: var(--err); }
+.toast-ok { border-left-color: var(--ok); }
+
+/* empty states / hints */
+.empty {
+  color: var(--txt-dim); text-align: center; padding: 40px 16px; font-size: 13px; line-height: 1.6;
+}
+.empty .big { font-size: 30px; display: block; margin-bottom: 8px; }
+.muted { color: var(--txt-dim); font-size: 12px; }
+.status-pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.07); color: var(--txt-dim); }
+.status-pill.on { color: var(--ok); }
+
+/* loading spinner */
+.spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--glass-brd); border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite; display: inline-block; vertical-align: -3px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1099px) and (min-width: 900px) {
+  .shell { grid-template-columns: 56px 1fr minmax(300px, 400px); }
+  .brand span.txt, .nav button .label, .np-meta, .np-sleep, .np-sleep-left { display: none; }
+  .nowplaying-card { justify-content: center; padding: 6px; }
+  .nav button { justify-content: center; }
+  /* Same overflow guard as the narrow band: card internals would spill past 56px. */
+  .np-extras, .np-book, .np-art { display: none; }
+  .nowplaying-card { padding: 0; border: 0; background: none; }
+}
+/* Narrow (and the Hermes Desktop pane, ?embed=1): one column — the classic
+   windows on top, the active view below. The nav never hides: it becomes the
+   same 56px icon rail the 900–1099px band uses, so every view stays reachable. */
+@media (max-width: 899px) {
+  .shell { grid-template-columns: 56px 1fr; grid-template-rows: auto; overflow-y: auto; padding: 8px; gap: 8px; }
+  .brand, .nav button .label, .np-meta, .np-sleep, .np-sleep-left,
+  .np-extras, .np-book, .np-art { display: none; }
+  .nowplaying-card { justify-content: center; padding: 0; border: 0; background: none; }
+  .sidebar { padding: 8px 6px; gap: 6px; }
+  .nav { align-items: stretch; }
+  .nav button { justify-content: center; padding: 8px 0; }
+  .nav .icon { width: auto; }
+  /* Explicit rows: rail+stage share row 1; the panel NEVER lands in the rail column. */
+  .stage-wrap { grid-row: 1; grid-column: 2; }
+  .panel { grid-row: 2; grid-column: 1 / -1; }
+  /* No fixed stage height: the classic stack (main+EQ+playlist = 464px+) must never
+     clip. height:max-content on the wrap feeds the real stack height into the auto
+     grid row (min-height:0 alone makes the row collapse to the rail's height);
+     the shell scrolls (overflow-y). */
+  .stage { flex: none; height: auto; padding: 8px; }
+  .stage-wrap { grid-row: 1; grid-column: 2; height: max-content; min-height: 0; }
+  .panel { min-height: 420px; }
+  .panel { min-height: 420px; }
+  .tabbar { display: none !important; }
+  #app { grid-template-rows: auto 1fr auto; }
+  .ticker { margin: 0 8px 6px; }
+}
+body.embed .shell { grid-template-columns: 56px 1fr; grid-template-rows: auto; overflow-y: auto; padding: 8px; gap: 8px; }
+body.embed .brand, body.embed .nav button .label, body.embed .np-meta,
+body.embed .np-sleep, body.embed .np-sleep-left,
+body.embed .np-extras, body.embed .np-book, body.embed .np-art { display: none; }
+body.embed .nowplaying-card { justify-content: center; padding: 0; border: 0; background: none; }
+body.embed .sidebar { padding: 8px 6px; gap: 6px; }
+body.embed .nav button { justify-content: center; padding: 8px 0; }
+body.embed .nav .icon { width: auto; }
+body.embed .stage-wrap { grid-row: 1; grid-column: 2; }
+body.embed .panel { grid-row: 2; grid-column: 1 / -1; }
+body.embed .stage { flex: none; height: auto; padding: 8px; }
+body.embed .stage-wrap { height: max-content; min-height: 0; }
+body.embed .panel { min-height: 420px; }
+body.embed .tabbar { display: none !important; }
+body.embed #app { grid-template-rows: auto 1fr auto; }
+.panel-toggle, .panel-scrim { display: none; }
+.tabbar {
+  display: none; justify-content: space-around;
+  padding: 6px 4px 2px;
+}
+.tabbar button { background: none; border: 0; color: var(--txt-dim); font-size: 11px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 10px; }
+.tabbar button.active { color: var(--accent); }
+.tabbar .icon { font-size: 17px; height: 20px; line-height: 20px; }
+
+/* agent view: switches keep their size inside flexible setting rows; event log needs a wider time column */
+.setting-row label.switch { flex: none; width: 38px; }
+table.list.events th:first-child, table.list.events td:first-child { width: 100px; }
+table.list.events th:nth-child(2) { width: 24px; }
+table.list.events th:last-child { width: auto; }
+
+/* Winamp mode (Hermes "pop out"): only the classic windows, on a transparent page. */
+body.mode-winamp, html:has(body.mode-winamp) { background: transparent !important; }
+body.mode-winamp .sidebar, body.mode-winamp .panel, body.mode-winamp .panel-scrim,
+body.mode-winamp .ticker, body.mode-winamp .tabbar { display: none !important; }
+body.mode-winamp #app { display: block; height: 100vh; }
+body.mode-winamp .shell { display: block; padding: 0; height: 100%; }
+body.mode-winamp .stage-wrap { height: 100%; }
+body.mode-winamp .stage { height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: hidden; }
+body.mode-winamp #webamp-host { min-height: 0; }
+
+/* Desktop pop-out (?float=1). Hermes's overlay is transparent so the app shows
+   through; an OS window would then show the browser's white canvas around a
+   rounded skin. The player is pinned to the origin and the window is sized to
+   it, so this dark fill only shows in those rounded corners. */
+body.mode-winamp.float-desktop,
+html:has(body.mode-winamp.float-desktop) {
+  background: #0b0e14 !important;
+}
+body.mode-winamp.float-desktop,
+body.mode-winamp.float-desktop #app,
+body.mode-winamp.float-desktop .shell,
+body.mode-winamp.float-desktop .stage-wrap,
+body.mode-winamp.float-desktop .stage,
+body.mode-winamp.float-desktop #webamp-host {
+  background: #0b0e14;
+  overflow: hidden;
+}
+body.float-desktop #webamp-host .draggable { cursor: default; touch-action: none; }
+body.float-desktop #webamp-host .gen-window,
+body.float-desktop #webamp-host #milkdrop-window { background: #000; }
+body.float-desktop .float-milkdrop {
+  /* In the main window's title-bar stripe, between the title and the
+     minimize/shade/close buttons, so it never covers the clock or visualizer. */
+  position: absolute;
+  z-index: 100000;
+  top: 2px;
+  left: 196px;
+  height: 11px;
+  padding: 0 3px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(11, 14, 20, 0.88);
+  color: #dbe2f0;
+  font: 8px/9px system-ui, sans-serif;
+  cursor: pointer;
+}
+body.float-desktop .float-milkdrop[aria-pressed="true"] {
+  color: #4cc2ff;
+  border-color: #4cc2ff;
+}
+
+/* REVamp's own skins use a clean MilkDrop title strip instead of the gen.bmp
+   grip lines. Webamp still owns the close button and its click behaviour. */
+html.revamp-smooth-milkdrop .gen-window .gen-top,
+html.revamp-smooth-milkdrop #milkdrop-window .window-bar,
+html.revamp-smooth-milkdrop #milkdrop-window .gen-window-bar,
+html.revamp-smooth-milkdrop #milkdrop-window [class*="title-bar"] {
+  background-image: none !important;
+  background-color: var(--revamp-milkdrop-title, #273447) !important;
+  border-bottom: 1px solid var(--revamp-milkdrop-edge, #6f8daa);
+}
+html.revamp-smooth-milkdrop .gen-window .gen-top > *,
+html.revamp-smooth-milkdrop #milkdrop-window [class*="grip"] {
+  background-image: none !important;
+}
+html.revamp-smooth-milkdrop .gen-window:fullscreen,
+html.revamp-smooth-milkdrop #milkdrop-window:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #000;
+}
+
+/* Webamp 2.3.1's generic window box does not grow with its content: give it the height
+   player.js picked (464 beside the classic stack, 232 below it) so the canvas fits exactly. */
+#webamp-host .gen-window {
+  height: var(--milkdrop-h, 464px) !important;
+}
+
+/* The original skin's title bar, relabelled REVAMP (same pixels otherwise).
+   player.js sets html.revamp-classic only while the built-in base skin is shown. */
+html.revamp-classic #webamp #title-bar { background-image: url(/web/img/title.png); }
+html.revamp-classic #webamp .selected #title-bar { background-image: url(/web/img/title-selected.png); }
+/* The equalizer and playlist windows of the base skin read REVAMP too (same pixel font). */
+html.revamp-classic #webamp .equalizer-top { background-image: url(/web/img/eq-title.png); }
+html.revamp-classic #webamp .selected .equalizer-top { background-image: url(/web/img/eq-title-selected.png); }
+html.revamp-classic #webamp .playlist-top-title { background-image: url(/web/img/pl-title.png); }
+html.revamp-classic #webamp .selected .playlist-top-title { background-image: url(/web/img/pl-title-selected.png); }
+
+/* ---- Music / Books folders (library views) */
+.lib-folders:empty { display: none; }
+.folders { padding: 10px 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.folders-head { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.folder-row { display: flex; align-items: center; gap: 8px; }
+.folder-path { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
+.folder-goto input { flex: 1; min-width: 0; background: var(--bg-2); color: var(--txt); border: 1px solid var(--glass-brd); border-radius: 8px; padding: 5px 8px; font-family: var(--mono); font-size: 12px; }
+.folder-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; }
+.folder-dir { text-align: left; background: none; border: 0; color: var(--txt); padding: 5px 6px; border-radius: 6px; cursor: pointer; overflow-wrap: anywhere; }
+.folder-dir:hover, .folder-dir:focus-visible { background: rgba(255,255,255,0.06); }
+.folder-note { padding: 2px 0; }
+.left-off { color: var(--accent); }
+
+/* ---- Library track context menu */
+.track-menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 180px;
+  padding: 5px;
+  background: var(--panel-solid);
+  border: 1px solid var(--glass-brd);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.track-menu-header {
+  padding: 5px 8px 6px;
+  color: var(--txt-dim);
+  font-size: 12px;
+  border-bottom: 1px solid var(--glass-brd);
+}
+.track-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  color: var(--txt);
+  text-align: left;
+}
+.track-menu button:hover,
+.track-menu button:focus-visible {
+  background: var(--bg-2);
+  color: var(--accent);
+}
+
+/* Narrow panels: the Books table keeps title + time; artist and album give way. */
+@media (max-width: 700px) {
+  table.list.books th:nth-child(3), table.list.books td:nth-child(3),
+  table.list.books th:nth-child(4), table.list.books td:nth-child(4) { display: none; }
+  table.list.books th:nth-child(2) { width: auto; }
+  table.list.books th:last-child { width: 118px; }
+  table.list.books th.time { width: 118px; }
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- now-playing extras: book controls + lyrics (web/views/npextras.js) */
+.np-book { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.np-book select { background: var(--bg-2); color: var(--txt); border: 1px solid var(--glass-brd); border-radius: 8px; padding: 3px 6px; font-size: 12px; max-width: 100%; }
+.np-book .np-chapter { flex: 1 1 100%; min-width: 0; }
+.np-lyrics-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.np-visualizer[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.lyrics-pane { position: absolute; right: 16px; top: 16px; bottom: 16px; width: min(380px, 42%); overflow-y: auto; padding: 18px 16px; z-index: 5; font-size: 15px; line-height: 1.6; }
+.lyrics-pane .lyr { color: var(--txt-dim); padding: 3px 0; cursor: pointer; transition: color .2s; }
+.lyrics-pane .lyr.on { color: var(--txt); font-weight: 600; }
+.lyrics-pane .lyr:hover { color: var(--accent); }
+@media (max-width: 700px) { .lyrics-pane { left: 12px; right: 12px; width: auto; } }
+.stage-wrap { position: relative; } /* anchors the lyrics pane */
+
+/* See player.js markIdle: a stopped or paused player does not keep redrawing an empty spectrum. */
+body.revamp-idle #webamp #visualizer { visibility: hidden; }
+
+/* ---- radio view (web/views/radio.js) */
+.radio-list { display: flex; flex-direction: column; gap: 8px; }
+.radio-row { align-items: center; }
+.radio-art {
+  width: 38px; height: 38px; flex: 0 0 38px; border-radius: 8px; overflow: hidden;
+  background: var(--bg-2); border: 1px solid var(--glass-brd);
+  display: flex; align-items: center; justify-content: center;
+}
+.radio-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.radio-art.none::after { content: "📻"; font-size: 17px; opacity: .5; }
+.radio-flag { margin-right: 5px; }
+.radio-sub { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.radio-chip {
+  background: rgba(255, 255, 255, .06); border: 1px solid var(--glass-brd); border-radius: 999px;
+  padding: 0 7px; font-size: 10.5px; line-height: 16px; color: var(--txt-dim);
+}
+.radio-meta { color: var(--txt-dim); font-family: var(--mono); font-size: 11px; }
+.radio-heart { font-size: 15px; }
+.radio-heart[aria-pressed="true"] { color: var(--err); opacity: 1; }
+.radio-sentinel { display: flex; justify-content: center; align-items: center; padding: 10px; min-height: 16px; }
+.radio-notice {
+  background: rgba(251, 191, 36, .14); border: 1px solid var(--warn); color: var(--txt);
+  border-radius: 10px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 10px;
+}
+.radio-status .muted { font-family: var(--mono); font-size: 11px; }
+.radio-chipgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.radio-catcard {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; text-align: left;
+  background: var(--bg-2); border: 1px solid var(--glass-brd); border-radius: 10px;
+  padding: 9px 11px; color: var(--txt); cursor: pointer;
+}
+.radio-catcard:hover { border-color: var(--accent); }
+.radio-catcard .cat-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radio-catcard .cat-count { color: var(--txt-dim); font-size: 11px; font-family: var(--mono); }
+.radio-filter-head { align-items: center; gap: 10px; margin-bottom: 8px; }

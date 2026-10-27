@@ -1,0 +1,1 @@
+{ "name": "revamp", "version": "1.0.0-alpha.1", "description": "REVamp (Winamp-style player) inside Claude Code: now-playing band, /revamp command, a player tool, and agent activity fed to Revamp's ticker.", "types": "./types/index.d.ts" }

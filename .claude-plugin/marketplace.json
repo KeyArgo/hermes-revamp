@@ -1,0 +1,11 @@
+{
+  "name": "revamp",
+  "owner": { "name": "KeyArgo" },
+  "plugins": [
+    {
+      "name": "revamp",
+      "source": "./claude-code/revamp",
+      "description": "REVamp music player inside Claude Code: now playing, /revamp command, a player tool, and agent activity for REVamp's waiting banner."
+    }
+  ]
+}

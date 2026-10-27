@@ -1,0 +1,7 @@
+opencode.json
+__pycache__/
+*.pyc
+.pytest_cache/
+logs/
+lanes/
+out/

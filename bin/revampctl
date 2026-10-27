@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""revampctl — tiny stdlib CLI for a running Revamp server.
+
+Used by the Claude Code mod (and handy from a shell):
+
+    revampctl status                     now playing, as one line
+    revampctl state                      full /api/state JSON
+    revampctl play|pause|toggle|stop|next|prev
+    revampctl volume 40
+    revampctl search <words>             library search (JSON)
+    revampctl queue <words>              play library matches now
+    revampctl radio <words>              search presets + Radio Browser, play first hit
+    revampctl event <kind> [tool] [preview] [ok]   post an agent event (fire and forget)
+    revampctl url                        the player URL
+    revampctl mcp                        run as an MCP server on stdin/stdout (for Codex,
+                                         opencode, Cursor, Antigravity, omp...)
+
+Agent events carry $REVAMP_SOURCE (e.g. "codex") when it is set, so the player
+knows which harness is asking.
+
+Port: $REVAMP_PORT or 8114. Token: <data dir>/token, data dir = $REVAMP_HOME,
+else $HERMES_HOME/revamp, else ~/.hermes/revamp.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+
+def data_dir() -> Path:
+    if os.environ.get("REVAMP_HOME"):
+        return Path(os.environ["REVAMP_HOME"]).expanduser()
+    if os.environ.get("HERMES_HOME"):
+        return Path(os.environ["HERMES_HOME"]).expanduser() / "revamp"
+    return Path.home() / ".hermes" / "revamp"
+
+
+BASE = f"http://127.0.0.1:{os.environ.get('REVAMP_PORT', '8114')}"
+
+
+def token() -> str:
+    try:
+        return (data_dir() / "token").read_text().strip()
+    except OSError:
+        return ""
+
+
+def call(method: str, path: str, body: dict | None = None, timeout: float = 5.0):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(BASE + path, data=data, method=method)
+    req.add_header("X-Revamp-Token", token())
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read()
+    return json.loads(raw) if raw else {}
+
+
+def track_item(t: dict) -> dict:
+    return {"kind": "track", "title": t.get("title"), "artist": t.get("artist"),
+            "url": t.get("url"), "duration": t.get("duration"), "track_id": t.get("id"),
+            "station_id": None}
+
+
+def station_item(s: dict) -> dict:
+    return {"kind": "stream", "title": s.get("name"), "artist": "Radio", "url": s.get("url"),
+            "duration": None, "track_id": None, "station_id": s.get("id")}
+
+
+def now_line(state: dict) -> str:
+    live = state.get("live") or {}
+    if not live.get("player_connected"):
+        return "Revamp: no player open — " + BASE + "/"
+    np = live.get("now_playing") or {}
+    title = np.get("title") or "nothing"
+    artist = np.get("artist")
+    # The player sends PLAYING / PAUSED / STOPPED; say it the way a person would.
+    status = str(np.get("status") or "stopped").lower()
+    word = {"playing": "Playing", "paused": "Paused"}.get(status, "Stopped")
+    return f"{word}: {title}" + (f" — {artist}" if artist else "")
+
+
+# ---------------------------------------------------------------- MCP server
+# A minimal Model Context Protocol server (JSON-RPC 2.0, one message per line on
+# stdin/stdout). Each tool runs the matching revampctl command and returns its output.
+MCP_TOOLS = [
+    {"name": "revamp_now_playing",
+     "description": "What REVamp is playing right now (status, title, artist).",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "revamp_control",
+     "description": "Control REVamp playback: play, pause, toggle, stop, next or prev.",
+     "inputSchema": {"type": "object", "required": ["action"], "properties": {
+         "action": {"type": "string", "enum": ["play", "pause", "toggle", "stop", "next", "prev"]}}}},
+    {"name": "revamp_volume",
+     "description": "Set REVamp's volume, 0 to 100.",
+     "inputSchema": {"type": "object", "required": ["percent"], "properties": {
+         "percent": {"type": "integer", "minimum": 0, "maximum": 100}}}},
+    {"name": "revamp_play_music",
+     "description": "Search the user's music library and play the matches now.",
+     "inputSchema": {"type": "object", "required": ["query"], "properties": {
+         "query": {"type": "string", "description": "artist, album or song words"}}}},
+    {"name": "revamp_play_radio",
+     "description": "Find an internet radio station by name or genre and play it.",
+     "inputSchema": {"type": "object", "required": ["query"], "properties": {
+         "query": {"type": "string"}}}},
+]
+
+
+def _percent(value) -> int:
+    """Volume as an int in 0..100; garbage answers 2xx, it never crashes."""
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        raise ValueError(f"invalid volume {value!r}") from None
+    return max(0, min(100, n))
+
+
+def _mcp_run_tool(name: str, args: dict) -> tuple[str, bool]:
+    import contextlib
+    import io
+
+    if name == "revamp_now_playing":
+        argv = ["status"]
+    elif name == "revamp_control":
+        argv = [str(args.get("action", ""))]
+        if argv[0] not in ("play", "pause", "toggle", "stop", "next", "prev"):
+            return "action must be play, pause, toggle, stop, next or prev", True
+    elif name == "revamp_volume":
+        try:
+            pct = _percent(args.get("percent", 50))
+        except ValueError as exc:
+            return str(exc), True
+        argv = ["volume", str(pct)]
+    elif name == "revamp_play_music":
+        argv = ["queue", str(args.get("query", ""))]
+    elif name == "revamp_play_radio":
+        argv = ["radio", str(args.get("query", ""))]
+    else:
+        return f"unknown tool {name!r}", True
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = main(argv)
+    text = (out.getvalue() + err.getvalue()).strip() or "done"
+    return text, code != 0
+
+
+def mcp_serve() -> int:
+    def send(msg: dict) -> None:
+        sys.stdout.write(json.dumps(msg) + "\n")
+        sys.stdout.flush()
+
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            send({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}})
+            continue
+        if not isinstance(msg, dict):
+            continue
+        mid, method = msg.get("id"), msg.get("method")
+        if mid is None:
+            continue  # a notification (e.g. notifications/initialized): no reply
+        params = msg.get("params") or {}
+        if method == "initialize":
+            send({"jsonrpc": "2.0", "id": mid, "result": {
+                "protocolVersion": params.get("protocolVersion") or "2025-06-18",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "revamp", "version": "1.0.0-alpha.1"},
+                "instructions": "REVamp is the user's music player. Use these tools only when the user asks about or for music."}})
+        elif method == "ping":
+            send({"jsonrpc": "2.0", "id": mid, "result": {}})
+        elif method == "tools/list":
+            send({"jsonrpc": "2.0", "id": mid, "result": {"tools": MCP_TOOLS}})
+        elif method == "tools/call":
+            text, is_error = _mcp_run_tool(str(params.get("name")), params.get("arguments") or {})
+            send({"jsonrpc": "2.0", "id": mid, "result": {
+                "content": [{"type": "text", "text": text}], "isError": is_error}})
+        else:
+            send({"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"unknown method {method}"}})
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        print(__doc__.strip())
+        return 2
+    cmd, rest = argv[0], argv[1:]
+    words = " ".join(rest)
+    try:
+        if cmd == "url":
+            print(BASE + "/")
+        elif cmd == "state":
+            print(json.dumps(call("GET", "/api/state")))
+        elif cmd == "status":
+            print(now_line(call("GET", "/api/state")))
+        elif cmd in ("play", "pause", "toggle", "stop", "next", "prev"):
+            r = call("POST", "/api/command", {"action": cmd})
+            print(f"{cmd}: delivered to {r.get('delivered', 0)} player(s)")
+        elif cmd == "volume":
+            try:
+                pct = _percent(rest[0] if rest else 50)
+            except ValueError as exc:
+                print(f"volume: {exc}", file=sys.stderr)
+                return 2
+            r = call("POST", "/api/command", {"action": "volume", "percent": pct})
+            print(f"volume {pct}%: delivered to {r.get('delivered', 0)} player(s)")
+        elif cmd == "search":
+            q = urllib.parse.urlencode({"q": words, "limit": 25})
+            print(json.dumps(call("GET", f"/api/library/tracks?{q}")))
+        elif cmd == "queue":
+            q = urllib.parse.urlencode({"q": words, "limit": 50})
+            tracks = call("GET", f"/api/library/tracks?{q}").get("tracks", [])
+            if not tracks:
+                print(f"no library tracks match {words!r}")
+                return 1
+            call("POST", "/api/command", {"action": "load", "mode": "replace", "play": True,
+                                          "items": [track_item(t) for t in tracks]})
+            print(f"playing {len(tracks)} track(s), first: {tracks[0].get('title')}")
+        elif cmd == "radio":
+            hits = []
+            if words:  # popular first: Radio Browser before the local lists
+                try:
+                    q = urllib.parse.urlencode({"q": words, "limit": 10})
+                    hits = call("GET", f"/api/radio/search?{q}", timeout=12)
+                except Exception:
+                    hits = []
+            if not hits and words:
+                presets = call("GET", "/api/radio/presets")
+                hits = [s for s in presets if words.lower() in (s.get("name") or "").lower()]
+            if not hits:
+                print(f"no stations match {words!r}")
+                return 1
+            call("POST", "/api/command", {"action": "load", "mode": "replace", "play": True,
+                                          "items": [station_item(hits[0])]})
+            print(f"tuned to {hits[0].get('name')}")
+        elif cmd == "event":
+            body = {"kind": rest[0]}
+            if len(rest) > 1:
+                body["tool"] = rest[1]
+            if len(rest) > 2:
+                body["preview"] = rest[2][:80]
+            if len(rest) > 3:
+                body["ok"] = rest[3] == "1"
+            if os.environ.get("REVAMP_SOURCE"):
+                body["source"] = os.environ["REVAMP_SOURCE"][:32]
+            call("POST", "/api/agent_event", body, timeout=1.0)
+        elif cmd == "mcp":
+            return mcp_serve()
+        else:
+            print(f"unknown command {cmd!r}\n\n" + __doc__.strip(), file=sys.stderr)
+            return 2
+    except (urllib.error.URLError, OSError) as exc:
+        print(f"Revamp server not reachable at {BASE} ({exc})", file=sys.stderr)
+        return 3
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
