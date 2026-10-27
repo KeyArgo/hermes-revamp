@@ -201,16 +201,17 @@ export function mountThemeButton(head, before) {
     const reset = el("button", { class: "btn sm", type: "button" }, "Reset");
     reset.addEventListener("click", () => { state = { ...DEFAULTS }; bgData = null; bgNote = ""; explicitFx = false; try { localStorage.removeItem(BG_KEY); } catch { /* ignore */ } commit(); });
     accentRow.append(reset);
-    const fxGrid = el("select", { class: "theme-select", "aria-label": "Animated effect" });
-    const groups = new Map();
+    // One scrolling row (not a native dropdown, not a wall of chips): swipe or scroll sideways.
+    const fxGrid = el("div", { class: "theme-strip", role: "group", "aria-label": "Animated effect" });
     for (const f of FX_KINDS) {
-      let host = fxGrid;
-      if (f.group) { if (!groups.has(f.group)) { const g = el("optgroup", { label: f.group }); groups.set(f.group, g); fxGrid.append(g); } host = groups.get(f.group); }
-      const o = el("option", { value: f.id }, f.name);
-      if (state.fx === f.id) o.selected = true;
-      host.append(o);
+      const b = el("button", { class: "theme-chip", type: "button", "aria-pressed": String(state.fx === f.id) }, f.name);
+      b.addEventListener("click", () => { state.fx = f.id; explicitFx = true; touch(); });
+      fxGrid.append(b);
     }
-    fxGrid.addEventListener("change", () => { state.fx = fxGrid.value; explicitFx = true; touch(); });
+    requestAnimationFrame(() => {
+      const on = fxGrid.querySelector('[aria-pressed="true"]');
+      if (on) fxGrid.scrollLeft = Math.max(0, on.offsetLeft - (fxGrid.clientWidth - on.offsetWidth) / 2);
+    });
     const level = el("input", { type: "range", min: "1", max: "3", step: "1", value: String(state.fxLevel), "aria-label": "Effect intensity" });
     level.addEventListener("input", () => { state.fxLevel = Number(level.value); explicitFx = true; applyTheme(); save(); });
     const fxRow = el("div", { class: "theme-row" }, el("label", { class: "theme-color" }, "Intensity", level));
@@ -228,7 +229,7 @@ export function mountThemeButton(head, before) {
     }
     if (bgNote) imgRow.append(el("span", { class: "theme-color" }, bgNote));
     // Scene chips (built-in artwork + your own image).
-    const scenes = el("div", { class: "theme-grid" });
+    const scenes = el("div", { class: "theme-strip" });
     for (const sc of SCENES) {
       const b = el("button", { class: "theme-chip", type: "button", "aria-pressed": String(state.scene === sc.id) }, sc.name);
       b.addEventListener("click", () => { state.scene = sc.id; touch(); });
