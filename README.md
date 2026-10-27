@@ -19,12 +19,16 @@ REVamp keeps your library close while adding playlists, radio, lyrics, a MilkDro
 
 ## Features
 
+- **Five places for the player:** Mini player (status bar only), Frame (a side pane on the right or left), Pop into Hermes (floating), Pop out to desktop (its own window), and Full screen. Pick from the player menu in the status bar.
+- **Works in any size:** in narrow panes the player scales to fit and the menu becomes a compact row; in wide panes it scales up in crisp 2x/3x/4x steps.
+- **Library mode:** open the full REVamp page while the player stays in its Frame or pop-out, and browse, queue and build playlists there.
 - Separate local Music and Books folders, searchable artists and albums, cover art, queues, likes, playlists, and audiobook resume, chapters, and speed.
-- Internet radio through Radio Browser: presets, search, favourites, and station metadata where available.
-- Focus drone, sleep timer, synced LRCLIB lyrics, Butterchurn/MilkDrop, and skins from the Winamp Skin Museum.
-- A full browser player, an in-Hermes floating mini player, and an optional Winamp-style external browser pop-out. The browser player supports media keys and lock-screen controls where the browser and OS expose them.
+- **Radio:** popular stations ranked by listener votes, browse by genre, country and language, search, favourites, and endless scrolling, through Radio Browser.
+- **Themes:** one-tap Looks for the REVamp page (colour scheme, gradient, an illustrated scene and an optional animated backdrop), or your own picture and accent colour.
+- Focus drone, sleep timer, synced LRCLIB lyrics, the MilkDrop visualizer (Butterchurn), and classic skins from the Winamp Skin Museum.
+- Media keys and lock-screen controls where the browser and OS expose them.
 - Hermes tools (`revamp_player`, `revamp_library`, `revamp_playlist`, and `revamp_radio`) plus `revampctl mcp` for other agent apps.
-- Agent-aware: a ticker shows what the agent is doing (tool calls, sessions), and the music dips while Hermes waits for your approval, then comes back when you answer (toggle in Settings).
+- **Agent-aware:** a ticker shows what the agent is doing, and the music can dip while Hermes waits for your approval (Settings → REVamp → Music and approvals).
 
 ## Install in Hermes Desktop
 
@@ -127,4 +131,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/EXTENDING.md](docs/EXTENDING.md), 
 
 ## License and credits
 
-REVamp is [MIT licensed](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for Webamp, Butterchurn, Radio Browser, LRCLIB, and Skin Museum notices.
+REVamp is [MIT licensed](LICENSE). Narrow-pane layout, themes and the illustrated scenes by [@Pukujan](https://github.com/Pukujan) ([#1](https://github.com/KeyArgo/hermes-revamp/pull/1)). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for Webamp, Butterchurn, Radio Browser, LRCLIB, and Skin Museum notices.

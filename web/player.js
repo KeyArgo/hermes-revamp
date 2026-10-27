@@ -1023,9 +1023,11 @@ export async function initPlayer(ctx) {
   let duck = { active: false, timer: null, savedVol: null, evId: null };
   function duckTo(levelPct, reason = "", evId = null) {
     if (duck.active) return;
-    // Always say why the music went quiet.
-    if (saved.settings.duck_toast !== false) toast(`Music turned down${reason ? ": " + reason : ""}`, {});
     const m = media();
+    // Nothing to turn down (paused, stopped, nothing loaded): no dip and no pop-up.
+    if (String(m.status || "").toUpperCase() !== "PLAYING") return;
+    // Say why the music went quiet (Settings → REVamp → "Show a pop-up saying why").
+    if (saved.settings.duck_toast !== false) toast(`Music turned down${reason ? ": " + reason : ""}`, {});
     duck.savedVol = typeof m.volume === "number" ? m.volume : safe(() => webamp.getVolume?.()) ?? 75;
     duck.active = true;
     duck.evId = evId;
