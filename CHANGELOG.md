@@ -2,6 +2,13 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.3 - 2026-10-27 (pre-release)
+
+- Narrow-pane layout, pane scaling, theme Looks and animated backdrops (community PR #1 by @Pukujan).
+- Library mode: Play, queueing, radio and skin changes on the full page now drive the player in the Frame or pop-out (Play did nothing before).
+- The approval dip and its pop-up only happen while music is playing.
+- Settings → REVamp → Music and approvals controls the dip and its pop-up.
+
 ## 1.0.0-alpha.2 - 2026-10-27 (pre-release)
 
 - REVamp's desktop part (sidebar entry, player, status-bar controls) is now switched on by default after installing. In alpha.1 it shipped switched off, so testers on macOS and Windows saw no player.

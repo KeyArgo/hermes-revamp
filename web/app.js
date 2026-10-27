@@ -653,6 +653,32 @@ window.addEventListener("resize", () => {
 // Windows open/close/shade/move inside Webamp; a cheap poll keeps the frame fitted.
 setInterval(reportBox, 400);
 
+// Control mode has no local player: views (Music, Books, Radio, Skins, likes) still call
+// window.revampPlayerApi, so give them a stand-in that drives the one live player through
+// server commands. Without it, Play in the library silently did nothing.
+function installControlPlayerApi() {
+  if (window.revampPlayerApi) return;
+  const cmd = (body) => apiPost("/api/command", body);
+  window.revampPlayerApi = {
+    control: true,
+    loadTracks: (items, o = {}) => cmd({ action: "load", items: items || [], mode: o.mode || "replace", play: o.play !== false }),
+    playIndex: (index) => cmd({ action: "play_index", index: Math.max(0, index | 0) }),
+    async playItemsAt(index, list) {
+      await cmd({ action: "load", items: list || [], mode: "replace", play: false });
+      return cmd({ action: "play_index", index: Math.max(0, index | 0) });
+    },
+    play: () => cmd({ action: "play" }),
+    pause: () => cmd({ action: "pause" }),
+    toggle: () => cmd({ action: "toggle" }),
+    stop: () => cmd({ action: "stop" }),
+    next: () => cmd({ action: "next" }),
+    prev: () => cmd({ action: "prev" }),
+    setSkin: (id) => cmd({ action: "skin", id }),
+    setLiked: (trackId, liked) => trackId ? apiPost("/api/likes", { track_id: trackId, liked: !!liked }) : Promise.resolve(),
+    nowStatus: () => "STOPPED",
+  };
+}
+
 // ---------------------------------------------------------------- boot
 const CONTROL = new URLSearchParams(location.search).has("control");
 function mountControlStage() {
@@ -712,6 +738,7 @@ async function boot() {
   // Control mode is a complete library shell, but never imports Webamp or initializes
   // a playback backend. Its API actions operate on the one player owned by Hermes.
   if (CONTROL) {
+    installControlPlayerApi();
     applyLayoutClasses();
     buildNav();
     globalKeys();
