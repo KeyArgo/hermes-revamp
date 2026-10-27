@@ -2431,9 +2431,13 @@ function Page() {
           }),
           // The page borrowed the live player ("Bring the player here"): offer the way back.
           where === 'page' && location !== 'mini'
-            ? jsx(Button, { variant: 'ghost', size: 'sm', title: 'Return the player to its home',
+            ? jsx(Button, { size: 'sm', title: 'Return the player to its home',
+                style: { flex: 'none', border: '1px solid var(--ui-accent, currentColor)' },
                 onClick: () => setPlayerLocation(location),
-                children: location === 'floating' ? 'Return to pop-out' : location === 'desktop' ? 'Return to desktop' : 'Return to frame' })
+                children: jsxs('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 }, children: [
+                  jsx(StatusDot, { tone: 'good' }),
+                  location === 'floating' ? 'Return to pop-out' : location === 'desktop' ? 'Return to desktop' : 'Return to frame'
+                ] }) })
             : null,
           np.online ? jsx(LikeButton, { np }) : null,
           np.online ? jsx(SleepSelect, { np }) : null,
