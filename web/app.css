@@ -778,7 +778,8 @@ body.revamp-idle #webamp #visualizer { visibility: hidden; }
 .theme-btn:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .panel-head { flex-wrap: wrap; row-gap: 6px; }
 .theme-pop {
-  position: fixed; z-index: 100; top: 52px; right: 8px; width: min(300px, calc(100vw - 16px));
+  position: fixed; z-index: 100; top: 52px; right: 8px; width: auto; max-width: calc(100vw - 16px);
+  display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 14px;
   max-height: calc(100vh - 64px); overflow-y: auto; padding: 12px;
   background: var(--panel-solid); color: var(--txt); border: 1px solid var(--glass-brd); border-radius: 12px;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
@@ -814,7 +815,8 @@ html[data-revamp-fx] .glass, html[data-revamp-bg] .glass { background: color-mix
 @media (prefers-reduced-motion: reduce) { #revamp-fx { opacity: 0.8; } }
 
 /* Looks: visual presets in the theme picker */
-.look-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.look-grid { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; scrollbar-width: thin; overscroll-behavior-x: contain; }
+.look-grid .look-card { flex: 0 0 132px; scroll-snap-align: start; }
 .look-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; text-align: left; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--glass-brd); border-radius: 10px; color: var(--txt); }
 .look-card:hover { background: rgba(255, 255, 255, 0.09); }
 .look-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
@@ -828,3 +830,11 @@ html[data-revamp-fx] .glass, html[data-revamp-bg] .glass { background: color-mix
 .theme-select option, .theme-select optgroup { background: var(--panel-solid); color: var(--txt); }
 .theme-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; scrollbar-width: thin; }
 .theme-strip .theme-chip { flex: none; scroll-snap-align: start; }
+.theme-col { width: 300px; min-width: 0; flex: none; }
+.theme-side { padding-right: 14px; border-right: 1px solid var(--glass-brd); }
+.theme-customize { margin-top: 12px; width: 100%; justify-content: center; }
+@media (max-width: 679px) {
+  .theme-pop { flex-direction: column; align-items: stretch; width: min(316px, calc(100vw - 16px)); }
+  .theme-col { width: auto; }
+  .theme-side { padding: 10px 0 0; border: 0; border-top: 1px solid var(--glass-brd); margin-top: 4px; }
+}

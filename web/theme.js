@@ -72,7 +72,7 @@ const LOOKS = [
 
 const DEFAULTS = { theme: "auto", grad: "theme", accent: "", from: "#4cc2ff", to: "#b18cff", fx: "off", fxLevel: 2, bgStrength: 0.8, scene: "none", look: "default" };
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)");
-let bgData = null, explicitFx = false, bgNote = "";
+let bgData = null, explicitFx = false, bgNote = "", customOpen = false;
 try { bgData = localStorage.getItem(BG_KEY) || null; } catch { /* no storage */ }
 const root = document.documentElement;
 let state = load();
@@ -248,15 +248,24 @@ export function mountThemeButton(head, before) {
       });
       looks.append(b);
     }
-    const more = el("details", { class: "theme-more" }, el("summary", {}, "Customize"));
-    if (state.look === "") more.open = true;
-    more.append(
-      el("div", { class: "theme-h" }, "Colour scheme"), schemes,
-      el("div", { class: "theme-h" }, "Scene"), scenes, imgRow,
-      el("div", { class: "theme-h" }, "Gradient"), grads, customRow,
-      el("div", { class: "theme-h" }, "Accent"), accentRow,
-    );
-    pop.append(el("div", { class: "theme-h" }, "Pick a look"), looks, el("div", { class: "theme-h" }, "Animation"), fxGrid, fxRow, more);
+    // Customize opens as a second column to the LEFT of the picker (stacked below on narrow panes).
+    const toggle = el("button", { class: "btn sm theme-customize", type: "button", "aria-expanded": String(customOpen) }, customOpen ? "Customize ‹" : "‹ Customize");
+    toggle.addEventListener("click", () => { customOpen = !customOpen; render(); });
+    const mainCol = el("div", { class: "theme-col" },
+      el("div", { class: "theme-h" }, "Pick a look"), looks,
+      el("div", { class: "theme-h" }, "Animation"), fxGrid, fxRow, toggle);
+    pop.append(mainCol);
+    requestAnimationFrame(() => {
+      const on = looks.querySelector('[aria-pressed="true"]');
+      if (on) looks.scrollLeft = Math.max(0, on.offsetLeft - (looks.clientWidth - on.offsetWidth) / 2);
+    });
+    if (customOpen) {
+      pop.append(el("div", { class: "theme-col theme-side" },
+        el("div", { class: "theme-h" }, "Colour scheme"), schemes,
+        el("div", { class: "theme-h" }, "Scene"), scenes, imgRow,
+        el("div", { class: "theme-h" }, "Gradient"), grads, customRow,
+        el("div", { class: "theme-h" }, "Accent"), accentRow));
+    }
   };
   const commit = () => { applyTheme(); save(); render(); };
   const touch = () => { state.look = ""; commit(); };
