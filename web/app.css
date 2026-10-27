@@ -269,7 +269,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-size: 12px; c
 .skin-card { border: 1px solid var(--glass-brd); border-radius: 10px; overflow: hidden; cursor: pointer; background: rgba(255,255,255,0.03); transition: border-color .15s, transform .12s; }
 .skin-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .skin-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.skin-card img { width: 100%; display: block; aspect-ratio: 275 / 116; object-fit: cover; object-position: top; image-rendering: pixelated; background: var(--bg-2); }
+.skin-card img { width: 100%; display: block; aspect-ratio: 275 / 116; object-fit: contain; object-position: center; image-rendering: pixelated; background: var(--bg-2); }
 .skin-card .s-name { padding: 8px 10px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .skin-card .s-name > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skin-card .s-name a { text-decoration: none; font-weight: 400; }

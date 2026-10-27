@@ -818,8 +818,38 @@ function createEngine(ctx, url, bridgeKey = '') {
     controlFrame.contentWindow?.postMessage({ type: 'revamp:control-place', place }, '*')
   }
 
+  // Theme: both iframes are sandboxed (opaque origin, no localStorage), so the host keeps the
+  // one saved copy and relays it: a change in either page reaches the other, and survives reloads.
+  const THEME_KEYS = { theme: 'string', grad: 'string', accent: 'string', from: 'string', to: 'string', fx: 'string', fxLevel: 'number', bgStrength: 'number', scene: 'string', look: 'string' }
+  const cleanTheme = v => {
+    if (!v || typeof v !== 'object') return null
+    const out = {}
+    for (const [k, t] of Object.entries(THEME_KEYS)) if (typeof v[k] === t && (t !== 'string' || v[k].length < 40)) out[k] = v[k]
+    return out
+  }
+  const cleanBg = v => (typeof v === 'string' && v.startsWith('data:image/') && v.length < 1_500_000 ? v : null)
+  let themeState = cleanTheme(ctx.storage.get('theme', null))
+  let themeBg = cleanBg(ctx.storage.get('themeBg', null))
+  const themeTo = (target, withBg = true) => {
+    try { target?.postMessage({ type: 'revamp:theme-set', state: themeState, ...(withBg ? { bg: themeBg } : {}) }, '*') } catch { /* frame gone */ }
+  }
+
   ctx.addEventListener(window, 'message', e => {
     if (!e.data || typeof e.data !== 'object') return
+    const fromPage = e.source === frame.contentWindow || e.source === controlFrame.contentWindow
+    if (fromPage && typeof e.data.type === 'string' && e.data.type.startsWith('revamp:theme-')) {
+      const others = [frame.contentWindow, controlFrame.contentWindow].filter(w => w && w !== e.source)
+      if (e.data.type === 'revamp:theme-get') themeTo(e.source)
+      else if (e.data.type === 'revamp:theme-save') {
+        const next = cleanTheme(e.data.state)
+        if (next) { themeState = next; ctx.storage.set('theme', next); for (const w of others) themeTo(w, false) }
+      } else if (e.data.type === 'revamp:theme-bg') {
+        themeBg = cleanBg(e.data.bg)
+        ctx.storage.set('themeBg', themeBg)
+        for (const w of others) themeTo(w)
+      }
+      return
+    }
     if (e.source === controlFrame.contentWindow) {
       if (e.data.type === 'revamp:bring-player-here') {
         $pageBorrow.set(true)

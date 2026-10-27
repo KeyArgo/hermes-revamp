@@ -60,27 +60,37 @@ const sceneOf = (id) => SCENES.find((x) => x.id === id);
 
 // Looks: one tap sets scheme + gradient + scene + effect together.
 const LOOKS = [
-  { id: "default", name: "Default", theme: "auto", grad: "theme", scene: "none", fx: "off", fxLevel: 2, thumb: "linear-gradient(135deg,#0b0e14,#1d3a52)" },
+  { id: "lantern", name: "Lantern night", theme: "aurora", grad: "aurora", scene: "lanterns", fx: "embers", fxLevel: 1 },
   { id: "moonlit", name: "Moonlit girl", theme: "violet", grad: "grape", scene: "rooftop", fx: "stars", fxLevel: 2 },
   { id: "sakura", name: "Sakura shrine", theme: "sunset", grad: "sunset", scene: "shrine", fx: "sakura", fxLevel: 2 },
   { id: "neon", name: "Neon city", theme: "violet", grad: "grape", scene: "neon", fx: "rain", fxLevel: 2 },
-  { id: "lantern", name: "Lantern night", theme: "aurora", grad: "aurora", scene: "lanterns", fx: "embers", fxLevel: 1 },
   { id: "fire", name: "Campfire", theme: "sunset", grad: "ember", scene: "none", fx: "fire", fxLevel: 2, thumb: "linear-gradient(180deg,#150d12,#7a2a12 70%,#ff8a2a)" },
   { id: "aurora", name: "Aurora", theme: "aurora", grad: "aurora", scene: "none", fx: "aurora", fxLevel: 2, thumb: "linear-gradient(135deg,#08121a,#1c6a62 55%,#6c8cff)" },
   { id: "paper", name: "Paper", theme: "paper", grad: "theme", scene: "none", fx: "off", fxLevel: 2, thumb: "linear-gradient(135deg,#eef1f7,#c9d6ea)" },
+  { id: "classic", name: "Classic", theme: "auto", grad: "theme", scene: "none", fx: "off", fxLevel: 2, thumb: "linear-gradient(135deg,#0b0e14,#1d3a52)" },
 ];
 
-const DEFAULTS = { theme: "auto", grad: "theme", accent: "", from: "#4cc2ff", to: "#b18cff", fx: "off", fxLevel: 2, bgStrength: 0.8, scene: "none", look: "default" };
+const DEFAULTS = { theme: "aurora", grad: "aurora", accent: "", from: "#4cc2ff", to: "#b18cff", fx: "embers", fxLevel: 1, bgStrength: 0.8, scene: "lanterns", look: "lantern" };
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)");
 let bgData = null, explicitFx = false, bgNote = "", customOpen = false;
 try { bgData = localStorage.getItem(BG_KEY) || null; } catch { /* no storage */ }
 const root = document.documentElement;
 let state = load();
 
+// Inside Hermes the page is a sandboxed iframe (no localStorage): the plugin host holds the
+// saved theme and relays it between the control page and the player page.
+const hosted = window.parent !== window;
+let applyingRemote = false;
+const toHost = (m) => { if (hosted) { try { window.parent.postMessage(m, "*"); } catch { /* no host */ } } };
+const saveBg = () => toHost({ type: "revamp:theme-bg", bg: bgData });
+
 function load() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return { ...DEFAULTS }; }
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private window: still applies for this view */ } }
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* sandboxed or private: the host copy below still applies */ }
+  if (!applyingRemote) toHost({ type: "revamp:theme-save", state });
+}
 const hex = (v, d) => (/^#[0-9a-f]{6}$/i.test(v || "") ? v : d);
 function rgba(h, a) {
   const n = parseInt(h.slice(1), 16);
@@ -137,7 +147,8 @@ function pickImage(file, done) {
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
     URL.revokeObjectURL(url);
     bgData = c.toDataURL("image/jpeg", 0.82); bgNote = ""; state.scene = "custom"; state.look = "";
-    try { localStorage.setItem(BG_KEY, bgData); } catch { bgNote = "Too big to remember after a reload."; }
+    try { localStorage.setItem(BG_KEY, bgData); } catch { if (!hosted) bgNote = "Too big to remember after a reload."; }
+    saveBg();
     done();
   };
   img.onerror = () => { URL.revokeObjectURL(url); bgNote = "Could not read that image."; done(); };
@@ -199,7 +210,7 @@ export function mountThemeButton(head, before) {
     const customRow = el("div", { class: "theme-row" }, color("From", "from", "#4cc2ff"), color("To", "to", "#b18cff"));
     const accentRow = el("div", { class: "theme-row" }, color("Accent", "accent", "#4cc2ff"));
     const reset = el("button", { class: "btn sm", type: "button" }, "Reset");
-    reset.addEventListener("click", () => { state = { ...DEFAULTS }; bgData = null; bgNote = ""; explicitFx = false; try { localStorage.removeItem(BG_KEY); } catch { /* ignore */ } commit(); });
+    reset.addEventListener("click", () => { state = { ...DEFAULTS }; bgData = null; bgNote = ""; explicitFx = false; try { localStorage.removeItem(BG_KEY); } catch { /* ignore */ } saveBg(); commit(); });
     accentRow.append(reset);
     // One scrolling row (not a native dropdown, not a wall of chips): swipe or scroll sideways.
     const fxGrid = el("div", { class: "theme-strip", role: "group", "aria-label": "Animated effect" });
@@ -222,7 +233,7 @@ export function mountThemeButton(head, before) {
     const imgRow = el("div", { class: "theme-row" }, choose, file);
     if (bgData) {
       const rm = el("button", { class: "btn sm", type: "button" }, "Remove");
-      rm.addEventListener("click", () => { bgData = null; bgNote = ""; if (state.scene === "custom") state.scene = "none"; state.look = ""; try { localStorage.removeItem(BG_KEY); } catch { /* ignore */ } applyTheme(); render(); });
+      rm.addEventListener("click", () => { bgData = null; bgNote = ""; if (state.scene === "custom") state.scene = "none"; state.look = ""; try { localStorage.removeItem(BG_KEY); } catch { /* ignore */ } saveBg(); applyTheme(); save(); render(); });
       const str = el("input", { type: "range", min: "0.1", max: "1", step: "0.05", value: String(state.bgStrength), "aria-label": "Image strength" });
       str.addEventListener("input", () => { state.bgStrength = Number(str.value); applyTheme(); save(); });
       imgRow.append(rm, el("label", { class: "theme-color", style: "flex:1 1 100%" }, "Strength", str));
@@ -292,4 +303,16 @@ addEventListener("storage", (e) => {
   if (pop && !pop.hidden) document.getElementById("theme-btn")?.dispatchEvent(new Event("themechange"));
 });
 
+addEventListener("message", (e) => {
+  if (e.source !== window.parent || !e.data || e.data.type !== "revamp:theme-set") return;
+  applyingRemote = true;
+  try {
+    if (e.data.state && typeof e.data.state === "object") state = { ...DEFAULTS, ...e.data.state };
+    if ("bg" in e.data) bgData = typeof e.data.bg === "string" && e.data.bg.startsWith("data:image/") ? e.data.bg : null;
+    applyTheme();
+    document.getElementById("theme-btn")?.dispatchEvent(new Event("themechange"));
+  } finally { applyingRemote = false; }
+});
+
 applyTheme();
+toHost({ type: "revamp:theme-get" });

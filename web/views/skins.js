@@ -32,9 +32,11 @@ export async function render(root, api) {
     })));
   }
 
-  function apply(id, name) {
+  async function apply(id, name) {
     try {
-      window.revampPlayerApi.setSkin(id);
+      // The control page has no player of its own: ask the live one (same command agents use).
+      if (window.revampPlayerApi?.setSkin) window.revampPlayerApi.setSkin(id);
+      else await api("/api/command", "POST", { action: "skin", id });
       activeId = id;
       toast(`Skin: ${name}`, { kind: "ok" });
       loadMine();
