@@ -201,12 +201,16 @@ export function mountThemeButton(head, before) {
     const reset = el("button", { class: "btn sm", type: "button" }, "Reset");
     reset.addEventListener("click", () => { state = { ...DEFAULTS }; bgData = null; bgNote = ""; explicitFx = false; try { localStorage.removeItem(BG_KEY); } catch { /* ignore */ } commit(); });
     accentRow.append(reset);
-    const fxGrid = el("div", { class: "theme-grid" });
+    const fxGrid = el("select", { class: "theme-select", "aria-label": "Animated effect" });
+    const groups = new Map();
     for (const f of FX_KINDS) {
-      const b = el("button", { class: "theme-chip", type: "button", "aria-pressed": String(state.fx === f.id) }, f.name);
-      b.addEventListener("click", () => { state.fx = f.id; explicitFx = true; touch(); });
-      fxGrid.append(b);
+      let host = fxGrid;
+      if (f.group) { if (!groups.has(f.group)) { const g = el("optgroup", { label: f.group }); groups.set(f.group, g); fxGrid.append(g); } host = groups.get(f.group); }
+      const o = el("option", { value: f.id }, f.name);
+      if (state.fx === f.id) o.selected = true;
+      host.append(o);
     }
+    fxGrid.addEventListener("change", () => { state.fx = fxGrid.value; explicitFx = true; touch(); });
     const level = el("input", { type: "range", min: "1", max: "3", step: "1", value: String(state.fxLevel), "aria-label": "Effect intensity" });
     level.addEventListener("input", () => { state.fxLevel = Number(level.value); explicitFx = true; applyTheme(); save(); });
     const fxRow = el("div", { class: "theme-row" }, el("label", { class: "theme-color" }, "Intensity", level));
@@ -249,10 +253,9 @@ export function mountThemeButton(head, before) {
       el("div", { class: "theme-h" }, "Colour scheme"), schemes,
       el("div", { class: "theme-h" }, "Scene"), scenes, imgRow,
       el("div", { class: "theme-h" }, "Gradient"), grads, customRow,
-      el("div", { class: "theme-h" }, "Effect"), fxGrid, fxRow,
       el("div", { class: "theme-h" }, "Accent"), accentRow,
     );
-    pop.append(el("div", { class: "theme-h" }, "Pick a look"), looks, more);
+    pop.append(el("div", { class: "theme-h" }, "Pick a look"), looks, el("div", { class: "theme-h" }, "Animation"), fxGrid, fxRow, more);
   };
   const commit = () => { applyTheme(); save(); render(); };
   const touch = () => { state.look = ""; commit(); };

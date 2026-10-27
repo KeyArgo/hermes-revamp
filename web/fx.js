@@ -4,13 +4,19 @@
 // Colours follow the active theme (--accent / --accent-2); fire keeps its own palette.
 
 export const FX_KINDS = [
-  { id: "off", name: "Off" },
-  { id: "embers", name: "Embers" },
-  { id: "fire", name: "Fire" },
-  { id: "aurora", name: "Aurora" },
-  { id: "stars", name: "Stars" },
-  { id: "rain", name: "Rain" },
-  { id: "sakura", name: "Sakura" },
+  { id: "off", name: "Off", group: "" },
+  { id: "embers", name: "Embers & sparks", group: "Warm" },
+  { id: "fire", name: "Fire", group: "Warm" },
+  { id: "sakura", name: "Sakura petals", group: "Nature" },
+  { id: "snow", name: "Snowfall", group: "Nature" },
+  { id: "fireflies", name: "Fireflies", group: "Nature" },
+  { id: "rain", name: "Rain", group: "Nature" },
+  { id: "storm", name: "Thunderstorm", group: "Nature" },
+  { id: "aurora", name: "Aurora", group: "Sky & space" },
+  { id: "stars", name: "Stars & shooting star", group: "Sky & space" },
+  { id: "warp", name: "Warp speed", group: "Sky & space" },
+  { id: "matrix", name: "Matrix code", group: "Tech & water" },
+  { id: "bubbles", name: "Bubbles", group: "Tech & water" },
 ];
 
 const SCALE = 0.5;
@@ -173,6 +179,110 @@ const EFFECTS = {
         ctx.globalAlpha = 0.75; ctx.fillStyle = `rgb(${p.col})`;
         ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * 0.62, 0, 0, 6.2832); ctx.fill();
         ctx.restore();
+      }
+    },
+  },
+  snow: {
+    seed() { parts = Array.from({ length: count(0.0012, 24 * level, 220) }, () => this.flake(true)); },
+    flake(initial) { return { x: rnd(0, W), y: initial ? rnd(0, H) : -6, v: rnd(10, 32), r: rnd(0.8, 2.6), ph: rnd(0, 6.28), sw: rnd(4, 16) }; },
+    draw(dt, t) {
+      ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = "#fff";
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        p.y += p.v * dt; p.x += Math.sin(t * 0.8 + p.ph) * p.sw * dt;
+        if (p.y > H + 6) { parts[i] = this.flake(false); continue; }
+        ctx.globalAlpha = 0.35 + p.r / 5;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.2832); ctx.fill();
+      }
+    },
+  },
+  fireflies: {
+    seed() { parts = Array.from({ length: count(0.0003, 8 * level, 60) }, () => ({ x: rnd(0, W), y: rnd(0, H), a: rnd(0, 6.28), v: rnd(3, 10), ph: rnd(0, 6.28), sp: rnd(0.6, 1.6), r: rnd(3, 6.5) })); },
+    draw(dt, t) {
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of parts) {
+        p.a += rnd(-1.2, 1.2) * dt; p.x += Math.cos(p.a) * p.v * dt; p.y += Math.sin(p.a) * p.v * dt;
+        if (p.x < -10) p.x = W + 10; if (p.x > W + 10) p.x = -10; if (p.y < -10) p.y = H + 10; if (p.y > H + 10) p.y = -10;
+        ctx.globalAlpha = Math.max(0, Math.sin(t * p.sp + p.ph)) ** 2;
+        const s = p.r * 2.4; ctx.drawImage(glow("200,255,120", 32), p.x - s / 2, p.y - s / 2, s, s);
+      }
+    },
+  },
+  bubbles: {
+    seed() {
+      this.col = hexRgb(themeColor("--accent", "#4cc2ff")).join(",");
+      parts = Array.from({ length: count(0.0005, 10 * level, 80) }, () => this.bub(true));
+    },
+    bub(initial) { return { x: rnd(0, W), y: initial ? rnd(0, H) : H + 14, r: rnd(3, 12), v: rnd(10, 30), ph: rnd(0, 6.28) }; },
+    draw(dt, t) {
+      ctx.globalCompositeOperation = "lighter"; ctx.lineWidth = 1;
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        p.y -= p.v * dt; p.x += Math.sin(t * 1.1 + p.ph) * 8 * dt;
+        if (p.y < -16) { parts[i] = this.bub(false); continue; }
+        ctx.globalAlpha = 0.5; ctx.strokeStyle = `rgba(${this.col}, 0.8)`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.2832); ctx.stroke();
+        ctx.globalAlpha = 0.5; ctx.fillStyle = "#fff"; ctx.fillRect(p.x - p.r * 0.45, p.y - p.r * 0.5, Math.max(1, p.r * 0.25), Math.max(1, p.r * 0.25));
+      }
+    },
+  },
+  warp: {
+    seed() { parts = Array.from({ length: count(0.0009, 30 * level, 260) }, () => this.star(true)); },
+    star(initial) { return { x: rnd(-1, 1), y: rnd(-1, 1), z: initial ? rnd(0.05, 1) : 1 }; },
+    draw(dt) {
+      ctx.globalCompositeOperation = "lighter"; ctx.lineWidth = 1;
+      const cx = W / 2, cy = H / 2, k = Math.max(W, H);
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i], z0 = p.z; p.z -= dt * 0.45;
+        if (p.z <= 0.02) { parts[i] = this.star(false); continue; }
+        const x0 = cx + (p.x / z0) * k * 0.16, y0 = cy + (p.y / z0) * k * 0.16;
+        const x1 = cx + (p.x / p.z) * k * 0.16, y1 = cy + (p.y / p.z) * k * 0.16;
+        if (x1 < -20 || x1 > W + 20 || y1 < -20 || y1 > H + 20) { parts[i] = this.star(false); continue; }
+        ctx.globalAlpha = Math.min(1, (1 - p.z) * 1.4); ctx.strokeStyle = "#cfe6ff";
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      }
+    },
+  },
+  storm: {
+    seed() { EFFECTS.rain.seed(); this.flash = 0; this.bolt = null; this.next = rnd(2, 5); },
+    draw(dt, t) {
+      EFFECTS.rain.draw(dt, t);
+      this.next -= dt;
+      if (this.next <= 0) {
+        this.flash = 1; this.next = rnd(4, 9);
+        const pts = [[rnd(W * 0.2, W * 0.8), 0]];
+        while (pts[pts.length - 1][1] < H * 0.7) { const l = pts[pts.length - 1]; pts.push([l[0] + rnd(-18, 18), l[1] + rnd(14, 34)]); }
+        this.bolt = pts;
+      }
+      if (this.flash > 0) {
+        ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = this.flash * 0.28; ctx.fillStyle = "#cfe0ff"; ctx.fillRect(0, 0, W, H);
+        if (this.bolt && this.flash > 0.5) {
+          ctx.globalAlpha = this.flash; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.6; ctx.beginPath();
+          this.bolt.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+        }
+        this.flash -= dt * 2.2;
+      }
+    },
+  },
+  matrix: {
+    seed() {
+      this.col = hexRgb(themeColor("--accent", "#4cc2ff"));
+      this.chars = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎ0123456789";
+      const cols = Math.max(6, Math.floor(W / 9));
+      parts = Array.from({ length: cols }, (_, i) => ({ x: i * 9 + 4, y: rnd(-H, 0), v: rnd(30, 90) * (0.7 + level * 0.2), len: Math.floor(rnd(8, 18)) }));
+    },
+    draw(dt) {
+      ctx.globalCompositeOperation = "lighter"; ctx.font = "9px monospace"; ctx.textAlign = "center";
+      const [r, g, b] = this.col;
+      for (const p of parts) {
+        p.y += p.v * dt;
+        if (p.y - p.len * 10 > H) { p.y = rnd(-60, 0); p.v = rnd(30, 90) * (0.7 + level * 0.2); }
+        for (let k = 0; k < p.len; k++) {
+          const y = p.y - k * 10; if (y < -10 || y > H + 10) continue;
+          ctx.globalAlpha = k === 0 ? 0.95 : (1 - k / p.len) * 0.5;
+          ctx.fillStyle = k === 0 ? "#fff" : `rgb(${r},${g},${b})`;
+          ctx.fillText(this.chars[(Math.floor(y / 10) * 7 + p.x) % this.chars.length | 0], p.x, y);
+        }
       }
     },
   },
