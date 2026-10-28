@@ -1,6 +1,6 @@
 // The EQ window is optional: closing it must close the gap it leaves, and its
 // presets menu must stay inside the stack. Both are source contracts here
-// because the behaviour itself needs a browser (see probe_eq_gap.mjs).
+// because the behaviour itself needs a browser (see tools/probes/probe_eq_gap.mjs).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";

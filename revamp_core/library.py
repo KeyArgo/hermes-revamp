@@ -323,6 +323,39 @@ def get_track(track_id: str) -> Optional[Dict[str, Any]]:
         return _INDEX.get(track_id)
 
 
+_MAX_LEARNED_DURATION = 48 * 3600
+
+
+def set_learned_duration(track_id: str, duration: Any) -> Optional[float]:
+    """Remember a duration the player measured while the file was open.
+
+    Used when the file had no duration (no ffprobe, and the header parse missed).
+    A value already within half a second is left alone. Returns the duration now
+    stored, or None when the track is missing or the number is unusable.
+    """
+    if not isinstance(track_id, str) or not track_id:
+        return None
+    if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+        return None
+    dur = float(duration)
+    if dur != dur or dur in (float("inf"), float("-inf")) or dur <= 0 or dur > _MAX_LEARNED_DURATION:
+        return None
+    dur = round(dur, 3)
+    with _LOCK:
+        track = _INDEX.get(track_id)
+        if not isinstance(track, dict):
+            return None
+        try:
+            old = None if track.get("duration") is None else float(track.get("duration"))
+        except (TypeError, ValueError):
+            old = None
+        if old is not None and old == old and abs(old - dur) < 0.5:
+            return round(old, 3)
+        track["duration"] = dur
+    save_index()
+    return dur
+
+
 # ---------------------------------------------------------------------------
 # Search / listing
 # ---------------------------------------------------------------------------

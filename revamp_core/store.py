@@ -58,7 +58,8 @@ def _defaults() -> Dict[str, Any]:
         "resume": {},       # resumeKey (item id, e.g. local:track:<tid>) -> seconds
         "resume_at": {},    # resumeKey -> when it was saved (newest place wins)
         "likes": [],        # liked local track ids, oldest first (only the /api/likes routes change it)
-        "settings": {"duck_on_approval": True, "duck_level": 0.25, "ticker": True},
+        "settings": {"duck_on_approval": False, "duck_chime": True, "duck_dip_seconds": 2,
+                     "duck_approval_scope": "app", "duck_level": 0.25, "ticker": True},
         "live": {
             "player_connected": False,
             "now_playing": {
@@ -90,7 +91,9 @@ def _load() -> Dict[str, Any]:
     base["resume_at"] = items_mod.migrate_resume(base.get("resume_at"))
     # Queues saved before canonical items existed are upgraded as they load.
     base["playlist"] = items_mod.normalize_list(base.get("playlist"))
-    base.setdefault("settings", _defaults()["settings"])
+    saved_settings = base.get("settings")
+    # Merge newly introduced controls without replacing a user's existing choices.
+    base["settings"] = {**_defaults()["settings"], **(saved_settings if isinstance(saved_settings, dict) else {})}
     eq = base.setdefault("eq", _defaults()["eq"])
     if not isinstance(eq.get("bands"), list) or len(eq["bands"]) != 10:
         eq["bands"] = [0.0] * 10
@@ -134,7 +137,12 @@ def _live_view(live: Dict[str, Any]) -> Dict[str, Any]:
 
 def update(partial: Dict[str, Any], persist: bool = True,
            _internal: bool = False) -> Dict[str, Any]:
-    """Shallow-merge *partial* (top-level keys only; ``live`` ignored)."""
+    """Merge *partial* (top-level keys only; ``live`` ignored).
+
+    ``settings`` is a patchable dictionary: supplied keys update the saved
+    dictionary and ``None`` removes one key, so independent controls do not
+    erase each other's preferences.
+    """
     global _STATE
     with _LOCK:
         st = _load() if _STATE is None else dict(_STATE)
@@ -144,6 +152,15 @@ def update(partial: Dict[str, Any], persist: bool = True,
                     v = items_mod.migrate_resume(v)
                 elif k == "playlist":
                     v = items_mod.normalize_list(v)
+                elif k == "settings" and isinstance(v, dict):
+                    old_settings = st.get("settings")
+                    settings = dict(old_settings) if isinstance(old_settings, dict) else {}
+                    for setting, value in v.items():
+                        if value is None:
+                            settings.pop(setting, None)
+                        else:
+                            settings[setting] = value
+                    v = settings
                 st[k] = v
         if persist:
             out = {k: v for k, v in st.items() if k != "live"}

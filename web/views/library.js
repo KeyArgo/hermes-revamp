@@ -78,7 +78,10 @@ export async function render(root, api, kind = "music") {
   // Narrow panes fold the secondary actions into a dropdown; close it after a pick or outside click.
   const moreEl = actions.querySelector(".lib-more");
   moreEl.addEventListener("click", (e) => { if (e.target.closest(".lib-more-menu button")) moreEl.open = false; });
-  document.addEventListener("click", (e) => { if (moreEl.open && !moreEl.contains(e.target)) moreEl.open = false; });
+  // The document listener outlives the view unless it is aborted when the root is removed.
+  const moreAbort = new AbortController();
+  document.addEventListener("click", (e) => { if (moreEl.open && !moreEl.contains(e.target)) moreEl.open = false; }, { signal: moreAbort.signal });
+  let moreWatch = null;
 
   // ---- this view's folders (Music or Books), shown on demand or when there are none
   const foldersEl = document.createElement("div");
@@ -568,7 +571,12 @@ export async function render(root, api, kind = "music") {
   let lastSig = null; // track count + when the last scan finished
   let polling = false; // one poll (and reload) at a time: an older reload can't overwrite a newer one
   const scanPoll = setInterval(async () => {
-    if (!document.body.contains(statusEl)) return clearInterval(scanPoll);
+    if (!document.body.contains(statusEl)) {
+      moreAbort.abort();
+      moreWatch?.disconnect();
+      return clearInterval(scanPoll);
+    }
+    if (document.hidden) return;
     if (polling) return;
     polling = true;
     try {
@@ -584,6 +592,14 @@ export async function render(root, api, kind = "music") {
       }
     } catch { /* offline */ } finally { polling = false; }
   }, 3000);
+  moreWatch = new MutationObserver(() => {
+    if (!root.isConnected) {
+      moreAbort.abort();
+      moreWatch.disconnect();
+      clearInterval(scanPoll);
+    }
+  });
+  if (root.parentNode) moreWatch.observe(root.parentNode, { childList: true });
 
   // initial load
   const status0 = await api("/api/library/status").catch(() => null);

@@ -252,13 +252,25 @@ def _own_music_matching(c, q: str) -> dict:
     return out
 
 
+def _hermes_rows(c) -> list:
+    """Hermes Radio lineup, or [] when that route is absent (older servers)."""
+    try:
+        rows = c.get("/api/radio/hermes") or []
+    except Exception:
+        return []
+    return rows if isinstance(rows, list) else []
+
+
 def _tool_radio(args: dict, **kw) -> str:
-    """revamp_radio — presets / search / play / favorites / add_favorite."""
+    """revamp_radio — hermes lineup / presets / search / play / favorites / add_favorite."""
     if not isinstance(args, dict):  # wrong-type arguments get an answer, never a crash
         return _dump({"ok": False, "error": "arguments must be an object"})
     action = str(args.get("action") or "presets").lower()
     try:
         c = _client()
+        if action == "hermes":
+            return _dump({"ok": True, "stations": c.get("/api/radio/hermes"),
+                          "coming_soon": "Hermes FM is not on the air yet."})
         if action == "presets":
             return _dump({"ok": True, "stations": c.get("/api/radio/presets")})
         if action == "favorites":
@@ -278,6 +290,11 @@ def _tool_radio(args: dict, **kw) -> str:
                             break
                     if station:
                         break
+                if station is None:
+                    for s in _hermes_rows(c):
+                        if s.get("id") == sid:
+                            station = s
+                            break
             if station is None and args.get("url"):
                 station = {"id": "custom", "name": args.get("name") or "Radio",
                            "url": args.get("url")}
@@ -308,6 +325,12 @@ def _tool_radio(args: dict, **kw) -> str:
                             break
                     if station:
                         break
+                if station is None:
+                    for s in _hermes_rows(c):
+                        blob = " ".join(str(s.get(k) or "") for k in ("name", "id", "provider")).lower()
+                        if q in blob:
+                            station = s
+                            break
             if station is None:
                 return _dump({"ok": False, "error": "no station found"})
             res = c.post("/api/command", {"action": "load", "mode": "replace",
@@ -407,6 +430,10 @@ def _hook_pre_approval_request(**kw) -> None:
     _post_agent_event("approval_request", {
         "preview": str(kw.get("command") or kw.get("description") or "")[:80],
         "session_id": kw.get("session_id"),
+        "session_key": kw.get("session_key"),
+        # Hermes reserves cli for a local interactive prompt. Gateway and
+        # transport:* include bots, cron, and background sessions.
+        "approval_surface": str(kw.get("surface") or ""),
     })
 
 
@@ -414,6 +441,8 @@ def _hook_post_approval_response(**kw) -> None:
     _post_agent_event("approval_response", {
         "ok": str(kw.get("choice") or "").lower() not in ("deny", "timeout", ""),
         "session_id": kw.get("session_id"),
+        "session_key": kw.get("session_key"),
+        "approval_surface": str(kw.get("surface") or ""),
     })
 
 
@@ -489,9 +518,12 @@ SCHEMA_PLAYLIST = _schema(
 
 SCHEMA_RADIO = _schema(
     "revamp_radio",
-    "Internet radio: presets, search Radio Browser, play a station, manage favorites.",
+    "Internet radio. action=hermes lists Hermes Radio (Chillsynth, Nightride, Darksynth, "
+    "Spacesynth, Radio Paradise Main and Mellow, EVE Radio); play one that fits what the "
+    "user is doing. Hermes FM is not on the air yet — do not invent a stream for it. "
+    "Other actions: presets, search Radio Browser, play a station, manage favorites.",
     {
-        "action": {"type": "string", "enum": ["presets", "search", "play",
+        "action": {"type": "string", "enum": ["hermes", "presets", "search", "play",
                                               "favorites", "add_favorite"]},
         "query": {"type": "string", "description": "search text / station name"},
         "station_id": {"type": "string"},

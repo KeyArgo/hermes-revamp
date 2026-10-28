@@ -2,6 +2,13 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.4 - 2026-10-27 (pre-release)
+
+- The Frame stays a Frame when hidden; it never silently collapses into the mini player.
+- MilkDrop lives in the Winamp top-left menu in every player place, with Ctrl/Cmd+Shift+M as its shortcut.
+- One server hands over cleanly during upgrades, and the release gate now covers the complete cross-platform test path.
+- Added calmer visualizer defaults, lower hidden-player work, media tags without FFmpeg, Hermes Radio navigation, improved install verification, and player/place controls.
+
 ## 1.0.0-alpha.3 - 2026-10-27 (pre-release)
 
 - Narrow-pane layout, pane scaling, theme Looks and animated backdrops (community PR #1 by @Pukujan).

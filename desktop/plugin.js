@@ -190,13 +190,23 @@ const EN = {
   dockedPlayerRight: 'Right',
   dockedPlayerLeft: 'Left',
   duckTitle: 'Music and approvals',
-  duckOn: 'Lower the music when Hermes needs your approval',
+  duckOn: 'Chime and dip for approvals',
+  duckChime: 'Chime',
+  duckDipSeconds: 'Dip length',
+  duckScope: 'Dip music for',
+  duckThisApp: 'This app',
+  duckAll: 'All approvals',
   duckLevel: 'Lower it to',
   duckToast: 'Show a pop-up saying why',
+  crispScale: 'Crisp whole-number scaling',
+  crispScaleHint: 'Snap the Frame to whole pixels (1×–4×). Off fills the frame.',
   on: 'On',
   off: 'Off',
   showDocked: 'Show the docked player',
   hideDocked: 'Hide the docked player (mini only)',
+  showFrame: 'Show Frame',
+  hideFrame: 'Hide Frame',
+  cmdFrame: 'REVamp: Show / Hide Frame',
   cmdReload: 'REVamp: Reload Player',
   cmdVisualizer: 'REVamp: Show / Hide Visualizer',
   cmdBrowse: 'REVamp: Choose Music',
@@ -231,7 +241,13 @@ const EN = {
   yes: 'Yes',
   no: 'No',
   save: 'Save',
-  cancel: 'Cancel'
+  cancel: 'Cancel',
+  reportBug: 'Report a bug',
+  reportBugHint: 'Opens GitHub with your environment filled in. Nothing is sent until you submit the issue.',
+  copyBugDetails: 'Copy details',
+  bugCopied: 'Bug details copied',
+  placeMenuTip: 'Put the player in a Frame, pop it out, or go full screen',
+  dismissTip: 'Dismiss'
 }
 
 // Disk plugins are not scanned by Tailwind. Only plugin layout lives here;
@@ -341,6 +357,7 @@ const $winampOpen = atom(false)
 // 'docked' (the right-hand pane, default) | 'floating' (the pop-out) | 'mini' (bottom bar only).
 // Desktop is a temporary action, never a saved home.
 const $playerLocation = atom('docked')
+const $frameHidden = atom(false)
 // An explicit “Bring the player here” borrow. Opening the page normally respects
 // docked/floating/desktop placement; mini remains the page-first location.
 const $pageBorrow = atom(true)
@@ -389,6 +406,107 @@ function command(action, extra = {}) {
   })
 }
 
+// Keep in sync with web/bug-report.js (plugin import rules).
+const BUG_ISSUE_NEW_URL = 'https://github.com/KeyArgo/hermes-revamp/issues/new'
+
+function formatBugReportBody(env) {
+  const lines = [
+    '## What happened?', '', env.whatHappened ?? '', '',
+    '## What did you expect?', '', env.whatExpected ?? '', '',
+    '## Steps to reproduce', '', env.steps ?? '', '',
+    '## Environment', '',
+    `- REVamp version: ${env.revampVersion ?? 'unknown'}`,
+    `- REVamp build: ${env.revampBuild ?? 'unknown'}`
+  ]
+  if (env.hermesVersion) lines.push(`- Hermes version: ${env.hermesVersion}`)
+  lines.push(
+    `- Operating system: ${env.os ?? 'unknown'}`,
+    `- Browser (if relevant): ${env.browser ?? 'n/a'}`,
+    `- Player place: ${env.playerPlace ?? 'unknown'}`,
+    `- Skin: ${env.skin ?? 'unknown'}`,
+    `- Theme: ${env.theme ?? 'unknown'}`,
+    '', '## Logs or screenshots', '', env.logs ?? '', '',
+    'Please remove library paths, tokens, and personal media names before posting.'
+  )
+  return lines.join('\n')
+}
+
+function buildBugReportUrl(env, options = {}) {
+  const title = options.title ?? '[REVamp] '
+  const body = options.body ?? formatBugReportBody(env)
+  const u = new URL(BUG_ISSUE_NEW_URL)
+  u.searchParams.set('title', title)
+  u.searchParams.set('body', body)
+  return u.toString()
+}
+
+function pluginPlayerPlaceLabel() {
+  if ($desktop.get()) return 'Desktop window'
+  if ($where.get() === 'page') return 'Full screen'
+  const map = { docked: 'Frame', floating: 'Pop into Hermes', mini: 'Mini player' }
+  return map[$playerLocation.get()] || $playerLocation.get()
+}
+
+async function collectPluginBugEnv() {
+  let revampVersion = 'unknown'
+  let revampBuild = 'unknown'
+  try {
+    const h = bridge?.ready ? await bridge.request('/api/health', { timeoutMs: 4000 }) : null
+    if (h?.version) revampVersion = String(h.version)
+    if (h?.build) revampBuild = String(h.build)
+  } catch { /* player not ready */ }
+  if (revampVersion === 'unknown') {
+    try {
+      const info = await rest('/info', { timeoutMs: 3000 })
+      if (info?.version) revampVersion = String(info.version)
+    } catch { /* gateway down */ }
+  }
+  const live = $live.get()
+  const storedTheme = ctxRef?.storage.get('theme', null)
+  const theme =
+    (storedTheme && typeof storedTheme === 'object' && (storedTheme.look || storedTheme.theme))
+      ? String(storedTheme.look || storedTheme.theme)
+      : 'unknown'
+  const hermesVersion =
+    typeof host?.appVersion === 'string' ? host.appVersion
+      : typeof globalThis.__HERMES_APP_VERSION__ === 'string' ? globalThis.__HERMES_APP_VERSION__
+        : undefined
+  return {
+    revampVersion,
+    revampBuild,
+    hermesVersion,
+    os: navigator.platform || 'unknown',
+    browser: (navigator.userAgent || 'n/a').slice(0, 160),
+    playerPlace: pluginPlayerPlaceLabel(),
+    skin: live?.skin ? String(live.skin) : 'unknown',
+    theme
+  }
+}
+
+async function openBugReport(copyOnly = false) {
+  if (!ctxRef) return
+  const env = await collectPluginBugEnv()
+  if (copyOnly) {
+    await ctxRef.os.writeClipboard(formatBugReportBody(env))
+    host.notify({ kind: 'success', message: EN.bugCopied })
+  } else {
+    await ctxRef.os.openExternal(buildBugReportUrl(env))
+  }
+}
+
+function readPlaceMenuTipSeen() {
+  try {
+    if (ctxRef?.storage.get('placeMenuTipSeen', false)) return true
+    if ($live.get()?.settings?.place_menu_tip_seen) return true
+  } catch { /* ignore */ }
+  return false
+}
+
+function dismissPlaceMenuTip() {
+  try { ctxRef?.storage.set('placeMenuTipSeen', true) } catch { /* ignore */ }
+  void command('settings', { place_menu_tip_seen: true })
+}
+
 // ---------------------------------------------------------------- player location
 const PLAYER_LOCATIONS = ['docked', 'floating', 'mini']
 // Pane placement is persisted by Hermes against the contribution id.  Keep one
@@ -398,15 +516,39 @@ const DOCKED_PLAYER_SIDES = ['right', 'left']
 const PANE_IDS = { right: 'classic-pane-right', left: 'classic-pane-left' }
 const scopedPaneId = side => `${ID}:${PANE_IDS[side]}`
 const $dockedPlayerSide = atom('right')
-let disposeDockedPlayerPane = null
-// Below this width the docked pane would squeeze the chat: mini behaves as docked
-// (placement only — the saved choice never changes).
-const DOCKED_MIN_WIDTH = 1100
+// Off by default: fractional scale fills the frame. Whole numbers are an explicit choice.
+const $crispScale = atom(false)
+let refitPane = () => {}
 
-// 'docked' collapses to 'mini' on narrow windows, for placement only.
+// fit is the limiting side's ratio (pane room / classic window). Crisp snaps to a
+// whole number in 1..4. Otherwise the scale is fractional, down to 0.6 in a narrow pane.
+function frameScale(fit, crisp) {
+  if (!Number.isFinite(fit) || fit <= 0) return crisp ? 1 : 0.6
+  if (crisp) return Math.max(1, Math.min(4, Math.floor(fit)))
+  const scaled = Math.max(0.6, Math.min(4, fit))
+  return Math.round(scaled * 1000) / 1000
+}
+
+function readUiSettings() {
+  const raw = ctxRef?.storage.get('ui', null)
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+}
+function writeUiSettings(patch) {
+  const next = { ...readUiSettings(), ...patch }
+  ctxRef?.storage.set('ui', next)
+  return next
+}
+function setCrispScale(on) {
+  writeUiSettings({ crispScale: !!on })
+  $crispScale.set(!!on)
+  refitPane()
+}
+let disposeDockedPlayerPane = null
+// A hidden Frame is still a Frame.  In particular it must not borrow the mini
+// player's placement: that would make hiding the pane silently move the live
+// player into the bottom bar and change what reopening the route displays.
 function placementLocation() {
   const loc = $playerLocation.get()
-  // The user's pick always wins: a narrow window still gets its frame (at the pane's min width).
   return loc
 }
 
@@ -428,11 +570,28 @@ function setPlayerLocation(loc, fromBus = false) {
   // The sender echoes too: its own atoms are already set, the echo is a cheap no-op.
   try { locBus?.postMessage({ loc, from: locSender }) } catch { /* channel closed */ }
   if (loc === 'docked') {
+    if ($frameHidden.get()) setFrameHidden(false)
     // Even when already docked the pane may be hidden: showing it again is the point.
     try { host.revealPane?.(scopedPaneId($dockedPlayerSide.get())) } catch { /* older hosts: no revealPane */ }
   }
   if (!fromBus) engine?.place()
   else if (changed || engine) engine?.place()
+}
+
+function setFrameHidden(hidden) {
+  hidden = !!hidden
+  if ($frameHidden.get() === hidden) return
+  ctxRef?.storage.set('frameHidden', hidden)
+  $frameHidden.set(hidden)
+  const paneId = scopedPaneId($dockedPlayerSide.get())
+  if (hidden) {
+    if (typeof host.hidePane === 'function') host.hidePane(paneId)
+    else { disposeDockedPlayerPane?.(); disposeDockedPlayerPane = null }
+  } else {
+    if (!disposeDockedPlayerPane && PANE_SPIKE && ctxRef) disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane($dockedPlayerSide.get()))
+    try { host.revealPane?.(paneId) } catch { /* older hosts */ }
+  }
+  engine?.place()
 }
 
 function dockedPlayerPane(side) {
@@ -469,7 +628,8 @@ function applyDockedPlayerSide(side) {
   }
   if (!changed || !PANE_SPIKE) return
   disposeDockedPlayerPane?.()
-  disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane(side))
+  if ($frameHidden.get()) disposeDockedPlayerPane = null
+  else disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane(side))
   // The new pane mounts asynchronously. Its showPane() calls place() again;
   // this immediate pass only parks the same iframe safely in the mini dock.
   if ($playerLocation.get() === 'docked') {
@@ -564,6 +724,9 @@ async function refreshLive() {
     const state = await rest('/state', { timeoutMs: 4000 })
     if (generation === refreshGeneration) {
       $live.set(withHeld(state))
+      if (state?.settings?.place_menu_tip_seen) {
+        try { ctxRef?.storage.set('placeMenuTipSeen', true) } catch { /* ignore */ }
+      }
       failedRefreshes = 0
       if (!$reachable.get()) $reachable.set(true)
     }
@@ -668,7 +831,7 @@ function createEngine(ctx, url, bridgeKey = '') {
   frame.setAttribute('referrerpolicy', 'no-referrer')
   frame.setAttribute('allow', 'autoplay; fullscreen')
   frame.setAttribute('allowfullscreen', '')
-  frame.style.cssText = `border:0;display:block;width:${DOCK_W}px;height:${DOCK_H}px;background:transparent`
+  frame.style.cssText = `border:0;display:block;width:${DOCK_W}px;height:${DOCK_H}px;background:transparent;image-rendering:pixelated`
 
   // The route gets a second, deliberately audio-free copy of the full library
   // only when the live iframe is intentionally in Frame/Pop-out/Desktop.
@@ -731,8 +894,7 @@ function createEngine(ctx, url, bridgeKey = '') {
     frame.style.transform = `translate(${-box.x}px, ${-box.y}px)`
   }
   // The docked pane's clip box hugs the classic windows exactly (any skin/size).
-  // Whole-number scale (pixel art stays crisp): the classic stack grows to fill a wide or
-  // tall pane instead of sitting at 275px in the middle of a big screen.
+  // Fractional scale fills the frame on the limiting side. Whole numbers are opt-in.
   function paneScale() {
     const area = paneHost?.parentElement
     // Scale from the player windows only (bw/bh), so an open menu or a one-off wide window
@@ -740,7 +902,7 @@ function createEngine(ctx, url, bridgeKey = '') {
     const bw = box.bw || box.w, bh = box.bh || box.h
     if (!area || !bw || !bh) return 1
     const fit = Math.min((area.clientWidth - 8) / bw, (area.clientHeight - 14) / bh)
-    return Math.max(1, Math.min(4, Math.floor(fit)))
+    return frameScale(fit, $crispScale.get())
   }
   // A skin load or change briefly re-lays-out the windows, so the reported size can jump for a
   // moment: a new scale only commits once it has held for a beat (the first fit is immediate).
@@ -756,8 +918,10 @@ function createEngine(ctx, url, bridgeKey = '') {
     paneHost.style.width = `${box.w * s}px`
     paneHost.style.height = `${box.h * s}px`
     frame.style.transformOrigin = '0 0'
+    frame.style.imageRendering = 'pixelated'
     frame.style.transform = `scale(${s}) translate(${-box.x}px, ${-box.y}px)`
   }
+  refitPane = () => { if ($where.get() === 'pane') fitPane() }
   let paneWatch = null
 
   let parked = false
@@ -780,6 +944,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       moveInto(dock, frame)
       overlay.root.style.display = 'none'
       $where.set('desktop')
+      tellVisibility()
       return
     }
     // The page only borrows the single live iframe for mini (or an explicit
@@ -822,6 +987,14 @@ function createEngine(ctx, url, bridgeKey = '') {
       send({ type: 'revamp:mode', mode: 'full', placement: 'mini' })
       $where.set('dock')
     }
+    tellVisibility()
+  }
+
+  function tellVisibility() {
+    const playerShown = $where.get() === 'page' || $where.get() === 'pane' || $where.get() === 'winamp'
+    try { frame.contentWindow?.postMessage({ type: 'revamp:visible', visible: playerShown }, '*') } catch { /* frame gone */ }
+    const controlShown = controlFrame.style.display !== 'none'
+    try { controlFrame.contentWindow?.postMessage({ type: 'revamp:visible', visible: controlShown }, '*') } catch { /* frame gone */ }
   }
 
   function sendControlPlace() {
@@ -931,6 +1104,10 @@ function createEngine(ctx, url, bridgeKey = '') {
   function remove() {
     dropPending()
     if (bridge === bridgeApi) bridge = null
+    paneWatch?.disconnect()
+    paneWatch = null
+    if (scaleTimer) { clearTimeout(scaleTimer); scaleTimer = 0 }
+    refitPane = () => {}
     dock.remove()
     overlay.root.remove()
   }
@@ -2260,6 +2437,7 @@ function placeItems(item, extra, t) {
   return [
     item('mini', 'locMini'),
     item('docked', 'locDocked', ` (${side})`),
+    extra('frame', t($frameHidden.get() ? 'showFrame' : 'hideFrame'), !$frameHidden.get(), () => setFrameHidden(!$frameHidden.get())),
     item('floating', 'locFloating'),
     extra('desktop', t('locDesktop'), $desktop.get(), () => { $open?.set?.(false); openOnDesktop() }),
     extra('full', t('locFull'), false, () => { pageBorrowRequested = true; $open?.set?.(false); host.navigate(ROUTE) })
@@ -2270,7 +2448,7 @@ function placeItems(item, extra, t) {
 function LocationRow() {
   const t = usePluginI18n(ID)
   const location = useValue($playerLocation)
-  useValue($dockedPlayerSide); useValue($desktop)
+  useValue($dockedPlayerSide); useValue($desktop); useValue($frameHidden)
   const active = loc => loc === location && !$desktop.get()
   const item = (loc, key, suffix = '') => jsxs(Button, {
     variant: 'ghost', size: 'micro',
@@ -2284,6 +2462,45 @@ function LocationRow() {
     children: [on ? '● ' : '', label]
   }, key)
   return jsxs('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '2px 8px' }, 'aria-label': t('location'), children: placeItems(item, extra, t) })
+}
+
+function LocationRowWithTip() {
+  const t = usePluginI18n(ID)
+  const [seen, setSeen] = useState(readPlaceMenuTipSeen)
+  useValue($live)
+  const dismiss = () => { setSeen(true); dismissPlaceMenuTip() }
+  if (seen) return jsx(LocationRow, {})
+  return jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 }, children: [
+    jsxs('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: 6, margin: '0 8px', padding: '6px 8px', fontSize: 11,
+        color: 'var(--ui-text-secondary)', borderRadius: 6, border: '1px solid var(--ui-accent)',
+        background: 'var(--ui-surface-secondary, rgba(255,255,255,0.04))'
+      },
+      role: 'status',
+      children: [
+        jsx('span', { style: { flex: 1 }, children: t('placeMenuTip') }),
+        jsx(Button, { variant: 'ghost', size: 'micro', onClick: dismiss, children: t('dismissTip') })
+      ]
+    }),
+    jsx(LocationRow, {})
+  ] })
+}
+
+function ReportBugRow({ compact = false }) {
+  const t = usePluginI18n(ID)
+  return jsxs('div', {
+    style: {
+      display: 'flex', flexDirection: compact ? 'row' : 'column', flexWrap: 'wrap', alignItems: compact ? 'center' : 'flex-start',
+      gap: compact ? 6 : 4, padding: compact ? '2px 8px' : '0', marginTop: compact ? 0 : 8
+    },
+    children: [
+      compact ? null : jsx('span', { style: { fontSize: 12, color: 'var(--ui-text-secondary)' }, children: t('reportBug') }),
+      compact ? null : jsx('span', { style: { fontSize: 11, color: 'var(--ui-text-tertiary)', marginBottom: 4 }, children: t('reportBugHint') }),
+      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(false), children: t('reportBug') }),
+      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(true), children: t('copyBugDetails') })
+    ]
+  })
 }
 
 function BarToast() {
@@ -2315,6 +2532,7 @@ function RevampBar() {
   const open = useValue($open)
   const queueOpen = useValue($queueOpen)
   const docked = useValue($playerLocation) === 'docked'
+  const frameHidden = useValue($frameHidden)
   const np = nowPlaying(live)
   const triggerRef = useRef(null)
   const [browseWidth, setBrowseWidth] = useState(null)
@@ -2338,7 +2556,8 @@ function RevampBar() {
         np.online
           ? jsxs('div', { children: [
               queueOpen ? jsx(QueuePanel, { np }) : jsx(Picker, { np }),
-              jsx(LocationRow, {}),
+              jsx(LocationRowWithTip, {}),
+              jsx(ReportBugRow, { compact: true }),
               jsx(Signal, { np }),
               jsx(Transport, { np, extended: true })
             ] })
@@ -2357,6 +2576,10 @@ function RevampBar() {
     jsx(SmallAction, {
       label: t(docked ? 'hideDocked' : 'showDocked'), icon: DockIcon, pressed: docked, className: 'revamp-dock-toggle',
       onClick: () => setPlayerLocation(docked ? 'mini' : 'docked')
+    }),
+    jsx(SmallAction, {
+      label: t(frameHidden ? 'showFrame' : 'hideFrame'), icon: DockIcon, pressed: !frameHidden,
+      onClick: () => setFrameHidden(!frameHidden)
     })
   ] })
 }
@@ -2510,6 +2733,8 @@ function RevampSettings() {
   const t = k => EN[k] || k
   const location = useValue($playerLocation)
   const dockedSide = useValue($dockedPlayerSide)
+  const frameHidden = useValue($frameHidden)
+  const crisp = useValue($crispScale)
   useValue($desktop)
   const item = (loc, key, suffix = '') => jsx(Button, {
     variant: 'ghost', size: 'sm',
@@ -2526,7 +2751,14 @@ function RevampSettings() {
       jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': dockedSide === 'right', onClick: () => applyDockedPlayerSide('right'), children: t('dockedPlayerRight') }),
       jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': dockedSide === 'left', onClick: () => applyDockedPlayerSide('left'), children: t('dockedPlayerLeft') })
     ] }),
-    jsx(DuckSettings, {})
+    jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': !frameHidden, onClick: () => setFrameHidden(!frameHidden), children: t(frameHidden ? 'showFrame' : 'hideFrame') }),
+    jsx(DuckSettings, {}),
+    jsx(ReportBugRow, {}),
+    jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('crispScale') }),
+    jsx('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('crispScale'), children: [
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': crisp, onClick: () => setCrispScale(true), children: t('on') }),
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': !crisp, onClick: () => setCrispScale(false), children: t('off') })
+    ] })
   ] })
 }
 
@@ -2541,7 +2773,10 @@ function DuckSettings() {
     setLocal(cur => ({ ...cur, ...patch }))
     void command('settings', patch)
   }
-  const on = value('duck_on_approval') !== false
+  const on = value('duck_on_approval') === true
+  const chime = value('duck_chime') !== false
+  const dipSeconds = Math.min(5, Math.max(1, Number(value('duck_dip_seconds') ?? 2)))
+  const scope = value('duck_approval_scope') === 'all' ? 'all' : 'app'
   const toastOn = value('duck_toast') !== false
   const level = Number(value('duck_level') ?? 0.25)
   const choice = (pressed, label, onClick, key) => jsx(Button, {
@@ -2556,6 +2791,16 @@ function DuckSettings() {
     row(t('duckOn'), [
       choice(on, t('on'), () => set({ duck_on_approval: true }), 'on'),
       choice(!on, t('off'), () => set({ duck_on_approval: false }), 'off')
+    ]),
+    row(t('duckChime'), [
+      choice(chime, t('on'), () => set({ duck_chime: true }), 'on'),
+      choice(!chime, t('off'), () => set({ duck_chime: false }), 'off')
+    ]),
+    row(t('duckDipSeconds'), [1, 2, 3, 4, 5].map(v =>
+      choice(dipSeconds === v, `${v} s`, () => set({ duck_dip_seconds: v }), String(v)))),
+    row(t('duckScope'), [
+      choice(scope === 'app', t('duckThisApp'), () => set({ duck_approval_scope: 'app' }), 'app'),
+      choice(scope === 'all', t('duckAll'), () => set({ duck_approval_scope: 'all' }), 'all')
     ]),
     row(t('duckLevel'), [0, 0.1, 0.25, 0.5].map(v =>
       choice(Math.abs(level - v) < 0.01, v === 0 ? 'Silent' : `${Math.round(v * 100)}%`, () => set({ duck_level: v }), String(v)))),
@@ -2621,10 +2866,13 @@ export default {
     // New installs and malformed/missing values start on the right. The old
     // classic-pane-spike id is deliberately never contributed again, so its
     // persisted (possibly left-drifted) layout cannot win over this fresh id.
+    const savedUi = ctx.storage.get('ui', null)
+    $crispScale.set(!!(savedUi && typeof savedUi === 'object' && savedUi.crispScale === true))
     const savedSide = ctx.storage.get('dockedPlayerSide', 'right')
     const dockedSide = DOCKED_PLAYER_SIDES.includes(savedSide) ? savedSide : 'right'
     if (savedSide !== dockedSide) ctx.storage.set('dockedPlayerSide', dockedSide)
     $dockedPlayerSide.set(dockedSide)
+    $frameHidden.set(ctx.storage.get('frameHidden', false) === true)
     $winampOpen.set($playerLocation.get() === 'floating')
     $desktop.set(false)
     $live.set(null)
@@ -2660,10 +2908,13 @@ export default {
     // The desktop window took over (from any Hermes window) or closed: park or resume here.
     const offDesktop = $desktop.listen(open => (open ? engine?.park() : engine?.unpark()))
     ctx.onDispose(offDesktop)
-    void refreshLive()
-    ctx.setInterval(() => void refreshLive(), 1500)
-    void loadLikes()
-    ctx.setInterval(() => void loadLikes(), 15000) // likes made on the full page
+    const refreshIfShown = () => { if (!document.hidden) void refreshLive() }
+    const likesIfShown = () => { if (!document.hidden) void loadLikes() }
+    void refreshIfShown()
+    ctx.setInterval(refreshIfShown, 1500)
+    void likesIfShown()
+    ctx.setInterval(likesIfShown, 15000) // likes made on the full page
+    ctx.addEventListener(document, 'visibilitychange', () => { refreshIfShown(); likesIfShown() })
     watchRadio(ctx)
 
     // Settings → REVamp (older hosts have no settings pages).
@@ -2686,6 +2937,7 @@ export default {
         ['browse', 'cmdBrowse', () => $open.set(true), ['mod+alt+b']],
         ['open', 'cmdOpen', () => host.navigate(ROUTE), []],
         ['dock', 'cmdDock', () => setPlayerLocation('docked'), ['mod+alt+d']],
+        ['frame', 'cmdFrame', () => setFrameHidden(!$frameHidden.get()), ['mod+alt+f']],
         ['winamp', 'cmdWinamp', () => setPlayerLocation($playerLocation.get() === 'floating' ? 'docked' : 'floating'), ['mod+alt+w']],
         ['mini', 'cmdMini', () => setPlayerLocation('mini'), ['mod+alt+m']],
         ['reload', 'cmdReload', () => { engine?.reload(); void refreshLive() }, ['mod+alt+r']],
@@ -2704,6 +2956,6 @@ export default {
         }
       ])
     ])
-    if (PANE_SPIKE) disposeDockedPlayerPane = ctx.register(dockedPlayerPane(dockedSide))
+    if (PANE_SPIKE && !$frameHidden.get()) disposeDockedPlayerPane = ctx.register(dockedPlayerPane(dockedSide))
   }
 }

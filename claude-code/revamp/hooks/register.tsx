@@ -55,6 +55,11 @@ function preview(e: Record<string, unknown>): string {
 }
 
 // The player reports PLAYING / PAUSED / STOPPED (Webamp's names); accept any case.
+// Plain words, not ⏮ ⏸ ⏭: those glyphs are blank in many terminal fonts.
+export function transportLabels(isPlaying: boolean) {
+  return { prev: 'Prev', toggle: isPlaying ? 'Pause' : 'Play', next: 'Next' }
+}
+
 export function isPlayingStatus(status: unknown): boolean {
   return String(status ?? '').toLowerCase() === 'playing'
 }
@@ -178,9 +183,9 @@ export const register: Register = on => {
         <Text color={np.isPlaying ? 'success' : undefined} dimColor={!np.isPlaying}>
           {np.isPlaying ? '♪' : '❚❚'} {np.line.slice(0, Math.max(10, (e.props.bodyColumns ?? 80) - 32))}
         </Text>
-        <Button key="prev" plain label="⏮" onPress={press('prev')} />
-        <Button key="toggle" plain label={np.isPlaying ? '⏸' : '▶'} onPress={press('toggle')} />
-        <Button key="next" plain label="⏭" onPress={press('next')} />
+        <Button key="prev" plain label={transportLabels(np.isPlaying).prev} onPress={press('prev')} />
+        <Button key="toggle" plain label={transportLabels(np.isPlaying).toggle} onPress={press('toggle')} />
+        <Button key="next" plain label={transportLabels(np.isPlaying).next} onPress={press('next')} />
       </Box>
     )
   })

@@ -27,14 +27,22 @@ test("the location menu names are the five the user asked for", () => {
 test("placeItems offers them in order, with the frame side in the name", () => {
   const body = between("function placeItems(", "function LocationRow(");
   const order = [...body.matchAll(/item\('(\w+)'|extra\('(\w+)'/g)].map((m) => m[1] || m[2]);
-  assert.deepEqual(order, ["mini", "docked", "floating", "desktop", "full"]);
+  assert.deepEqual(order, ["mini", "docked", "frame", "floating", "desktop", "full"]);
   assert.ok(body.includes("item('docked', 'locDocked', ` (${side})`)"));
 });
 
-test("placementLocation never rewrites a choice, including docked on a narrow window", () => {
+test("Frame can be hidden without changing its selected location, and restored on its saved side", () => {
+  assert.match(src, /const \$frameHidden = atom\(false\)/);
+  assert.match(src, /ctxRef\?\.storage\.set\('frameHidden', hidden\)/);
+  assert.match(src, /host\.revealPane\?\.\(paneId\)/);
+  assert.match(src, /\['frame', 'cmdFrame'.*\['mod\+alt\+f'\]/);
+  assert.match(src, /const loc = \$playerLocation\.get\(\)\s+return loc/);
+});
+
+test("placementLocation never collapses a Frame to the mini player", () => {
   const body = between("function placementLocation()", "const LOC_BUS");
-  assert.match(body, /return loc/);
-  assert.doesNotMatch(body, /mini|DOCKED_MIN_WIDTH|innerWidth/);
+  assert.match(body, /const loc = \$playerLocation\.get\(\)\s+return loc/);
+  assert.doesNotMatch(body, /mini|frameHidden|DOCKED_MIN_WIDTH|innerWidth/);
 });
 
 test("choosing the frame reveals the pane instead of leaving it dismissed", () => {

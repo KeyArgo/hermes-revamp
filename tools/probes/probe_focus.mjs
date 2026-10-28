@@ -1,11 +1,11 @@
-// Focus view geometry + screenshots. Run: node tests/probe_focus.mjs
+// Focus view geometry + screenshots. Run: node tools/probes/probe_focus.mjs
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
-const outDir = process.env.REVAMP_PROBE_DIR || new URL("../out/probe-focus", import.meta.url).pathname;
+const root = resolve(new URL("../..", import.meta.url).pathname);
+const outDir = process.env.REVAMP_PROBE_DIR || new URL("../../out/probe-focus", import.meta.url).pathname;
 const browser = process.env.CHROME_BIN || [
   "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "chromium", "google-chrome",

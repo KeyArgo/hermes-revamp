@@ -120,7 +120,7 @@ def test_setting_env_and_defaults(monkeypatch, isolated):
     monkeypatch.setenv("REVAMP_DUCK_ON_APPROVAL", "off")
     assert config.setting("duck_on_approval") is False
     monkeypatch.delenv("REVAMP_DUCK_ON_APPROVAL")
-    assert config.setting("duck_on_approval") is True
+    assert config.setting("duck_on_approval") is False
 
     monkeypatch.setenv("REVAMP_DUCK_LEVEL", "0.5")
     assert config.setting("duck_level") == 0.5

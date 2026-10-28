@@ -451,13 +451,15 @@ def test_session_and_approval_hooks(captured):
     plug._hook_session_end(session_id="b")
     assert events[0] == ("session_start", {"session_id": "a"})
     assert events[1] == ("session_end", {"session_id": "b"})
-    plug._hook_pre_approval_request(command="rm -rf /", session_id="c")
+    plug._hook_pre_approval_request(command="rm -rf /", session_id="c", session_key="key-c", surface="cli")
     assert events[2] == ("approval_request", {"preview": "rm -rf /",
-                                              "session_id": "c"})
+                                              "session_id": "c", "session_key": "key-c",
+                                              "approval_surface": "cli"})
     plug._hook_pre_approval_request(description="y" * 200)
     assert events[3][1]["preview"] == "y" * 80
-    plug._hook_post_approval_response(choice="Allow once", session_id="d")
-    assert events[4] == ("approval_response", {"ok": True, "session_id": "d"})
+    plug._hook_post_approval_response(choice="Allow once", session_id="d", session_key="key-d", surface="cli")
+    assert events[4] == ("approval_response", {"ok": True, "session_id": "d",
+                                                  "session_key": "key-d", "approval_surface": "cli"})
     for choice in ("deny", "timeout", "", None, "DENY"):
         plug._hook_post_approval_response(choice=choice)
         assert events[-1][1]["ok"] is False

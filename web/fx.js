@@ -23,6 +23,10 @@ const SCALE = 0.5;
 let canvas = null, ctx = null, raf = 0, last = 0;
 let kind = "off", level = 2, W = 1, H = 1, parts = [], sprites = new Map(), auroraGrads = [];
 let shoot = null, nextShoot = 3;
+// The loop runs only while the user can see the page. hostVisible is a message from the
+// Hermes frame (the iframe's own IntersectionObserver cannot always see a parked parent).
+// observedVisible is that observer. modeOverride is the latest revamp:mode from the host.
+let hostVisible = true, observedVisible = true, modeOverride = null, io = null, watched = false;
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const hexRgb = (h) => { const n = parseInt(String(h).replace("#", ""), 16) || 0; return [n >> 16, (n >> 8) & 255, n & 255]; };
@@ -308,6 +312,54 @@ const EFFECTS = {
 };
 
 // ---------------------------------------------------------------- engine
+function winampOnly() {
+  // The body class is the page's actual mode (set on boot and on revamp:mode).
+  // The host message covers the moment before that class lands.
+  if (document.body?.classList.contains("mode-winamp")) return true;
+  if (modeOverride) return modeOverride === "winamp";
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get("mode") === "winamp" || q.has("float")) return true;
+  } catch { /* no location */ }
+  return false;
+}
+// True only while the user can see this page: the tab is showing, the canvas has
+// a box on screen (not parked, zero-size, or display:none), the host has not
+// said the iframe is hidden, and this is not Winamp-only mode (the backdrop
+// is not on screen there).
+export function fxShown() {
+  return !document.hidden && hostVisible && observedVisible && !winampOnly();
+}
+function sync() {
+  if (kind === "off" || !fxShown()) stop();
+  else run();
+}
+function onHostMessage(e) {
+  if (window.parent !== window && e.source !== window.parent) return;
+  const d = e.data;
+  if (!d || typeof d !== "object") return;
+  if (d.type === "revamp:visible") { hostVisible = d.visible !== false; sync(); }
+  if (d.type === "revamp:mode" && (d.mode === "winamp" || d.mode === "full")) { modeOverride = d.mode; sync(); }
+}
+function watchCanvas() {
+  if (watched) return;
+  watched = true;
+  addEventListener("resize", () => { if (kind !== "off") size(); });
+  document.addEventListener("visibilitychange", sync);
+  addEventListener("message", onHostMessage);
+  if (document.body && typeof MutationObserver === "function") {
+    const mo = new MutationObserver(sync);
+    mo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  }
+  if (typeof IntersectionObserver === "function") {
+    io = new IntersectionObserver((entries) => {
+      const hit = entries[entries.length - 1];
+      const box = hit?.boundingClientRect || { width: 0, height: 0 };
+      observedVisible = !!(hit && hit.isIntersecting && box.width > 0 && box.height > 0);
+      sync();
+    });
+  }
+}
 function ensure() {
   if (canvas) return;
   canvas = document.createElement("canvas");
@@ -315,8 +367,8 @@ function ensure() {
   canvas.setAttribute("aria-hidden", "true");
   document.body.prepend(canvas);
   ctx = canvas.getContext("2d");
-  addEventListener("resize", () => { if (kind !== "off") size(); });
-  document.addEventListener("visibilitychange", () => (document.hidden ? stop() : kind !== "off" && run()));
+  watchCanvas();
+  io?.observe(canvas);
 }
 function size() {
   W = Math.max(1, Math.ceil(innerWidth * SCALE));
@@ -325,6 +377,7 @@ function size() {
   EFFECTS[kind]?.seed();
 }
 function frame(ts) {
+  if (!fxShown() || kind === "off") { stop(); return; }
   raf = requestAnimationFrame(frame);
   if (ts - last < 32) return;
   const dt = Math.min(0.1, (ts - last) / 1000 || 0.033);
@@ -333,7 +386,7 @@ function frame(ts) {
   ctx.clearRect(0, 0, W, H);
   EFFECTS[kind]?.draw(dt, ts / 1000);
 }
-function run() { if (!raf && !document.hidden) { last = 0; raf = requestAnimationFrame(frame); } }
+function run() { if (!raf && fxShown() && kind !== "off") { last = 0; raf = requestAnimationFrame(frame); } }
 function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
 
 export function setFx(next, intensity = 2) {

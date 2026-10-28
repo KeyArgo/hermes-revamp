@@ -226,6 +226,22 @@ def test_playlist_crud(server):
     assert st == 404
 
 
+def test_playlist_writes_broadcast_sse_change(server):
+    import threading
+    import time
+
+    events = []
+    thread = threading.Thread(
+        target=lambda: events.extend(server.sse_lines(seconds=4.0, want=3)), daemon=True)
+    thread.start()
+    time.sleep(0.15)
+    assert server.client.post("/api/playlists", {"name": "SSE", "items": []})[0] == 201
+    assert server.client.put("/api/playlists/sse", {"name": "SSE renamed"})[0] == 200
+    assert server.client.delete("/api/playlists/sse")[0] == 200
+    thread.join(5)
+    assert [event for event, _payload in events if event == "playlists"] == ["playlists"] * 3
+
+
 def test_playlist_m3u_roundtrip(server):
     _wait_scanned(server)
     st, _, body = server.client.get("/api/library/tracks?q=Song%20One")
@@ -292,6 +308,16 @@ def test_state_merge_and_persist(server):
     server.client.put("/api/state", {"live": {"x": 1}})
     st, _, state2 = server.client.get("/api/state")
     assert "x" not in state2["live"] or state2["live"] != {"x": 1}
+
+
+def test_state_settings_put_merges_individual_keys(server):
+    assert server.client.put("/api/state", {"settings": {"ticker": False, "duck_level": 0.5}})[0] == 200
+    st, _, state = server.client.put("/api/state", {"settings": {"duck_on_approval": False}})
+    assert st == 200
+    assert state["settings"] == {
+        "ticker": False, "duck_level": 0.5, "duck_on_approval": False,
+        "duck_chime": True, "duck_dip_seconds": 2, "duck_approval_scope": "app",
+    }
 
 
 def test_heartbeat_live_window(server):

@@ -80,7 +80,7 @@ Item.url for a track is `/api/media/<id>`; for a stream it is the ORIGINAL strea
 (the page converts it to the proxy URL).
 
 ### Routes
-- `GET /api/health` → `{"app":"revamp","version":"1.0.0-alpha.3"}` (no token).
+- `GET /api/health` → `{"app":"revamp","version":"1.0.0-alpha.4"}` (no token).
 - Library (`library.py`, `tags.py`): scans `library_dirs` recursively (follow symlinks, guard loops)
   for `.mp3 .flac .ogg .oga .opus .m4a .m4b .aac .wav .webm`. Incremental: reuse cached entries
   whose (size, mtime) are unchanged. Scan runs in a background thread on start and on rescan.
@@ -144,7 +144,7 @@ and (later) the Claude Code MCP server. Keep it stdlib (urllib), 5 s timeout.
 
 ## Hermes glue (lane A, root `__init__.py`, `plugin.yaml`)
 
-`plugin.yaml`: `name: revamp`, `label: Revamp`, `kind: standalone`, `version: 1.0.0-alpha.3`, `author: Argo`,
+`plugin.yaml`: `name: revamp`, `label: Revamp`, `kind: standalone`, `version: 1.0.0-alpha.4`, `author: Argo`,
 description, `provides_tools` (4 below), `hooks` list (below).
 
 `register(ctx)`: register tools (toolset `revamp`) with handler signature `handler(args: dict, **kwargs) -> str`
@@ -234,8 +234,7 @@ Plain ESM, only imports `@hermes/plugin-sdk`, `react`, `react/jsx-runtime`; `jsx
 - On track change, `ctx.pet.say('♪ ' + title, {id:'revamp-np', ttlMs: 5000})` if the pet is visible (max once per 30 s).
 - Transcript directive `nowplaying` (`::nowplaying{}`): a compact card with the current track + transport buttons.
 - i18n: register `en` strings via `ctx.i18n.register` and use `usePluginI18n`.
-Read `~/.hermes/hermes-agent/website/docs/developer-guide/desktop-plugin-sdk.md` and the bundled radio plugin
-`~/.hermes/hermes-agent/apps/desktop/src/plugins/radio/plugin.js` for exact SDK exports before writing.
+Read Hermes's desktop-plugin SDK guide and bundled Radio plugin source for exact SDK exports before writing.
 
 ## Original skins (lane D, `tools/make_skins.py` → `web/skins/*.wsz`)
 

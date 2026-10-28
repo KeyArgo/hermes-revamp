@@ -1,13 +1,13 @@
 // Probe: the EQ-closed gap and the presets-menu clipping, in the in-app
 // (floating / frame) homes, across viewport sizes.
-// Run: node tests/probe_eq_gap.mjs
+// Run: node tools/probes/probe_eq_gap.mjs
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
-const outDir = process.env.REVAMP_PROBE_DIR || new URL("../out/probe", import.meta.url).pathname;
+const root = resolve(new URL("../..", import.meta.url).pathname);
+const outDir = process.env.REVAMP_PROBE_DIR || new URL("../../out/probe", import.meta.url).pathname;
 const browser = process.env.CHROME_BIN || [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",

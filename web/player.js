@@ -3,6 +3,9 @@
 import Webamp from "/vendor/webamp.butterchurn-bundle.min.mjs";
 import { normalizeItem, normalizeItems, legacyKind, legacyUrl } from "./items.js";
 import { getFocus } from "./focus/adapter.js";
+import {
+  MAIN_VIS_MODES, mainVisPrefs, mainVisFalloff, mainVisPeakFalloff, mainVisModePatch,
+} from "./main-vis.js";
 
 const fmt = (s) => {
   if (!Number.isFinite(s) || s < 0) return "--:--";
@@ -126,16 +129,24 @@ export async function initPlayer(ctx) {
   };
 
   // Webamp plays through <audio> elements it makes itself and doesn't expose them. Keep a
-  // weak list so playback speed (books) can be set on them; nothing else touches them.
+  // weak list so playback speed (books) can be set on them. loadedmetadata is how we
+  // learn a duration the library scan could not (no ffprobe); reported below.
   const audioEls = [];
   const origCreate = document.createElement;
   document.createElement = function (tag, ...rest) {
     const el = origCreate.call(this, tag, ...rest);
-    if (String(tag).toLowerCase() === "audio") audioEls.push(new WeakRef(el));
+    if (String(tag).toLowerCase() === "audio") {
+      audioEls.push(new WeakRef(el));
+      const report = () => { try { reportLearnedDuration(); } catch { /* not ready yet */ } };
+      el.addEventListener("loadedmetadata", report);
+      el.addEventListener("durationchange", report);
+    }
     return el;
   };
   const webamp = new Webamp(options);
   window.__webamp = webamp;
+  // Before the first paint, so a saved oscilloscope / off choice does not flash the spectrum.
+  alignMainVisMode(webamp, saved.settings);
   // renderInto keeps the windows inside the stage (renderWhenReady floats them over the page).
   await webamp.renderInto(document.getElementById("webamp-host"));
   if (initialSkin) { try { webamp.setSkinFromUrl(initialSkin); } catch { /* keep classic */ } }
@@ -603,6 +614,25 @@ export async function initPlayer(ctx) {
       if (resumingId === rk) resumingId = null;
     }
   }
+  // Once <audio> or Webamp knows the real length, tell the library so the next
+  // listing is not "--:--". One report per track until the length changes.
+  const reportedDuration = new Map();
+  function reportLearnedDuration() {
+    const info = currentInfo();
+    const it = info.item;
+    const tid = localTid(it);
+    if (!tid || it?.kind === "stream" || it?.kind === "focus") return;
+    const dur = Number(info.duration);
+    if (!Number.isFinite(dur) || dur <= 0 || dur > 48 * 3600) return;
+    const known = Number(it.duration);
+    if (Number.isFinite(known) && known > 0 && Math.abs(known - dur) < 0.5) return;
+    const rounded = Math.round(dur * 1000) / 1000;
+    if (reportedDuration.get(tid) === rounded) return;
+    reportedDuration.set(tid, rounded);
+    apiPost("/api/library/duration", { id: tid, duration: rounded }).then(() => {
+      it.duration = rounded;
+    }).catch(() => { reportedDuration.delete(tid); });
+  }
   function beat() {
     const info = currentInfo();
     const it = info.item;
@@ -628,6 +658,7 @@ export async function initPlayer(ctx) {
   setInterval(() => {
     updateNowPlaying();
     beat();
+    reportLearnedDuration();
     pruneEntries();
     saveBookPlace();
     persistNow(); // flush eq patches at heartbeat cadence too
@@ -707,6 +738,7 @@ export async function initPlayer(ctx) {
   let resumeMilkdropOnVisible = false;
   const isMiniVisible = () => !!document.querySelector(".revamp-mini:not([hidden])");
   const milkdropSetting = () => {
+    if (visualizerPlacement === "docked") return "milkdropOpenDocked";
     if (visualizerPlacement === "floating") return "milkdropOpenFloating";
     if (visualizerPlacement === "desktop") return "milkdropOpenDesktop";
     return "milkdropOpen";
@@ -922,7 +954,7 @@ export async function initPlayer(ctx) {
   function syncMilkdropVisibility() {
     // Out of sight (mini player only, or a hidden tab) MilkDrop is closed, so it stops drawing;
     // it comes back when the player is visible again. The saved choice is not touched.
-    const offscreen = visualizerPlacement === "mini" || document.hidden;
+    const offscreen = visualizerPlacement === "mini" || document.hidden || hostSaysVisible === false;
     if (offscreen) suspendMilkdrop();
     else resumeMilkdrop();
   }
@@ -944,8 +976,14 @@ export async function initPlayer(ctx) {
     setTimeout(applyPlacement, 250);
   };
   document.addEventListener("visibilitychange", syncMilkdropVisibility);
+  let hostSaysVisible = true;
+  window.addEventListener("message", (e) => {
+    if ((window.parent !== window && e.source !== window.parent) || e.data?.type !== "revamp:visible") return;
+    hostSaysVisible = e.data.visible !== false;
+    syncMilkdropVisibility();
+  });
   api.visualizerMetrics = () => ({
-    running: milkdropOpen() && !milkdropSuspended && !document.hidden && visualizerPlacement !== "mini",
+    running: milkdropOpen() && !milkdropSuspended && !document.hidden && hostSaysVisible && visualizerPlacement !== "mini",
     // Webamp unmounts MilkDrop's canvas when its window closes: no canvas, no drawing.
     canvas: Boolean(document.querySelector("#webamp .gen-window canvas, #milkdrop-window canvas")),
     status: safe(() => webamp.store.getState().media.status, ""),
@@ -973,18 +1011,83 @@ export async function initPlayer(ctx) {
   const markClassic = () => {
     const imgs = storeState()?.display?.skinImages || {};
     document.documentElement.classList.toggle("revamp-classic", !imgs.MAIN_TITLE_BAR && !imgs.MAIN_TITLE_BAR_SELECTED);
+    // A new skin builds a new renderer after this dispatch. Apply once it is committed.
+    requestAnimationFrame(applyMainVis);
   };
   markClassic();
-  // Webamp's spectrum canvas redraws every frame even when nothing plays. Under software
-  // graphics (Hermes on many NVIDIA hosts) that was ~1.2 CPU cores for a blank display, so it
-  // is hidden while not playing (it shows nothing then anyway).
+  // Webamp's spectrum canvas used to redraw every frame even when nothing played. Under
+  // software graphics that was ~1.2 CPU cores, so the canvas is hidden while not playing.
+  // Pause stops Webamp's loop but leaves the last bars in the bitmap; clear those so a
+  // paused or stopped analyzer rests flat instead of frozen. The loop itself only runs
+  // while status is PLAYING (Webamp's own effect), and only the small analyzer — not MilkDrop.
+  const visCanvases = () => document.querySelectorAll("#webamp canvas#visualizer");
+  function applyMainVis() {
+    const prefs = mainVisPrefs(saved.settings);
+    const bandwidth = prefs.bandwidth === "wide" ? "wide" : "thin";
+    const falloff = mainVisFalloff(prefs);
+    const peakFalloff = mainVisPeakFalloff(prefs);
+    for (const canvas of visCanvases()) {
+      const inst = visInstance(canvas);
+      if (!inst?._vis) continue;
+      inst._vis.bandwidth = bandwidth;
+      inst._vis.peaks = prefs.peaks;
+      inst._vis.saFalloff = prefs.saFalloff;
+      inst._vis.saPeakFalloff = prefs.saPeakFalloff;
+      inst.falloff = falloff;
+      inst.peakFalloff = peakFalloff;
+      canvas.dataset.revampVis = `${bandwidth}:${prefs.peaks ? "peaks" : "flat"}:${prefs.saFalloff}`;
+    }
+  }
+  function flattenVis() {
+    let status = "STOPPED";
+    try { status = media().status; } catch { /* store not ready */ }
+    if (status === "PLAYING") return;
+    for (const canvas of visCanvases()) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+  let visWasIdle = true;
   const markIdle = () => {
     let status = "STOPPED";
     try { status = media().status; } catch { /* store not ready */ }
     document.body.classList.toggle("revamp-idle", status !== "PLAYING");
+    const idle = status !== "PLAYING";
+    if (idle === visWasIdle) return;
+    visWasIdle = idle;
+    if (idle) {
+      flattenVis();
+      // The in-flight frame can repaint the old bars before Webamp cancels it.
+      requestAnimationFrame(flattenVis);
+      setTimeout(flattenVis, 40);
+    } else {
+      requestAnimationFrame(applyMainVis);
+    }
   };
   markIdle();
   try { webamp.store.subscribe(markIdle); } catch { /* keep it visible */ }
+  let visStyle = 0;
+  try { visStyle = webamp.store.getState().display.visualizerStyle ?? 0; } catch { /* store not ready */ }
+  try {
+    webamp.store.subscribe(() => {
+      let style = visStyle;
+      try { style = webamp.store.getState().display.visualizerStyle ?? visStyle; } catch { return; }
+      if (style === visStyle) return;
+      visStyle = style;
+      // Click (and only a real change) merges the mode into settings. Other keys stay.
+      const patch = mainVisModePatch(saved.settings, MAIN_VIS_MODES[style] || "BAR");
+      if (patch) api.setSavedSettings?.(patch);
+      // The click builds a new renderer during React's commit, after this dispatch.
+      requestAnimationFrame(applyMainVis);
+      setTimeout(applyMainVis, 0);
+    });
+  } catch { /* a click still cycles; it just is not remembered */ }
+  const visHost = document.getElementById("webamp-host");
+  if (visHost && typeof MutationObserver === "function") {
+    const mo = new MutationObserver(() => applyMainVis());
+    mo.observe(visHost, { childList: true, subtree: true });
+  }
+  applyMainVis();
   try { webamp.store.subscribe(markClassic); } catch { /* keep the original title */ }
   document.documentElement.classList.toggle("revamp-smooth-milkdrop", String(saved.skin || "").startsWith("builtin:REVamp-"));
 
@@ -994,6 +1097,7 @@ export async function initPlayer(ctx) {
 
   // radio now-playing: poll while a stream is the current track
   let radioTimer = null;
+  let radioPoll = () => {};
   function checkRadio() {
     const it = currentInfo().item;
     const url = it?.kind === "stream" ? it.playback?.stream || null : null; // the station's own URL
@@ -1015,33 +1119,63 @@ export async function initPlayer(ctx) {
         }
       } catch { /* network */ }
     };
+    radioPoll = poll;
     poll();
-    radioTimer = setInterval(poll, 15000);
+    radioTimer = setInterval(() => { if (!document.hidden) poll(); }, 15000);
   }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && radioUrl) radioPoll(); });
 
-  // ducking on approval_request
-  let duck = { active: false, timer: null, savedVol: null, evId: null };
-  function duckTo(levelPct, reason = "", evId = null) {
+  // A short audible acknowledgement for a new, actionable approval.  It is
+  // deliberately not tied to the approval lifecycle: waiting to be answered
+  // must never leave the player quiet.
+  let duck = { active: false, timer: null, savedVol: null, evId: null, sessionId: null };
+  const seenApprovalIds = new Set();
+  const APPROVAL_ALERT_MAX_AGE_MS = 10_000;
+  function playApprovalChime() {
+    if (saved.settings.duck_chime === false || currentVolume() <= 0 || media().muted) return;
+    try {
+      const Audio = window.AudioContext || window.webkitAudioContext;
+      if (!Audio) return;
+      const audio = new Audio();
+      const gain = audio.createGain();
+      // Scale this notification with the player's current output level.
+      gain.gain.value = Math.min(0.09, Math.max(0.015, currentVolume() / 1000));
+      gain.connect(audio.destination);
+      const now = audio.currentTime;
+      [660, 880].forEach((frequency, i) => {
+        const tone = audio.createOscillator();
+        tone.type = "sine";
+        tone.frequency.value = frequency;
+        tone.connect(gain);
+        tone.start(now + i * 0.12);
+        tone.stop(now + i * 0.12 + 0.11);
+      });
+    } catch { /* Audio is optional and may be blocked until user interaction. */ }
+  }
+  const dipDuration = () => Math.round(Math.min(5, Math.max(1, Number(saved.settings.duck_dip_seconds ?? 2))) * 1000);
+  function duckTo(levelPct, reason = "", evId = null, sessionId = null) {
     if (duck.active) return;
     const m = media();
     // Nothing to turn down (paused, stopped, nothing loaded): no dip and no pop-up.
     if (String(m.status || "").toUpperCase() !== "PLAYING") return;
-    // Say why the music went quiet (Settings → REVamp → "Show a pop-up saying why").
     if (saved.settings.duck_toast !== false) toast(`Music turned down${reason ? ": " + reason : ""}`, {});
     duck.savedVol = typeof m.volume === "number" ? m.volume : safe(() => webamp.getVolume?.()) ?? 75;
     duck.active = true;
     duck.evId = evId;
+    duck.sessionId = sessionId;
     animateVolume(duck.savedVol, clamp(levelPct), 400, false);
-    duck.timer = setTimeout(unduck, 120000);
+    playApprovalChime();
+    duck.timer = setTimeout(unduck, dipDuration());
   }
-  function unduck(whoseId = null) {
-    // A response must answer ITS request: while another approval is still pending
-    // (the first one's id doesn't match), the music stays down for it.
-    if (!duck.active || (whoseId && duck.evId && whoseId !== duck.evId)) return;
+  function unduck(whoseId = null, sessionId = null) {
+    // Hook events get separate event ids. Pair their lifecycle by Hermes session
+    // so denial, timeout, and session-end restore the correct dip as well.
+    if (!duck.active || (sessionId && duck.sessionId && sessionId !== duck.sessionId) || (!sessionId && whoseId && duck.evId && whoseId !== duck.evId)) return;
     clearTimeout(duck.timer);
     if (duck.savedVol != null) animateVolume(clamp(currentVolume()), duck.savedVol, 400, false);
     duck.active = false;
     duck.evId = null;
+    duck.sessionId = null;
     if (saved.settings.duck_toast !== false) toast("Music back to normal volume", { kind: "ok" });
   }
   function currentVolume() { const v = media().volume; return typeof v === "number" ? v : safe(() => webamp.getVolume?.()) ?? 75; }
@@ -1058,12 +1192,32 @@ export async function initPlayer(ctx) {
     // and the volume would stay stuck part-way down.
     setTimeout(() => step(performance.now()), 0);
   }
-  const duckEnabled = () => saved.settings.duck_on_approval !== false;
-  // Only Hermes's own approval prompts lower the music: those always wait for the user.
-  // Other harnesses (Claude Code...) still light the banner but leave the volume alone.
-  const duckFor = (ev) => duckEnabled() && ev?.source === "hermes";
-  const duckReason = (ev) => "Hermes is waiting for your approval" + (ev?.preview ? ` (${String(ev.preview).slice(0, 60)})` : "");
+  const duckEnabled = () => saved.settings.duck_on_approval === true;
+  // Default to this Desktop's local CLI prompt. Gateway and transport:* are
+  // bots, cron, and background work unless the user explicitly chooses All.
+  const approvalScope = () => saved.settings.duck_approval_scope === "all" ? "all" : "app";
+  const approvalSession = (ev) => String(ev?.session_id || ev?.session_key || "");
+  const approvalIsActionable = (ev) => ev?.source === "hermes" &&
+    (approvalScope() === "all" || ev?.approval_surface === "cli");
+  const duckFor = (ev) => duckEnabled() && approvalIsActionable(ev);
+  const duckReason = (ev) => {
+    const session = approvalSession(ev);
+    const where = session ? ` (session ${session.slice(0, 12)})` : "";
+    return "Hermes is waiting for your approval" + where + (ev?.preview ? `: ${String(ev.preview).slice(0, 60)}` : "");
+  };
   const duckLevel = () => Math.round(currentVolume() * (saved.settings.duck_level ?? 0.25));
+  const approvalIsFresh = (ev) => {
+    const ts = Number(ev?.ts);
+    return Number.isFinite(ts) && Math.abs(Date.now() - (ts > 1e12 ? ts : ts * 1000)) <= APPROVAL_ALERT_MAX_AGE_MS;
+  };
+  const alertFor = (ev) => {
+    const id = String(ev?.id || "");
+    if (!id || seenApprovalIds.has(id) || !approvalIsFresh(ev) || !duckFor(ev)) return false;
+    seenApprovalIds.add(id);
+    // Keep the small replay guard bounded on long-lived desktop sessions.
+    if (seenApprovalIds.size > 500) seenApprovalIds.delete(seenApprovalIds.values().next().value);
+    return true;
+  };
 
   // ---- commands from SSE (wired via ctx.connectEvents in app.js)
   function handleCommand(cmd) {
@@ -1100,8 +1254,11 @@ export async function initPlayer(ctx) {
         case "settings": { // from Settings → REVamp in Hermes; only these keys
           const patch = {};
           if (typeof cmd.duck_on_approval === "boolean") patch.duck_on_approval = cmd.duck_on_approval;
+          if (typeof cmd.duck_chime === "boolean") patch.duck_chime = cmd.duck_chime;
+          if (Number.isFinite(cmd.duck_dip_seconds)) patch.duck_dip_seconds = Math.min(5, Math.max(1, Math.round(cmd.duck_dip_seconds)));
           if (Number.isFinite(cmd.duck_level)) patch.duck_level = Math.min(1, Math.max(0, cmd.duck_level));
           if (typeof cmd.duck_toast === "boolean") patch.duck_toast = cmd.duck_toast;
+          if (cmd.duck_approval_scope === "app" || cmd.duck_approval_scope === "all") patch.duck_approval_scope = cmd.duck_approval_scope;
           if (Object.keys(patch).length) api.setSavedSettings(patch);
           break;
         }
@@ -1118,19 +1275,20 @@ export async function initPlayer(ctx) {
       if (ev.kind === "tool_end" || ev.kind === "session_end") ctx.setAgentBusy(false);
       // A tool that finished was approved (or never needed approval): nobody is waiting any more.
       if (ev.kind === "tool_end") ctx.setApprovalWaiting(false);
-      if (ev.kind === "session_end") { ctx.setApprovalWaiting(false); unduck(ev.id); } // nobody left to answer
+      if (ev.kind === "session_end") { ctx.setApprovalWaiting(false); unduck(null, approvalSession(ev)); } // nobody left to answer
       if (ev.kind === "approval_request") {
-        ctx.setApprovalWaiting(true);
-        if (duckFor(ev)) duckTo(duckLevel(), duckReason(ev), ev.id);
+        const actionable = approvalIsActionable(ev);
+        ctx.setApprovalWaiting(actionable, actionable ? duckReason(ev) : "");
+        if (alertFor(ev)) duckTo(duckLevel(), duckReason(ev), ev.id, approvalSession(ev));
       }
-      if (ev.kind === "approval_response") { ctx.setApprovalWaiting(false); unduck(ev.id); }
+      if (ev.kind === "approval_response") { ctx.setApprovalWaiting(false); unduck(null, approvalSession(ev)); }
     }
-    if (bulk) { // replayed log: reflect latest states without side-effects storms
+    if (bulk) { // replayed log: reflect latest states without alert side effects
       const last = events[events.length - 1];
       // Only a recent unanswered request: an old one in the log (its answer never reported) must not
       // light the banner forever after a reload.
       const fresh = last?.ts && Date.now() / 1000 - last.ts < 600;
-      if (last?.kind === "approval_request" && fresh) { ctx.setApprovalWaiting(true); if (duckFor(last)) duckTo(duckLevel(), duckReason(last), last.id); }
+      if (last?.kind === "approval_request" && fresh && approvalIsActionable(last)) ctx.setApprovalWaiting(true, duckReason(last));
     }
   }
 
@@ -1313,7 +1471,7 @@ export async function initPlayer(ctx) {
     const v = npSleep.value;
     api.setSleep(v === "track" ? { end_of_track: true } : { minutes: Number(v) });
   });
-  setInterval(() => sleep && paintNpExtras(), 1000);
+  setInterval(() => { if (!document.hidden && sleep) paintNpExtras(); }, 1000);
 
   // ---- OS media keys and lock-screen controls. Webamp's built-in version is off: it would
   // offer seeking on live radio. Hermes' own keyboard shortcuts go through commands, untouched.
@@ -1349,6 +1507,7 @@ export async function initPlayer(ctx) {
   // expose for views (library picker, playlist save, agent settings)
   window.revampPlayerApi = api;
   api.setSavedSettings = (s) => { saved.settings = { ...saved.settings, ...s }; stagePersist({ settings: saved.settings }); };
+  api.mainVisualizerPrefs = () => mainVisPrefs(saved.settings);
   api.getSettings = () => ({ ...saved.settings });
   api.nowStatus = () => safe(() => currentInfo().status) || "STOPPED"; // PLAYING / PAUSED / STOPPED
   api.openSaveQueueModal = openSaveQueue;
@@ -1407,10 +1566,41 @@ export async function initPlayer(ctx) {
     handleCommand,
     (evs, bulk) => handleAgentEvents(evs, bulk),
     () => window.revampRefreshView?.(), // library changed
-    (state) => { if (state?.settings) { saved.settings = state.settings; } }, // state broadcast: adopt settings
+    (state) => { if (state?.settings) { saved.settings = state.settings; applyMainVis(); } }, // state broadcast: adopt settings
   );
 
   return api;
+}
+
+// Cycle Webamp's analyzer mode to the saved one. Only TOGGLE_VISUALIZER_STYLE
+// exists; the index is 0 spectrum, 1 oscilloscope, 2 off.
+function alignMainVisMode(webamp, settings) {
+  const want = MAIN_VIS_MODES.indexOf(mainVisPrefs(settings).mode);
+  if (want < 0) return;
+  for (let guard = 0; guard < MAIN_VIS_MODES.length; guard++) {
+    let style = 0;
+    try { style = webamp.store.getState().display.visualizerStyle ?? 0; } catch { return; }
+    if (style === want) return;
+    try { webamp.store.dispatch({ type: "TOGGLE_VISUALIZER_STYLE" }); } catch { return; }
+  }
+}
+
+// The bar/scope instance lives in the React hook list above the canvas.
+function visInstance(canvas) {
+  const key = Object.keys(canvas).find((k) => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+  if (!key) return null;
+  let fiber = canvas[key];
+  for (let depth = 0; fiber && depth < 15; depth += 1, fiber = fiber.return) {
+    let hook = fiber.memoizedState;
+    for (let hops = 0; hook && hops < 40; hops += 1, hook = hook.next) {
+      const state = hook.memoizedState;
+      const candidates = [state, Array.isArray(state) ? state[0] : null, state?.current];
+      for (const candidate of candidates) {
+        if (candidate && typeof candidate.paintFrame === "function" && candidate._vis) return candidate;
+      }
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- utils

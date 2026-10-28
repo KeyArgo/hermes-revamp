@@ -1,7 +1,7 @@
 name: revamp
 label: REVamp
 kind: standalone
-version: 1.0.0-alpha.3
+version: 1.0.0-alpha.4
 author: Argo
 description: >
   REVamp is a Winamp-style music, audiobook and radio player for Hermes, with

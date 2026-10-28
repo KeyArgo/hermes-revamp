@@ -1,8 +1,11 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { isPlayingStatus } from '../hooks/register'
+import { isPlayingStatus, transportLabels } from '../hooks/register'
 
-// The band shows ⏸ while music plays and ▶ while it is paused (2026-10-25: it always showed ▶,
-// because the player sends PLAYING in capitals).
+test('transport buttons use plain-text labels (glyphs are blank in many terminal fonts)', () => {
+  expect(transportLabels(true)).toEqual({ prev: 'Prev', toggle: 'Pause', next: 'Next' })
+  expect(transportLabels(false).toggle).toBe('Play')
+})
+
 test('play state is read in any case', async () => {
   expect(isPlayingStatus('PLAYING')).toBe(true)
   expect(isPlayingStatus('playing')).toBe(true)

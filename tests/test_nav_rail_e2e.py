@@ -225,15 +225,18 @@ def assert_round2_geometry(page: Page):
         assert main["top"] >= stage["top"] - 1, {"main": main, "stage": stage}
 
 
-@pytest.mark.parametrize("width,expected,embed", [(700, 56, False), (1200, 216, False)])
-def test_nav_visible_and_clickable(server, tmp_path, width, expected, embed):
-    page = Page(free_port(), width, 800, f"http://127.0.0.1:{server}/", SHOT_DIR if width < 900 else tmp_path)
+@pytest.mark.parametrize("width", [240, 400, 700, 1000])
+@pytest.mark.parametrize("control", [False, True])
+def test_nav_visible_and_clickable_at_every_supported_width(server, tmp_path, width, control):
+    """Every rail item remains reachable in both the full page and Frame control page."""
+    query = "?control=1" if control else ""
+    page = Page(free_port(), width, 800, f"http://127.0.0.1:{server}/{query}", SHOT_DIR if width < 900 else tmp_path)
     try:
         state = nav_state(page)
         assert state["sidebarHidden"] is False
-        assert state["sidebarWidth"] == expected, state
+        assert state["sidebarWidth"] > 0, state
         views = [b["view"] for b in state["navButtons"]]
-        assert views == ["library", "books", "focus", "radio", "playlists", "skins", "agent"]
+        assert views == ["hermes-radio", "library", "books", "focus", "radio", "playlists", "skins", "agent"]
         assert all(b["visible"] for b in state["navButtons"]), state
         assert all(b["label"] for b in state["navButtons"])
 
@@ -247,7 +250,7 @@ def test_nav_visible_and_clickable(server, tmp_path, width, expected, embed):
         page.eval("document.querySelector('#nav button[data-view=books]').focus()")
         assert page.eval("document.activeElement?.dataset.view") == "books"
 
-        page.screenshot(f"nav-{width}.png")
+        page.screenshot(f"nav-{width}{'-control' if control else ''}.png")
         if width < 900:
             assert_round2_geometry(page)
             page.screenshot(f"v2-{width}.png")

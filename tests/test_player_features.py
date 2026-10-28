@@ -56,6 +56,15 @@ def test_likes_like_unlike_list_and_persist(server):
     assert server.client.get("/api/likes")[2]["ids"] == [b]
 
 
+def test_state_settings_put_merges_one_key(server):
+    c = server.client
+    assert c.put("/api/state", {"settings": {"first": "kept", "second": 2}})[0] == 200
+    code, _, state = c.put("/api/state", {"settings": {"second": 3}})
+    assert code == 200
+    assert state["settings"]["first"] == "kept"
+    assert state["settings"]["second"] == 3
+
+
 def test_likes_validation(server):
     _wait_scanned(server)
     assert server.client.post("/api/likes", {})[0] == 400

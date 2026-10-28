@@ -31,7 +31,7 @@ from .config import (data_dir, library_dirs, library_dirs_custom, library_folder
 
 logger = logging.getLogger("revamp.server")
 
-VERSION = "1.0.0-alpha.3"
+VERSION = "1.0.0-alpha.4"
 APP_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = APP_ROOT / "web"
 
@@ -236,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
         qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
 
         if path == "/api/health" and method == "GET":
-            return self._send_json({"app": "revamp", "version": VERSION, "build": web_build()})
+            return self._send_json(_health_payload(self.server))
 
         if path.startswith("/api/"):
             if not self._token_ok():
@@ -350,6 +350,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(pl)
         if path == "/api/radio/presets":
             return self._send_json(radio.presets())
+        if path == "/api/radio/hermes":
+            return self._send_json(radio.hermes_lineup())
         if path == "/api/radio/popular":
             return self._send_json(radio.popular(
                 limit=_int_qs(qs, "limit", radio.POPULAR_LIMIT, 1, 200),
@@ -469,6 +471,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(_set_liked(track_id, liked))
             except store.StoreWriteError as exc:
                 return self._err(500, str(exc))
+        if path == "/api/library/duration":
+            # The player measured a real length (Webamp / <audio>). Token-protected
+            # like every other /api route. Chapters still come from ffprobe.
+            tid = body.get("id") if body.get("id") is not None else body.get("track_id")
+            if isinstance(tid, str) and tid.startswith("local:track:"):
+                tid = tid[len("local:track:"):]
+            if not isinstance(tid, str) or not tid.strip():
+                return self._err(400, "id required")
+            tid = tid.strip()
+            if library.get_track(tid) is None:
+                return self._err(404, "no such track")
+            stored = library.set_learned_duration(tid, body.get("duration"))
+            if stored is None:
+                return self._err(400, "duration must be a positive number")
+            return self._send_json({"ok": True, "id": tid, "duration": stored})
         if path == "/api/library/rescan":
             library.scan_async(library_dirs())
             return self._send_json({"started": True})
@@ -481,6 +498,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body.get("items", []), list):
                 return self._err(400, "items must be a list")
             pl = playlists.create_playlist(name, body.get("items") or [])
+            HUB.broadcast("playlists", {"action": "created", "id": pl["id"]})
             return self._send_json(pl, 201)
         if path == "/api/playlists/import":
             name = str(body.get("name") or "").strip()
@@ -492,7 +510,14 @@ class Handler(BaseHTTPRequestHandler):
                                             body.get("origin_dir"))
             if out is None:
                 return self._err(400, "bad import (need name, format m3u|pls, text)")
+            HUB.broadcast("playlists", {"action": "created", "id": out["id"]})
             return self._send_json(out, 201)
+        if path == "/api/shutdown-for-upgrade":
+            # Authenticated above.  Never use this path to touch an arbitrary listener:
+            # callers first prove this is REVamp through /api/health.
+            threading.Thread(target=_shutdown_for_upgrade, args=(self.server,),
+                             name="revamp-upgrade-shutdown", daemon=True).start()
+            return self._send_json({"ok": True})
         if path == "/api/radio/favorites":
             try:
                 st = radio.add_favorite(body)
@@ -580,9 +605,16 @@ class Handler(BaseHTTPRequestHandler):
             if bad:  # junk (volume "loud", playlist "oops") must never reach state.json
                 return self._err(400, "invalid state field(s): " + ", ".join(bad))
             try:
-                return self._send_json(store.update(partial))
+                updated = store.update(partial)
             except store.StoreWriteError as exc:
                 return self._err(500, str(exc))
+            if any(k in partial for k in ("playlist", "current_index", "settings")):
+                HUB.broadcast("state", {
+                    "playlist": updated.get("playlist"),
+                    "current_index": updated.get("current_index"),
+                    "settings": updated.get("settings"),
+                })
+            return self._send_json(updated)
         if path == "/api/likes":
             # The Liked list's editor: remove and reorder hearts in one go.
             ids = body.get("ids")
@@ -623,6 +655,7 @@ class Handler(BaseHTTPRequestHandler):
                                             body.get("name"), body.get("items"))
             if out is None:
                 return self._err(404, "no such playlist")
+            HUB.broadcast("playlists", {"action": "updated", "id": out["id"]})
             return self._send_json(out)
         return self._err(404, "unknown route")
 
@@ -648,6 +681,7 @@ class Handler(BaseHTTPRequestHandler):
             ok = playlists.delete_playlist(path[len("/api/playlists/"):])
             if not ok:
                 return self._err(404, "no such playlist")
+            HUB.broadcast("playlists", {"action": "deleted", "id": path[len("/api/playlists/"): ]})
             return self._send_json({"ok": True})
         return self._err(404, "unknown route")
 
@@ -1148,13 +1182,24 @@ def _fs_dirs_handler(request: "Handler", raw_path: str) -> None:
 # Server lifecycle
 # ---------------------------------------------------------------------------
 
-def _probe_health(port: int) -> Optional[dict]:
+def _health_payload(srv: Any) -> dict:
+    return {"app": "revamp", "version": getattr(srv, "revamp_version", VERSION),
+            "build": getattr(srv, "revamp_build", web_build()), "pid": os.getpid(),
+            "started_at": getattr(srv, "revamp_started_at", time.time()),
+            "owner": getattr(srv, "revamp_owner", "plugin")}
+
+
+def _probe_health(port: int, token: Optional[str] = None, timeout: float = 2.0) -> Optional[dict]:
     """The /api/health payload of a Revamp on *port*, or None."""
     import urllib.request
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health",
-                                    timeout=1.5) as resp:
-            return json.loads(resp.read(4096).decode("utf-8"))
+        req = urllib.request.Request(f"http://127.0.0.1:{int(port)}/api/health")
+        req.add_header("Accept", "application/json")
+        if token:
+            req.add_header("X-Revamp-Token", token)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read(4096).decode("utf-8-sig"))
+            return payload if isinstance(payload, dict) and payload.get("app") == "revamp" else None
     except Exception:
         return None
 
@@ -1167,12 +1212,18 @@ def _foreign_holder(port: int) -> bool:
         return False
 
 
-def build_server(port: Optional[int] = None, data: Optional[str] = None) -> ThreadingHTTPServer:
+def build_server(port: Optional[int] = None, data: Optional[str] = None,
+                 version: Optional[str] = None, build: Optional[str] = None,
+                 owner: str = "plugin") -> ThreadingHTTPServer:
     """Construct (not start) the ThreadingHTTPServer; daemon threads."""
     if data:
         os.environ["REVAMP_HOME"] = data
     srv = ThreadingHTTPServer(("127.0.0.1", int(port or setting("port"))), Handler)
     srv.daemon_threads = True
+    srv.revamp_version = version or VERSION
+    srv.revamp_build = build or web_build()
+    srv.revamp_owner = "service" if owner == "service" else "plugin"
+    srv.revamp_started_at = time.time()
     return srv
 
 
@@ -1234,7 +1285,41 @@ def web_build() -> str:
     return _BUILD[1]
 
 
-def ensure_server(port: Optional[int] = None) -> Optional[int]:
+def _version_key(value: Any) -> Tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", str(value))[:3]) or (0,)
+
+
+def _request_upgrade_shutdown(port: int, token: str) -> bool:
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{int(port)}/api/shutdown-for-upgrade",
+                                     data=b"{}", method="POST")
+        req.add_header("Content-Type", "application/json; charset=utf-8")
+        req.add_header("X-Revamp-Token", token)
+        with urllib.request.urlopen(req, timeout=2.0) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def _wait_for_port_release(port: int, timeout: float = 3.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _foreign_holder(port):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _shutdown_for_upgrade(srv: ThreadingHTTPServer) -> None:
+    """Release the listener after its acknowledgement has reached the upgrader."""
+    time.sleep(0.05)
+    srv.shutdown()
+    srv.server_close()
+
+
+def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
+                  version: Optional[str] = None, build: Optional[str] = None) -> Optional[int]:
     """Idempotently start the server. Returns the bound port, or None.
 
     If the port already serves a healthy Revamp, do nothing. If a foreign app
@@ -1242,19 +1327,38 @@ def ensure_server(port: Optional[int] = None) -> Optional[int]:
     """
     global _started, _owned
     port = int(port or setting("port"))
-    get_token()  # ensure the token file exists before any client reads it
+    token = get_token()  # ensure the token file exists before any client reads it
+    version = version or VERSION
+    build = build or web_build()
     with _lock:
         if _started:
             return port
         _started = True
+    # Health deliberately works before authentication; keeping the probe token-free
+    # also recognises a compatible instance while its token file is being rotated.
     health = _probe_health(port)
-    if health and health.get("app") == "revamp":
-        # Another process serves it, often a short-lived one (a cron run, a CLI
-        # call) that loaded the plugin too. When it exits the server goes with
-        # it, so keep watching and take over instead of trusting it forever.
-        logger.info("revamp: healthy server already on port %s; watching it", port)
-        _watch_owner(port)
-        return port
+    if health:
+        incumbent_owner = health.get("owner")
+        incumbent_version = _version_key(health.get("version"))
+        local_version = _version_key(version)
+        # Pre-handover servers only advertised ``app``.  They are compatible
+        # incumbents, but have no upgrade protocol metadata; watch and take
+        # over if they disappear instead of rejecting the caller outright.
+        legacy_incumbent = not any(health.get(key) for key in ("owner", "version", "build"))
+        should_yield = owner != "service" and incumbent_owner == "service" and incumbent_version >= local_version
+        should_upgrade = (local_version > incumbent_version or build != health.get("build") or
+                          (owner == "service" and incumbent_owner != "service"))
+        if should_upgrade and _request_upgrade_shutdown(port, token) and _wait_for_port_release(port):
+            health = None
+        elif legacy_incumbent or should_yield or not should_upgrade:
+            logger.info("revamp: healthy %s already owns port %s; watching it", incumbent_owner or "server", port)
+            _watch_owner(port)
+            return port
+        else:
+            logger.warning("revamp: healthy older REVamp on port %s would not hand over", port)
+            with _lock:
+                _started = False
+            return None
     if health is None and _foreign_holder(port):
         logger.warning(
             "revamp: port %s is held by a NON-Revamp app; set "
@@ -1264,7 +1368,7 @@ def ensure_server(port: Optional[int] = None) -> Optional[int]:
             _started = False
         return None
     try:
-        srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        srv = build_server(port, version=version, build=build, owner=owner)
     except OSError as exc:
         with _lock:
             _started = False
@@ -1309,7 +1413,9 @@ def main() -> None:
         os.environ["REVAMP_HOME"] = args.data
     if args.library:
         os.environ["REVAMP_LIBRARY_DIRS"] = os.pathsep.join(args.library)
-    port = ensure_server(args.port)
+    # The optional systemd unit is the durable owner.  Plugin-loaded instances
+    # yield to it when it is healthy at the same or a newer release.
+    port = ensure_server(args.port, owner="service")
     if port is None:
         raise SystemExit(2)
     # Standalone: scan synchronously once so the index is warm immediately.

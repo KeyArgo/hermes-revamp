@@ -103,7 +103,6 @@ const rects = `(() => {
     main: one('main-window'), eq: one('equalizer-window'), pl: one('playlist-window'),
     milk: m && m.width > 2 ? { left: Math.round(m.left), top: Math.round(m.top), right: Math.round(m.right), bottom: Math.round(m.bottom), width: Math.round(m.width), height: Math.round(m.height) } : null,
     bg: getComputedStyle(document.body).backgroundColor,
-    button: document.getElementById('float-milkdrop') ? document.getElementById('float-milkdrop').getAttribute('aria-pressed') : null,
     fit: window.__revampFit || null,
     inner: { w: window.innerWidth, h: window.innerHeight },
   };
@@ -171,7 +170,7 @@ try {
   })()`);
   check("desktop player does not drag inside the window", dragged && !dragged.missing && dragged.moved < 2, JSON.stringify(dragged));
   check("desktop background is dark", before.bg === "rgb(11, 14, 20)", before.bg);
-  check("desktop has a MilkDrop control", before.button === "false" || before.button === "true", String(before.button));
+  check("desktop uses the Winamp menu for MilkDrop", !document.getElementById('float-milkdrop') && !!document.querySelector('#main-window #option'));
   check("desktop stack is pinned with no offset", before.main && before.eq && before.pl && Math.abs(before.main.left) <= 2 && Math.abs(before.main.top) <= 2 && Math.abs(before.eq.top - before.main.bottom) <= 8 && Math.abs(before.pl.top - before.eq.bottom) <= 8, JSON.stringify(before));
   const tightW = before.pl.right;
   const tightH = before.pl.bottom;
@@ -193,7 +192,7 @@ try {
   }, "milkdrop beside the stack", 5000);
   const withViz = await page.eval(rects);
   check("MilkDrop sits beside the player at the same height", withViz.milk && Math.abs(withViz.milk.left - withViz.main.right) <= 3 && Math.abs(withViz.milk.top - withViz.main.top) <= 3 && Math.abs(withViz.milk.height - (withViz.pl.bottom - withViz.main.top)) <= 3, JSON.stringify(withViz.milk));
-  check("MilkDrop button shows on", withViz.button === "true", String(withViz.button));
+  check("MilkDrop stays in the Winamp menu", !document.getElementById('float-milkdrop') && !!document.querySelector('#main-window #option'));
   await page.size(withViz.milk.right, Math.max(withViz.pl.bottom, withViz.milk.bottom));
   await sleep(700);
   await page.snap("pop-out-desktop-milkdrop.png");

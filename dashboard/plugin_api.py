@@ -130,6 +130,12 @@ def state() -> Response:
     return _proxied(*_request("GET", "/api/state"))
 
 
+@router.put("/state")
+def state_update(body: dict | None = None) -> Response:
+    """Write a partial player state through to the core server."""
+    return _proxied(*_request("PUT", "/api/state", body=body or {}))
+
+
 @router.post("/command")
 def command(body: dict | None = None) -> Response:
     return _proxied(*_request("POST", "/api/command", body=body or {}))

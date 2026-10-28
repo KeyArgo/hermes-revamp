@@ -2,7 +2,9 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-check_root=$(mktemp -d "${TMPDIR:-/tmp}/revamp-fresh.XXXXXX")
+scratch_root=${TMPDIR:-"$HOME/.cache/revamp-gate"}
+mkdir -p "$scratch_root"
+check_root=$(mktemp -d "$scratch_root/revamp-fresh.XXXXXX")
 server_pid=""
 
 cleanup() {

@@ -10,6 +10,7 @@ import { render as renderFocus } from "./views/focus.js";
 import { maybeOfferRestore } from "./views/backups.js";
 import { toast } from "./views/modal.js";
 import { mountThemeButton } from "./theme.js";
+import { labelHostPlace, setHostPlayerPlace } from "./host-place.js";
 
 // ---------------------------------------------------------------- token
 const TOKEN =
@@ -58,6 +59,7 @@ export function authedUrl(path, extra = {}) {
 
 // ---------------------------------------------------------------- shell: nav + views
 const VIEWS = [
+  { id: "hermes-radio", icon: "✦", label: "Hermes Radio", render: renderRadio },
   { id: "library", icon: "♬", label: "Music", render: renderMusic }, // id kept: the file picker opens it
   { id: "books", icon: "📖", label: "Books", render: renderBooks },
   { id: "focus", icon: "◎", label: "Focus", render: renderFocus },
@@ -110,6 +112,8 @@ function buildNav() {
   for (const v of VIEWS) {
     const b = document.createElement("button");
     b.dataset.view = v.id;
+    b.title = v.label;
+    b.setAttribute("aria-label", v.label);
     b.innerHTML = `<span class="icon" aria-hidden="true">${v.icon}</span><span class="label">${v.label}</span>`;
     b.addEventListener("click", () => setView(v.id));
     nav.appendChild(b);
@@ -170,14 +174,14 @@ export function pushTicker(entries) {
   while (track.children.length > 30) track.firstChild.remove();
 }
 
-export function setApprovalWaiting(on) {
+export function setApprovalWaiting(on, reason = "") {
   document.body.classList.toggle("approval-wait", !!on);
-  if (on) document.getElementById("approval-banner").textContent = "⏸ Waiting for your approval…"; // Hermes or Claude Code
+  if (on) document.getElementById("approval-banner").textContent = `⏸ ${reason || "Waiting for your approval…"}`;
 }
 export function setAgentBusy(on) { document.body.classList.toggle("agent-busy", !!on); }
 
 // ---------------------------------------------------------------- SSE + fallback polling
-function connectEvents(onCommand, onAgent, onLibrary, onState) {
+function connectEvents(onCommand, onAgent, onLibrary, onState, onStatus) {
   let es = null;
   let backoff = 1000;
   let pollTimer = null;
@@ -186,6 +190,7 @@ function connectEvents(onCommand, onAgent, onLibrary, onState) {
   const startPolling = () => {
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
+      if (document.hidden) return;
       try {
         const events = await apiGet("/api/agent_events");
         if (Array.isArray(events)) onAgent(events.slice(-20), true);
@@ -198,9 +203,10 @@ function connectEvents(onCommand, onAgent, onLibrary, onState) {
     if (closed) return;
     try { es?.close(); } catch { /* ignore */ }
     es = new EventSource(authedUrl("/api/events"));
-    es.onopen = () => { backoff = 1000; setConn(true); stopPolling(); };
+    es.onopen = () => { backoff = 1000; setConn(true); stopPolling(); onStatus?.(true); };
     es.onerror = () => {
       setConn(false, "reconnecting…");
+      onStatus?.(false);
       startPolling();
       es.close();
       setTimeout(connect, backoff);
@@ -211,6 +217,8 @@ function connectEvents(onCommand, onAgent, onLibrary, onState) {
     es.addEventListener("agent", handler((ev) => onAgent([ev], false)));
     es.addEventListener("library", handler(onLibrary));
     es.addEventListener("state", handler(onState));
+    // Agent/API playlist writes arrive here too, so an already-open Playlists view reloads.
+    es.addEventListener("playlists", handler(() => window.dispatchEvent(new Event("revamp:playlists-changed"))));
     // Likes made anywhere (e.g. the Hermes mini player): player.js keeps the hearts in step.
     es.addEventListener("likes", handler((d) => window.dispatchEvent(new CustomEvent("revamp:likes-sse", { detail: d }))));
     // A backup restore (or import) rewrote the data dir: start fresh so every view re-reads it.
@@ -273,6 +281,7 @@ function setMode(next, placement) {
   lastBox = "";
   applyLayoutClasses();
   player?.setVisualizerPlacement?.(placement);
+  if (placement) setHostPlayerPlace(labelHostPlace(placement));
   reportBox();
 }
 
@@ -559,27 +568,32 @@ watchContextMenus();
 
 function mountDesktopFloat() {
   if (!desktopFloat) return;
-  const host = document.getElementById("webamp-host");
-  if (host && !document.getElementById("float-milkdrop")) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.id = "float-milkdrop";
-    btn.className = "float-milkdrop";
-    btn.textContent = "MilkDrop";
-    btn.title = "Show or hide MilkDrop";
-    btn.setAttribute("aria-pressed", String(!!player?.visualizerOpen?.()));
-    btn.addEventListener("click", () => {
-      player?.toggleVisualizer?.();
-      btn.setAttribute("aria-pressed", String(!!player?.visualizerOpen?.()));
-      kickDesktopFit();
-    });
-    host.appendChild(btn);
-    setInterval(() => btn.setAttribute("aria-pressed", String(!!player?.visualizerOpen?.())), 300);
-  }
   window.addEventListener("revamp:desktop-layout", kickDesktopFit);
   kickDesktopFit();
   // Playlist resize and a late Webamp centering pass both change the stack.
-  setInterval(fitDesktopWindow, 1000);
+  const fitIfShown = () => { if (!document.hidden) fitDesktopWindow(); };
+  setInterval(fitIfShown, 1000);
+  document.addEventListener("visibilitychange", fitIfShown);
+}
+
+function installMilkdropMenuKeyboardAccess() {
+  const option = document.querySelector("#main-window #option");
+  if (option && !option.dataset.revampKeyboard) {
+    option.dataset.revampKeyboard = "true";
+    option.tabIndex = 0;
+    option.setAttribute("role", "button");
+    option.setAttribute("aria-label", "Winamp menu");
+    option.title = "Winamp Menu (MilkDrop: Ctrl+Shift+M)";
+    option.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault(); option.click();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.key.toLowerCase() !== "m") return;
+    if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
+    e.preventDefault(); player?.toggleVisualizer?.();
+  });
 }
 
 // Waveform feed for the host's status-bar meter: {type: "revamp:wave", on} in,
@@ -628,7 +642,13 @@ async function checkForUpdate() {
     toast("REVamp was updated. It refreshes itself when playback stops.", { kind: "info", ttl: 10000 });
   }
 }
-setInterval(checkForUpdate, 20000);
+function runWhileVisible(ms, fn) {
+  const tick = () => { if (!document.hidden) fn(); };
+  const timer = setInterval(tick, ms);
+  document.addEventListener("visibilitychange", tick);
+  return timer;
+}
+runWhileVisible(20000, checkForUpdate);
 
 window.addEventListener("message", (e) => {
   if (e.source !== window.parent || !e.data || typeof e.data !== "object") return;
@@ -642,7 +662,7 @@ window.addEventListener("message", (e) => {
   }
   if (e.data.type === "revamp:wave") {
     clearInterval(waveTimer);
-    waveTimer = e.data.on ? setInterval(waveFrame, 1000 / 12) : null;
+    waveTimer = e.data.on ? setInterval(() => { if (!document.hidden) waveFrame(); }, 1000 / 12) : null;
   }
 });
 window.addEventListener("resize", () => {
@@ -651,7 +671,7 @@ window.addEventListener("resize", () => {
   if (desktopFloat) kickDesktopFit();
 });
 // Windows open/close/shade/move inside Webamp; a cheap poll keeps the frame fitted.
-setInterval(reportBox, 400);
+runWhileVisible(400, reportBox);
 
 // Control mode has no local player: views (Music, Books, Radio, Skins, likes) still call
 // window.revampPlayerApi, so give them a stand-in that drives the one live player through
@@ -711,25 +731,44 @@ function mountControlStage() {
   // a small live queue here instead. Its edits are ordinary server commands.
   const queue = document.createElement("div");
   queue.style.cssText = "min-width:0;max-height:260px;overflow:auto;padding:8px;border:1px solid var(--line,#303746);border-radius:10px;background:var(--panel,#151a27);font-size:12px";
+  const paintQueue = (list) => {
+    queue.replaceChildren();
+    const title = document.createElement("strong"); title.textContent = `Queue · ${list.length}`; queue.append(title);
+    list.slice(0, 12).forEach((item, index) => {
+      const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;align-items:center;margin-top:5px";
+      const play = document.createElement("button"); play.className = "btn btn-ghost"; play.textContent = item.title || "Untitled"; play.style.cssText = "flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      play.addEventListener("click", () => apiPost("/api/command", { action: "play_index", index }));
+      const remove = document.createElement("button"); remove.className = "btn btn-ghost"; remove.textContent = "×";
+      remove.addEventListener("click", async () => { await apiPost("/api/command", { action: "queue_remove", index }); refreshQueue(); });
+      row.append(play, remove); queue.append(row);
+    });
+  };
   const refreshQueue = async () => {
     try {
       const state = await apiGet("/api/state"), list = Array.isArray(state.playlist) ? state.playlist : [];
-      queue.replaceChildren();
-      const title = document.createElement("strong"); title.textContent = `Queue · ${list.length}`; queue.append(title);
-      list.slice(0, 12).forEach((item, index) => {
-        const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;align-items:center;margin-top:5px";
-        const play = document.createElement("button"); play.className = "btn btn-ghost"; play.textContent = item.title || "Untitled"; play.style.cssText = "flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-        play.addEventListener("click", () => apiPost("/api/command", { action: "play_index", index }));
-        const remove = document.createElement("button"); remove.className = "btn btn-ghost"; remove.textContent = "×";
-        remove.addEventListener("click", async () => { await apiPost("/api/command", { action: "queue_remove", index }); refreshQueue(); });
-        row.append(play, remove); queue.append(row);
-      });
+      paintQueue(list);
     } catch { /* the connection pill already carries the offline state */ }
   };
+  // The live player already publishes queue changes on the event stream. Poll
+  // /api/state only while that stream is down, and not while the page is hidden.
+  let queuePoll = null;
+  const armQueuePoll = (streamUp) => {
+    clearInterval(queuePoll);
+    queuePoll = null;
+    if (streamUp) return;
+    queuePoll = setInterval(() => { if (!document.hidden) refreshQueue(); }, 15000);
+  };
+  connectEvents(() => {}, () => {}, () => {}, (state) => {
+    if (Array.isArray(state?.playlist)) paintQueue(state.playlist);
+  }, armQueuePoll);
   stage.style.cssText += ";position:relative;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px";
-  stage.append(queue); refreshQueue(); setInterval(refreshQueue, 1500);
+  stage.append(queue); refreshQueue();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshQueue(); });
   window.addEventListener("message", (e) => {
-    if (e.source === window.parent && e.data?.type === "revamp:control-place") render(e.data.place);
+    if (e.source === window.parent && e.data?.type === "revamp:control-place") {
+      setHostPlayerPlace(labelHostPlace(e.data.place));
+      render(e.data.place);
+    }
   });
   render();
 }
@@ -772,6 +811,7 @@ async function boot() {
     connectEvents, toast, setView,
   });
   mountDesktopFloat();
+  installMilkdropMenuKeyboardAccess();
   setView("library");
   // Empty start with backups on disk? Offer to restore before the user rebuilds anything.
   maybeOfferRestore(viewApi).catch((e) => console.warn("restore offer", e));

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import socket
+import threading
 import time
 
 import pytest
@@ -177,3 +178,33 @@ def test_orphan_lease_survives_unverified_process(tmp_path, monkeypatch):
     (tmp_path / window.LEASE).write_text(json.dumps({"pid": 999999, "ts": 0}))
     assert window.reap_orphan() is False
     assert (tmp_path / window.LEASE).exists()
+
+
+def test_health_identifies_revamp_and_a_newer_server_can_take_over(tmp_path, monkeypatch):
+    """Two REVamp servers on one free port hand over without mistaking either for foreign."""
+    from revamp_core import server
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    old = server.build_server(port=port, data=str(tmp_path), version="0.9.0", build="old", owner="plugin")
+    old_thread = threading.Thread(target=old.serve_forever, daemon=True)
+    old_thread.start()
+    try:
+        health = server._probe_health(port)
+        assert health and health["app"] == "revamp"
+        assert {"version", "build", "pid", "started_at"} <= set(health)
+        assert server.ensure_server(port, owner="service", version="1.0.0", build="new") == port
+        deadline = time.time() + 3
+        while time.time() < deadline and server._probe_health(port).get("build") != "new":
+            time.sleep(0.05)
+        assert server._probe_health(port)["build"] == "new"
+    finally:
+        server._request_upgrade_shutdown(port, server.get_token())
+        server._wait_for_port_release(port)
+        server._started = False
+        server._owned = False
+        old.shutdown()
+        old.server_close()

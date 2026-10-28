@@ -1,12 +1,12 @@
 // Layout overflow probe for the full player page: which containers clip their
-// content at a given viewport, and by how much. Run: node tests/probe_layout.mjs
+// content at a given viewport, and by how much. Run: node tools/probes/probe_layout.mjs
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
-const outDir = process.env.REVAMP_PROBE_DIR || new URL("../out/probe-layout", import.meta.url).pathname;
+const root = resolve(new URL("../..", import.meta.url).pathname);
+const outDir = process.env.REVAMP_PROBE_DIR || new URL("../../out/probe-layout", import.meta.url).pathname;
 const browser = process.env.CHROME_BIN || [
   "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",

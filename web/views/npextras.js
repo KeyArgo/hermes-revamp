@@ -53,16 +53,6 @@ export function mount(api, viewApi) {
     if (!pane.hidden) loadLyrics(current.tid);
   });
 
-  // ---- visualizer (MilkDrop): always visible; pressed state follows the player
-  const vizBtn = document.createElement("button");
-  vizBtn.type = "button";
-  vizBtn.className = "btn sm np-visualizer";
-  vizBtn.textContent = "🌀 Visualizer";
-  vizBtn.setAttribute("aria-pressed", "false");
-  card.querySelector(".np-extras")?.appendChild(vizBtn);
-  const paintViz = () => vizBtn.setAttribute("aria-pressed", String(!!api.visualizerOpen?.()));
-  vizBtn.addEventListener("click", () => { api.toggleVisualizer?.(); paintViz(); });
-
   // ---- state per item
   let current = { key: null, tid: null, book: false, item: null };
   let chapters = [];
@@ -154,9 +144,9 @@ export function mount(api, viewApi) {
       if (chapSel.value !== String(i)) chapSel.value = String(i);
     }
   };
-  // Lyrics follow the music more finely than the 2 s now-playing tick; the visualizer
-  // button keeps its pressed state true to the player (its ✕, commands, messages).
+  // Lyrics follow the music more finely than the 2 s now-playing tick.
   setInterval(() => {
+    if (document.hidden) return;
     paintViz();
     if (pane.hidden) return;
     const m = api.webamp?.store?.getState?.()?.media;

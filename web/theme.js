@@ -5,7 +5,10 @@
 
 const KEY = "revamp.theme.v1";
 import { setFx, FX_KINDS } from "./fx.js";
+import { toast } from "./views/modal.js";
 const BG_KEY = "revamp.theme.bg.v1";
+// The host relay drops a background at 1.5M characters. Stay under that.
+export const BG_URL_LIMIT = 1_400_000;
 
 const THEMES = [
   { id: "auto", name: "Auto", swatch: ["#0b0e14", "#4cc2ff"], vars: null },
@@ -70,7 +73,7 @@ const LOOKS = [
   { id: "classic", name: "Classic", theme: "auto", grad: "theme", scene: "none", fx: "off", fxLevel: 2, thumb: "linear-gradient(135deg,#0b0e14,#1d3a52)" },
 ];
 
-const DEFAULTS = { theme: "aurora", grad: "aurora", accent: "", from: "#4cc2ff", to: "#b18cff", fx: "embers", fxLevel: 1, bgStrength: 0.8, scene: "lanterns", look: "lantern" };
+const DEFAULTS = { theme: "aurora", grad: "aurora", accent: "", from: "#4cc2ff", to: "#b18cff", fx: "off", fxLevel: 1, bgStrength: 0.8, scene: "lanterns", look: "lantern" };
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)");
 let bgData = null, explicitFx = false, bgNote = "", customOpen = false;
 try { bgData = localStorage.getItem(BG_KEY) || null; } catch { /* no storage */ }
@@ -86,6 +89,12 @@ const saveBg = () => toHost({ type: "revamp:theme-bg", bg: bgData });
 
 function load() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return { ...DEFAULTS }; }
+}
+
+/** For bug reports and diagnostics (look name, else colour scheme id). */
+export function getThemeSnapshot() {
+  const look = LOOKS.find((x) => x.id === state.look);
+  return look?.name || themeOf(state.theme).name || state.theme || "auto";
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* sandboxed or private: the host copy below still applies */ }
@@ -136,23 +145,65 @@ export function applyTheme() {
   setFx(REDUCED.matches && !explicitFx ? "off" : state.fx, state.fxLevel);
 }
 
-// Pick any picture (anime art, a wallpaper): shrunk to <=1280px JPEG so it fits in localStorage.
+// Re-encode until the data URL is under the host's relay limit. `measure(edge, quality)`
+// returns the JPEG data URL at that longest-edge and quality.
+export function shrinkDataUrl(measure, limit = BG_URL_LIMIT) {
+  let edge = 1280;
+  let quality = 0.82;
+  let best = "";
+  for (let i = 0; i < 16; i++) {
+    const url = measure(edge, quality);
+    if (typeof url !== "string") return null;
+    best = url;
+    if (url.length < limit) return url;
+    if (quality > 0.5) quality = Math.round((quality - 0.12) * 100) / 100;
+    else if (edge > 320) edge = Math.max(320, Math.round(edge * 0.72));
+    else break;
+  }
+  return best.length < limit ? best : null;
+}
+
+function paintJpeg(img, edge, quality) {
+  const k = Math.min(1, edge / Math.max(img.width, img.height, 1));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(img.width * k));
+  c.height = Math.max(1, Math.round(img.height * k));
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", quality);
+}
+
+const BG_TOO_BIG = "That image is still too large to use as a background.";
+
+// Keep a picture only when its data URL fits. Otherwise say so — the host would
+// drop an oversized background without telling anyone.
+export function takeBackgroundUrl(url) {
+  if (typeof url !== "string" || url.length >= BG_URL_LIMIT) {
+    bgNote = BG_TOO_BIG;
+    toast(BG_TOO_BIG, { kind: "error" });
+    return false;
+  }
+  bgData = url;
+  bgNote = "";
+  state.scene = "custom";
+  state.look = "";
+  try { localStorage.setItem(BG_KEY, bgData); } catch { if (!hosted) bgNote = "Too big to remember after a reload."; }
+  saveBg();
+  return true;
+}
+
+// Pick any picture (anime art, a wallpaper): shrunk and re-encoded until the data URL
+// fits the host relay. If it still cannot, the viewer hears about it.
 function pickImage(file, done) {
   if (!file || !/^image\//.test(file.type)) return;
-  const url = URL.createObjectURL(file), img = new Image();
+  const objectUrl = URL.createObjectURL(file), img = new Image();
   img.onload = () => {
-    const k = Math.min(1, 1280 / Math.max(img.width, img.height));
-    const c = document.createElement("canvas");
-    c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    URL.revokeObjectURL(url);
-    bgData = c.toDataURL("image/jpeg", 0.82); bgNote = ""; state.scene = "custom"; state.look = "";
-    try { localStorage.setItem(BG_KEY, bgData); } catch { if (!hosted) bgNote = "Too big to remember after a reload."; }
-    saveBg();
+    URL.revokeObjectURL(objectUrl);
+    const url = shrinkDataUrl((edge, quality) => paintJpeg(img, edge, quality));
+    takeBackgroundUrl(url);
     done();
   };
-  img.onerror = () => { URL.revokeObjectURL(url); bgNote = "Could not read that image."; done(); };
-  img.src = url;
+  img.onerror = () => { URL.revokeObjectURL(objectUrl); bgNote = "Could not read that image."; done(); };
+  img.src = objectUrl;
 }
 
 // ---------------------------------------------------------------- picker UI

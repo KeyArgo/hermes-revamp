@@ -1,20 +1,14 @@
 name: tests
 
-# Linux and Windows run on every push. macOS minutes count 10x against the free
-# allowance on a private repo, so macOS runs only when started by hand
-# (Actions tab -> tests -> Run workflow) or once a week.
+# The release is supported on all three desktop platforms, so every push to
+# main exercises all three. Browser coverage is deliberately a separate Linux
+# job: it needs Chrome and websocket-client, neither of which should make the
+# fast unit-test matrix flaky.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-    inputs:
-      macos:
-        description: "Also run on macOS"
-        type: boolean
-        default: true
-  schedule:
-    - cron: "0 6 * * 1"
 
 jobs:
   pytest:
@@ -22,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.macos)) && '["ubuntu-latest","windows-latest","macos-latest"]' || '["ubuntu-latest","windows-latest"]') }}
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -39,9 +33,33 @@ jobs:
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
-      - run: python -m pip install pytest
+      - run: python -m pip install pytest websocket-client
       - name: Run tests
         env:
           REVAMP_HOME: ${{ runner.temp }}/revamp-home
           HERMES_HOME: ${{ runner.temp }}/hermes-home
-        run: python -m pytest -q
+        run: python -m pytest -q -p no:cacheprovider
+      - name: Run Node regression tests
+        if: runner.os != 'Windows'
+        run: for t in tests/*.test.mjs; do node --test "$t"; done
+
+  e2e:
+    name: browser e2e (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Chrome and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable ffmpeg
+          python -m pip install pytest websocket-client
+      - name: Run browser regressions
+        env:
+          CHROME_BIN: google-chrome
+          REVAMP_HOME: ${{ runner.temp }}/revamp-home
+          HERMES_HOME: ${{ runner.temp }}/hermes-home
+        run: python -m pytest -q -p no:cacheprovider tests/test_*e2e.py

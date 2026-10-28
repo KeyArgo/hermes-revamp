@@ -14,3 +14,9 @@ def test_every_outside_writer_announces_the_change():
     for rel in ("player.js", "views/library.js"):
         src = (WEB / rel).read_text(encoding="utf-8")
         assert 'dispatchEvent(new Event("revamp:playlists-changed"))' in src, rel
+
+
+def test_event_stream_forwards_playlist_changes_to_the_open_view():
+    src = (WEB / "app.js").read_text(encoding="utf-8")
+    assert 'es.addEventListener("playlists"' in src
+    assert 'new Event("revamp:playlists-changed")' in src

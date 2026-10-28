@@ -198,15 +198,17 @@ def test_cdp_refuses_a_non_local_debugger():
         window._cdp_calls("ws://example.com/devtools/browser/x", [("Target.getTargets", {})])
 
 
-def test_desktop_page_pins_player_and_offers_milkdrop():
+def test_desktop_page_pins_player_and_uses_the_winamp_menu_for_milkdrop():
     app = (REPO / "web" / "app.js").read_text(encoding="utf-8")
     player = (REPO / "web" / "player.js").read_text(encoding="utf-8")
     css = (REPO / "web" / "app.css").read_text(encoding="utf-8")
     assert "function floatLocksDrag" in app
     assert "function fitDesktopWindow" in app
-    assert 'btn.id = "float-milkdrop"' in app
+    assert "function installMilkdropMenuKeyboardAccess()" in app
+    assert 'document.querySelector("#main-window #option")' in app
+    assert 'id = "float-milkdrop"' not in app
     assert "api.layoutDesktop" in player
     assert 'return "milkdropOpenDesktop"' in player
     assert "visualizerPlacement !== \"desktop\"" in player or 'visualizerPlacement !== "desktop"' in player
     assert "float-desktop" in css and "#0b0e14" in css
-    assert ".float-milkdrop" in css
+    assert "float-milkdrop" not in css

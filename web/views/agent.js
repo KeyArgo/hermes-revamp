@@ -1,4 +1,7 @@
 // agent.js — Hermes event log + settings: duck on approval, duck level, ticker on/off.
+import { buildBugReportUrl, collectWebBugEnv, formatBugReportBody } from "../bug-report.js";
+import { getHostPlayerPlace } from "../host-place.js";
+import { getThemeSnapshot } from "../theme.js";
 import { toast } from "./modal.js";
 import { mountBackups } from "./backups.js";
 
@@ -55,8 +58,11 @@ export async function render(root, api) {
     pApi?.setSavedSettings?.(patch);
   };
 
-  box.appendChild(mkToggle("Duck volume on approval", "Fade music down while Hermes waits for your OK.", settings.duck_on_approval !== false,
+  box.appendChild(mkToggle("Chime and dip for approvals", "Briefly chime and lower music for a new approval you can act on.", settings.duck_on_approval === true,
     (v) => persist({ duck_on_approval: v })).row);
+  box.appendChild(mkToggle("Chime", "Play a short two-tone chime with the dip.", settings.duck_chime !== false,
+    (v) => persist({ duck_chime: v })).row);
+  box.appendChild(mkSlider("Dip length", settings.duck_dip_seconds ?? 2, 1, 5, 1, (v) => persist({ duck_dip_seconds: v })));
   box.appendChild(mkSlider("Duck level", settings.duck_level ?? 0.25, 0.05, 1, 0.05, (v) => persist({ duck_level: v })));
   root.appendChild(box);
 
@@ -68,6 +74,56 @@ export async function render(root, api) {
   const tickerRow = tickerToggle.row;
   tickerRow.style.borderBottom = "none";
   box.appendChild(tickerRow);
+
+  const bugBox = document.createElement("div");
+  bugBox.className = "setting-row";
+  bugBox.style.flexDirection = "column";
+  bugBox.style.alignItems = "flex-start";
+  bugBox.style.gap = "8px";
+  bugBox.style.marginTop = "10px";
+  bugBox.style.paddingTop = "10px";
+  bugBox.style.borderTop = "1px solid var(--line)";
+  const bugLab = document.createElement("label");
+  bugLab.textContent = "Report a bug";
+  const bugHint = document.createElement("div");
+  bugHint.className = "hint";
+  bugHint.textContent = "Opens a GitHub issue with your environment filled in. Nothing is sent until you submit it there.";
+  bugLab.appendChild(bugHint);
+  const bugActs = document.createElement("div");
+  bugActs.style.display = "flex";
+  bugActs.style.gap = "8px";
+  bugActs.style.flexWrap = "wrap";
+  const openBug = document.createElement("button");
+  openBug.type = "button";
+  openBug.className = "btn sm";
+  openBug.textContent = "Open GitHub issue";
+  const copyBug = document.createElement("button");
+  copyBug.type = "button";
+  copyBug.className = "btn sm btn-ghost";
+  copyBug.textContent = "Copy details";
+  const envForBug = () =>
+    collectWebBugEnv({
+      apiGet: api,
+      getTheme: getThemeSnapshot,
+      getPlace: getHostPlayerPlace,
+    });
+  openBug.addEventListener("click", async () => {
+    const env = await envForBug();
+    window.open(buildBugReportUrl(env), "_blank", "noopener,noreferrer");
+  });
+  copyBug.addEventListener("click", async () => {
+    const env = await envForBug();
+    const text = formatBugReportBody(env);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Bug details copied", { kind: "ok" });
+    } catch {
+      toast("Could not copy to the clipboard", { kind: "error" });
+    }
+  });
+  bugActs.append(openBug, copyBug);
+  bugBox.append(bugLab, bugActs);
+  box.appendChild(bugBox);
 
   // apply saved ticker visibility on load
   {
@@ -144,7 +200,16 @@ export async function render(root, api) {
   // live updates while the view is open (poll SSE-fed ring buffer lightly)
   const poll = setInterval(() => {
     if (!document.body.contains(log)) return clearInterval(poll);
+    if (document.hidden) return;
     load();
   }, 4000);
+  const onShow = () => {
+    if (!document.body.contains(log)) {
+      document.removeEventListener("visibilitychange", onShow);
+      return;
+    }
+    if (!document.hidden) load();
+  };
+  document.addEventListener("visibilitychange", onShow);
   await load();
 }

@@ -64,6 +64,14 @@ def test_update_mergeable_and_persist_oserror(box, monkeypatch):
     monkeypatch.setattr(store, "_atomic_write", real)
 
 
+def test_settings_patch_merges_and_null_deletes(box):
+    store.update({"settings": {"one": 1, "two": 2}})
+    state = store.update({"settings": {"one": 3}})["settings"]
+    assert state["one"] == 3 and state["two"] == 2
+    state = store.update({"settings": {"one": None}})["settings"]
+    assert "one" not in state and state["two"] == 2
+
+
 def test_heartbeat_staleness_and_report_playback(box):
     store.heartbeat({"title": "T", "kind": "stream", "media_kind": "stream",
                      "capabilities": ["seek", 7], "backend": None})

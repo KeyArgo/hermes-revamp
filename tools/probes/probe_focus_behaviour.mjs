@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const root = resolve(new URL("../..", import.meta.url).pathname);
 const browser = process.env.CHROME_BIN || ["/Applications/Brave Browser.app/Contents/MacOS/Brave Browser", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "chromium"].find((n) => spawnSync(n, ["--version"], { encoding: "utf8" }).status === 0);
 const sleep = (n) => new Promise((r) => setTimeout(r, n));
 const portOf = () => Number(execFileSync("python3", ["-c", "import socket;s=socket.socket();s.bind(('127.0.0.1',0));print(s.getsockname()[1]);s.close()"], { encoding: "utf8" }));

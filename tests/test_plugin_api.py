@@ -78,6 +78,13 @@ def test_library_tracks_clamps_limit(api):
     assert len(_json(api.library_tracks(q="", limit=100000))["tracks"]) <= 200
 
 
+def test_state_update_proxies_a_settings_patch(api):
+    assert _json(api.state_update({"settings": {"proxy_one": True}}))["settings"]["proxy_one"] is True
+    state = _json(api.state_update({"settings": {"proxy_two": True}}))
+    assert state["settings"]["proxy_one"] is True
+    assert state["settings"]["proxy_two"] is True
+
+
 def test_query_is_url_encoded(api):
     _wait_tracks(api, n=1)
     # '&' and '#' must not split or truncate the query string upstream

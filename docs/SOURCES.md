@@ -67,7 +67,7 @@ class PlexSource(sources.Source):
     def login_poll(self):            return {"state": "pending" | "done" | "expired"}
     def route(self, method, path, params, body): ...  # anything else (settings, server list)
 
-sources.register(PlexSource("4f1c", "https://plex.local:32400"))
+sources.register(PlexSource("4f1c", "https://plex.example.invalid:32400"))
 ```
 
 Only override what the source does; the rest answers 404. Raise `sources.SourceError(status, msg)`

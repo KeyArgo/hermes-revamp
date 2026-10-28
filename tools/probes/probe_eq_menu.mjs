@@ -1,12 +1,12 @@
 // Probe: the EQ presets menu, in the in-app homes, across viewport sizes.
-// Run: node tests/probe_eq_menu.mjs
+// Run: node tools/probes/probe_eq_menu.mjs
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
-const outDir = process.env.REVAMP_PROBE_DIR || new URL("../out/probe-menu", import.meta.url).pathname;
+const root = resolve(new URL("../..", import.meta.url).pathname);
+const outDir = process.env.REVAMP_PROBE_DIR || new URL("../../out/probe-menu", import.meta.url).pathname;
 const browser = process.env.CHROME_BIN || [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",

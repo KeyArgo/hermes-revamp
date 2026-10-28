@@ -28,7 +28,7 @@ REVamp keeps your library close while adding playlists, radio, lyrics, a MilkDro
 - Focus drone, sleep timer, synced LRCLIB lyrics, the MilkDrop visualizer (Butterchurn), and classic skins from the Winamp Skin Museum.
 - Media keys and lock-screen controls where the browser and OS expose them.
 - Hermes tools (`revamp_player`, `revamp_library`, `revamp_playlist`, and `revamp_radio`) plus `revampctl mcp` for other agent apps.
-- **Agent-aware:** a ticker shows what the agent is doing, and the music can dip while Hermes waits for your approval (Settings → REVamp → Music and approvals).
+- **Agent-aware:** a ticker shows what the agent is doing, and optional chime-and-dip alerts briefly flag approvals you can act on (Settings → REVamp → Music and approvals).
 
 ## Install in Hermes Desktop
 
@@ -44,7 +44,7 @@ For a checkout or a git URL, use Hermes’s git install flow:
 hermes plugins install https://github.com/KeyArgo/hermes-revamp
 ```
 
-REVamp requires Hermes Agent 0.22.5 or newer. **After installing, open Capabilities → Plugins in Hermes Desktop and make sure REVamp is switched on.** REVamp has two parts there: the agent part (under General) and the Desktop part (click the **Desktop** filter), which adds the sidebar entry, the player and the status-bar controls. Both should be on. Then open REVamp from the sidebar. `ffprobe` (from FFmpeg) enables richer tags, durations, and audiobook chapters. A Chrome/Chromium-family browser is only needed for the optional external pop-out window.
+REVamp requires Hermes Agent 0.22.5 or newer. **After installing, open Capabilities → Plugins in Hermes Desktop and make sure REVamp is switched on.** REVamp has two parts there: the agent part (under General) and the Desktop part (click the **Desktop** filter), which adds the sidebar entry, the player and the status-bar controls. Both should be on. Then open REVamp from the sidebar. Tags and durations are read in Python, so FFmpeg is not required for those. `ffprobe` (from FFmpeg) is optional and is what audiobook chapters use. A Chrome/Chromium-family browser is only needed for the optional external pop-out window.
 
 ## Use from other agent apps
 
@@ -72,7 +72,7 @@ When Hermes loads the plugin, REVamp starts a token-protected server that listen
 
 Radio Browser is contacted for station search and directory results. Playing radio contacts the station you choose, any redirects or playlist targets it uses, and its favicon host. That includes built-in presets such as SomaFM, Radio Paradise, KEXP, BBC, NTS, and WFMU, as well as any custom stream URL you add. Skin Museum browsing/downloads contact `api.webamp.org` and `r2.webampskins.org`; lyrics contact `lrclib.net`.
 
-REVamp may run `ffprobe` to read media tags, durations, and chapters; library tag scans run it at low priority with `nice` and `ionice` when those tools are available. Its external pop-out window is optional and launches a local Chrome/Chromium-family browser with a private REVamp profile; the in-Hermes floating mini player does not launch that browser. On Linux, opening that pop-out writes two small desktop entries (one for X11, one for Wayland) and icon files under `~/.local/share` so its window shows the REVamp icon. It makes private automatic backups every 10 minutes under `~/.local/share/revamp/backups/` (or `REVAMP_BACKUP_DIR`) and stores a short, credential-masked local record of agent activity for the player ticker.
+REVamp reads tags and durations itself. It may also run `ffprobe` for audiobook chapters, and as another tag source when FFmpeg is installed; those scans run at low priority with `nice` and `ionice` when those tools are available. Its external pop-out window is optional and launches a local Chrome/Chromium-family browser with a private REVamp profile; the in-Hermes floating mini player does not launch that browser. On Linux, opening that pop-out writes two small desktop entries (one for X11, one for Wayland) and icon files under `~/.local/share` so its window shows the REVamp icon. It makes private automatic backups every 10 minutes under `~/.local/share/revamp/backups/` (or `REVAMP_BACKUP_DIR`) and stores a short, credential-masked local record of agent activity for the player ticker.
 
 State lives in `$REVAMP_HOME`, otherwise `$HERMES_HOME/revamp`, otherwise `~/.hermes/revamp`; it includes the library index, playlists, likes, settings, server token, lyric cache, installed skins, and pop-out browser profile. REVamp has no accounts, telemetry, usage analytics, or stored passwords.
 
@@ -115,7 +115,7 @@ Player settings and music ducking during approval.
 - If the mini player is offline, choose **Reconnect**; the server keeps its queue and position.
 - Reopen Hermes after a plugin update. **REVamp: Reload Player** reloads the player view (its embedded iframe), not the installed plugin or an update.
 - Set `REVAMP_FLOAT_BROWSER` to a Chrome/Chromium executable when pop-out browser discovery fails.
-- Install FFmpeg for `ffprobe` if chapters or file durations are missing.
+- Install FFmpeg for `ffprobe` if audiobook chapters are missing. Durations and basic tags are read without it.
 
 ## Uninstall
 

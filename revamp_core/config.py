@@ -25,7 +25,7 @@ DEFAULT_PORT = 8114
 _KEYS: dict[str, tuple[str, Any]] = {
     "port": ("REVAMP_PORT", DEFAULT_PORT),
     "library_dirs": ("REVAMP_LIBRARY_DIRS", ["~/Music"]),
-    "duck_on_approval": ("REVAMP_DUCK_ON_APPROVAL", True),
+    "duck_on_approval": ("REVAMP_DUCK_ON_APPROVAL", False),
     "duck_level": ("REVAMP_DUCK_LEVEL", 0.25),
 }
 
