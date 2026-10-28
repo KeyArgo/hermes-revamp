@@ -30,10 +30,9 @@ PLUGIN = Path(os.environ.get("HERMES_RADIO_PLUGIN", str(
 RADIO_JS = REPO / "web" / "views" / "radio.js"
 TMP_DIR = Path(os.environ.get("TMPDIR", str(Path.home() / ".cache" / "revamp-gate"))) / "hermesradio-screenshots"
 SHOT_DIR = TMP_DIR / "shots"
-# Chrome's Unix-domain singleton socket is limited to 108 bytes.  The lane
-# temp path is intentionally long, so use a short worktree alias whose target
-# remains in that temp directory.
-RUNTIME_ALIAS = REPO / ".hermes-radio-runtime"
+# Chrome's Unix-domain singleton socket is limited to 108 bytes. Keep the
+# alias beside the disk-backed temp root, not under a potentially long checkout.
+RUNTIME_ALIAS = TMP_DIR.parent / ".rr-runtime"
 
 # id, name, description, provider, url, homepage — the plugin's PRESETS, resolved.
 EXPECTED = [

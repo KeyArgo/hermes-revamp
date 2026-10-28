@@ -34,11 +34,15 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
       - run: python -m pip install pytest websocket-client
-      - name: Run tests
+      - name: Run non-browser tests
         env:
           REVAMP_HOME: ${{ runner.temp }}/revamp-home
           HERMES_HOME: ${{ runner.temp }}/hermes-home
-        run: python -m pytest -q -p no:cacheprovider
+        run: >
+          python -m pytest -q -p no:cacheprovider
+          --ignore=tests/test_control_mode_play_e2e.py
+          --ignore=tests/test_nav_rail_e2e.py
+          --ignore=tests/test_hermes_radio.py
       - name: Run Node regression tests
         if: runner.os != 'Windows'
         run: for t in tests/*.test.mjs; do node --test "$t"; done
@@ -62,4 +66,4 @@ jobs:
           CHROME_BIN: google-chrome
           REVAMP_HOME: ${{ runner.temp }}/revamp-home
           HERMES_HOME: ${{ runner.temp }}/hermes-home
-        run: python -m pytest -q -p no:cacheprovider tests/test_*e2e.py
+        run: python -m pytest -q -p no:cacheprovider tests/test_*e2e.py tests/test_hermes_radio.py
