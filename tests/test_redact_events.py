@@ -24,3 +24,13 @@ def test_every_stored_agent_event_is_masked(tmp_path, monkeypatch):
                                 "preview": "curl -u admin:Pa55word https://h -H 'X-Api-Key: zzzz9999'"})
     assert "Pa55word" not in ev["preview"] and "zzzz9999" not in ev["preview"]
     assert all("zzzz9999" not in str(e) for e in store.agent_events())
+
+
+def test_nested_event_headers_and_arguments_are_masked():
+    event = {
+        "preview": {
+            "headers": {"Authorization": "Bearer secret-token"},
+            "args": ["--token=secret-token"],
+        }
+    }
+    assert "secret-token" not in repr(redact.mask_event(event))

@@ -159,7 +159,10 @@ export async function render(root, api) {
       const data = await api("/api/agent_events");
       events = Array.isArray(data) ? data : [];
     } catch (e) {
-      log.innerHTML = `<div class="empty">Cannot load events: ${e.message}</div>`;
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = `Cannot load events: ${e.message}`;
+      log.replaceChildren(empty);
       return;
     }
     renderLog();

@@ -95,7 +95,7 @@ class RevampClient:
         try:
             info = self.get("/api/health")
             return bool(info) and info.get("app") == "revamp"
-        except RevampUnavailable:
+        except (RevampUnavailable, RuntimeError, ValueError):  # 401/503, or not our JSON
             return False
 
     def available(self) -> bool:

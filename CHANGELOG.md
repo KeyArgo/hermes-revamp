@@ -2,6 +2,15 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.5 - 2026-10-31 (pre-release)
+
+- Reliability and security release: seven bug hunts fixed about 71 bugs, each with a regression test.
+- Your REVamp key is never sent to other websites, even from an imported playlist or station.
+- A music folder that is offline (unplugged drive, sleeping NAS) keeps its songs in the library instead of losing them.
+- Backup restore and import undo themselves if they fail partway; the sleep timer and the approval dip no longer fight over the volume; the mini player's queue no longer freezes after a failed edit.
+- Radio, server and tag-reading hardening: stricter address checks for stations, safer handling of malformed requests and broken music files.
+- New automatic guards run on every change: junk input to every API route, fuzzed music files, and checks for unsafe page code.
+
 ## 1.0.0-alpha.4 - 2026-10-27 (pre-release)
 
 - The Frame stays a Frame when hidden; it never silently collapses into the mini player.

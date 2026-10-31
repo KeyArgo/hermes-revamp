@@ -30,6 +30,14 @@ def test_dir_mkdir_oserror(home, monkeypatch):
     monkeypatch.setattr(pathlib.Path, "mkdir", real)
 
 
+def test_exact_display_name_wins_over_a_colliding_slug(home):
+    """`Rock!` must not silently open the existing `Rock` playlist."""
+    first = pl.create_playlist("Rock")
+    second = pl.create_playlist("Rock!")
+    assert first["id"] != second["id"]
+    assert pl.get_playlist("Rock!")["id"] == second["id"]
+
+
 def test_item_from_line_paths_and_file_urls(home, monkeypatch):
     assert pl.item_from_line("   ") is None                        # 76
     monkeypatch.setattr(library, "track_id_for", lambda p: "tid-1")
@@ -168,3 +176,15 @@ def test_export_bad_durations_and_miss(home, monkeypatch):
     assert "Length1=0" in body and "Length2=0" in body              # 353-356
     _, body, _ = pl.export_playlist("Dur", "m3u8")
     assert "#EXTINF:-1,A - B" in body and "#EXTINF:-1,C" in body    # 363-366
+
+
+def test_exact_id_wins_over_another_playlists_name(home):
+    # "Chill" gets id chill; a second playlist named "chill" gets id chill-2. Looking up
+    # "chill" used to return whichever came first in the directory, so edits and
+    # deletes could hit the wrong playlist.
+    a = pl.create_playlist("Chill", [{"kind": "file", "path": "/a.mp3", "title": "A"}])
+    b = pl.create_playlist("chill", [{"kind": "file", "path": "/b.mp3", "title": "B"}])
+    assert (a["id"], b["id"]) == ("chill", "chill-2")
+    assert pl.get_playlist("chill")["id"] == "chill"
+    assert pl.get_playlist("chill-2")["id"] == "chill-2"
+    assert pl.get_playlist("Chill")["id"] == "chill"

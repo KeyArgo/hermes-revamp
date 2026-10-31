@@ -52,7 +52,8 @@ def _humanise(stem: str) -> tuple[str, str, Optional[int]]:
         artist, title = parts
     # Leading track number in the title ("07 Title" / "07. Title").
     digits = title.split(" ", 1)
-    if len(digits) == 2 and digits[0].rstrip(".").isdigit() and len(digits[0]) <= 3:
+    # isascii: "²".isdigit() is True but int("²") raises, which aborted the whole scan.
+    if len(digits) == 2 and digits[0].rstrip(".").isascii() and digits[0].rstrip(".").isdigit() and len(digits[0]) <= 3:
         track_no = int(digits[0].rstrip("."))
         title = digits[1].lstrip("- ")
     return title, artist, track_no
@@ -92,9 +93,11 @@ def _probe_ffprobe(path: str) -> Dict[str, Any]:
         pass
     return {
         "duration": round(duration, 3) if duration else None,
-        "bitrate_kbps": int(round(int(fmt.get("bit_rate") or 0) / 1000)) or None,
-        "sample_rate": int(audio.get("sample_rate") or 0) or None,
-        "channels": int(audio.get("channels") or 0) or None,
+        # ffprobe writes "N/A" for numbers it doesn't know: one of those used to throw away
+        # every tag of the file.
+        "bitrate_kbps": int(round((_int_or_none(fmt.get("bit_rate")) or 0) / 1000)) or None,
+        "sample_rate": _int_or_none(audio.get("sample_rate")) or None,
+        "channels": _int_or_none(audio.get("channels")) or None,
         "codec": (audio.get("codec_name") or fmt.get("format_name") or "").split(",")[0] or None,
         "title": tags.get("title"),
         "artist": tags.get("artist"),
@@ -161,8 +164,9 @@ def _tags_mutagen(path: str) -> Dict[str, Any]:
         "artist": first("artist"),
         "album": first("album"),
         "album_artist": first("albumartist", "album artist"),
-        "track_no": _int_or_none(first("tracknumber")),
-        "disc_no": _int_or_none(first("discnumber")),
+        # "3/12" is how most taggers write track and disc numbers.
+        "track_no": _int_or_none(str(first("tracknumber") or "").split("/")[0]),
+        "disc_no": _int_or_none(str(first("discnumber") or "").split("/")[0]),
         "year": _int_or_none((first("date", "year") or "")[:4]),
         "genre": first("genre"),
     }
@@ -236,6 +240,8 @@ def read_cover(path: str) -> Optional[bytes]:
             p = folder / (name + ext)
             if p.exists():
                 try:
+                    if p.stat().st_size > _MAX_ART:  # a stray multi-GB file is not cover art
+                        continue
                     return p.read_bytes()
                 except OSError:
                     pass
@@ -536,8 +542,10 @@ def _id3v2(f, want_image: bool) -> Tuple[Dict[str, Any], Optional[bytes], int]:
     if flags & 0x40:
         raw = f.read(4)
         ext = _synchsafe(raw) if version >= 4 else int.from_bytes(raw or b"\x00\x00\x00\x00", "big")
-        if ext > 4:
-            f.seek(ext - 4, os.SEEK_CUR)
+        # v2.4's size counts its own 4 bytes; v2.3's does not.
+        skip = ext - 4 if version >= 4 else ext
+        if skip > 0:
+            f.seek(skip, os.SEEK_CUR)
     if flags & 0x80:
         if tag_size > _MAX_TAG_BODY:
             f.seek(start + consumed)
@@ -931,7 +939,13 @@ def _mp4_value(f, payload: int, box_end: int, typ: bytes, meta: Dict[str, Any],
                 continue
             flags = int.from_bytes(f.read(4), "big") & 0xFFFFFF
             f.read(4)
-            blob = f.read(min(pos + size - f.tell(), _MAX_ART))
+            left = pos + size - f.tell()
+            if typ == b"covr" and left > _MAX_ART:
+                # Too big to show: a truncated image is a corrupt one, so skip it.
+                meta["_has_art"] = True
+                f.seek(pos + size)
+                continue
+            blob = f.read(min(left, _MAX_ART))
             if typ == b"covr":
                 meta["_has_art"] = True
                 if want_image and art is None and blob:
@@ -966,6 +980,12 @@ def _mp4_walk(f, end: int, meta: Dict[str, Any], want_image: bool, depth: int = 
     if depth > 12:
         return None
     while f.tell() + 8 <= end:
+        # A crafted file of millions of tiny boxes stalled the scan: real files have
+        # a few hundred, so stop counting well past that.
+        budget = meta.get("_mp4_boxes", 0) + 1
+        meta["_mp4_boxes"] = budget
+        if budget > 20000:
+            break
         pos = f.tell()
         hdr = f.read(8)
         if len(hdr) < 8:

@@ -3,11 +3,53 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 import socket
 import threading
 import time
 
 import pytest
+
+
+def test_local_media_is_written_in_bounded_chunks(monkeypatch):
+    """A full-file or open-ended range must not allocate the entire media file."""
+    from revamp_core import server
+
+    class File:
+        def __init__(self):
+            self.left = 200_000
+            self.read_sizes = []
+
+        def read(self, size=-1):
+            self.read_sizes.append(size)
+            take = self.left if size < 0 else min(self.left, size)
+            self.left -= take
+            return b"x" * take
+
+        def seek(self, _offset):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    file = File()
+    monkeypatch.setattr(server.os.path, "getsize", lambda _path: 200_000)
+    monkeypatch.setattr("builtins.open", lambda *_args, **_kwargs: file)
+    handler = object.__new__(server.Handler)
+    handler.headers = {}
+    handler.command = "GET"
+    handler.wfile = BytesIO()
+    handler.send_response = lambda *_args: None
+    handler.send_header = lambda *_args: None
+    handler.end_headers = lambda: None
+    handler.send_file("large.mp3")
+
+    assert file.read_sizes
+    assert all(0 < size <= 64 * 1024 for size in file.read_sizes)
+    assert len(handler.wfile.getvalue()) == 200_000
 
 
 def test_prune_keeps_all_fresh_snapshots(tmp_path):
@@ -189,6 +231,10 @@ def test_health_identifies_revamp_and_a_newer_server_can_take_over(tmp_path, mon
     port = sock.getsockname()[1]
     sock.close()
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    # ensure_server() latches _started process-wide: an earlier test in the full
+    # suite can leave it set, and the call then returns at once without handing over.
+    monkeypatch.setattr(server, "_started", False)
+    monkeypatch.setattr(server, "_owned", False)
     old = server.build_server(port=port, data=str(tmp_path), version="0.9.0", build="old", owner="plugin")
     old_thread = threading.Thread(target=old.serve_forever, daemon=True)
     old_thread.start()

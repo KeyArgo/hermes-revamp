@@ -150,19 +150,27 @@ def _save() -> None:
         pass
 
 
+def _ts(record: Any) -> float:
+    ts = record.get("ts", 0) if isinstance(record, dict) else 0
+    return ts if isinstance(ts, (int, float)) else 0.0
+
+
 def _cache_put(key: Tuple[str, str, str, int], value: Dict[str, Any], hit: bool) -> None:
     record = {"hit": hit, "ts": time.time(), "data": value}
     cache_key = json.dumps(key, ensure_ascii=False)
+    old = _CACHE.get(cache_key)
+    if not hit and isinstance(old, dict) and old.get("hit"):
+        return  # a racing request found lyrics: its hit must not become a week-long miss
     _CACHE[cache_key] = record
     dropped: List[str] = []
     if len(_CACHE) > MAX_ENTRIES:
         now = time.time()
         dropped = [k for k, v in _CACHE.items()
-                   if not v.get("hit") and now - v.get("ts", 0) > MISS_TTL]
+                   if not v.get("hit") and now - _ts(v) > MISS_TTL]
         for k in dropped:
             del _CACHE[k]
     while len(_CACHE) > MAX_ENTRIES:
-        oldest = min(_CACHE, key=lambda k: _CACHE[k].get("ts", 0))
+        oldest = min(_CACHE, key=lambda k: _ts(_CACHE[k]))
         dropped.append(oldest)
         del _CACHE[oldest]
     for k in dropped:  # keep the memory cache within the same bound
@@ -182,7 +190,10 @@ def _cache_get(key: Tuple[str, str, str, int]) -> Optional[Dict[str, Any]]:
     record = _CACHE.get(json.dumps(key, ensure_ascii=False))
     if not isinstance(record, dict):
         return None
-    if not record.get("hit") and time.time() - record.get("ts", 0) > MISS_TTL:
+    ts = record.get("ts", 0)
+    if not isinstance(ts, (int, float)):  # a hand-edited or damaged cache file
+        return None
+    if not record.get("hit") and time.time() - ts > MISS_TTL:
         return None
     return record.get("data")
 

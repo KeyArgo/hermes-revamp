@@ -64,9 +64,36 @@ def test_options_preflight(server):
     assert st == 204
 
 
-def test_cors_headers_on_api(server):
-    st, headers, _ = server.client.get("/api/state")
-    assert headers.get("Access-Control-Allow-Origin") == "*"
+def test_sandboxed_player_can_load_cross_origin(server):
+    # Hermes runs the player in sandboxed iframes (origin "null"): without CORS the
+    # module script is blocked and the player never boots. /api/ stays token-gated.
+    null = {"Origin": "null"}
+    st, headers, _ = server.client.get("/api/state", headers=null)
+    assert st == 200
+    assert headers.get("Access-Control-Allow-Origin") == "null"
+    st, headers, _ = server.client._req("GET", "/web/app.js", headers=null, raw=True)
+    assert st == 200
+    assert headers.get("Access-Control-Allow-Origin") == "null"
+    st, headers, _ = server.client._req("OPTIONS", "/api/state", headers=null)
+    assert st == 204
+    assert "X-Revamp-Token" in (headers.get("Access-Control-Allow-Headers") or "")
+
+
+def test_real_web_origins_get_no_cors(server):
+    # Only the sandboxed player's opaque origin is granted; no website is.
+    for origin in ("https://evil.example", "http://127.0.0.1:1", None):
+        hdrs = {"Origin": origin} if origin else {}
+        for path in ("/api/state", "/web/app.js", "/"):
+            st, headers, _ = server.client._req("GET", path, headers=hdrs, raw=True)
+            assert st == 200, (origin, path)
+            assert "Access-Control-Allow-Origin" not in headers, (origin, path)
+
+
+def test_index_refuses_cors_even_for_the_sandbox(server):
+    # The index carries the token: not even the opaque origin may read it.
+    st, headers, _ = server.client._req("GET", "/", headers={"Origin": "null"}, raw=True)
+    assert st == 200
+    assert "Access-Control-Allow-Origin" not in headers
 
 
 def test_index_has_token_meta_no_acao(server):
@@ -442,7 +469,7 @@ def test_sse_stream_shape(server):
         port = int(server.base.rsplit(":", 1)[1])
         s = _s.create_connection(("127.0.0.1", port), timeout=5)
         s.sendall(f"GET /api/events?t={server.token} HTTP/1.1\r\n"
-                  f"Host: x\r\nAccept: text/event-stream\r\n\r\n".encode())
+                  f"Host: 127.0.0.1:{port}\r\nAccept: text/event-stream\r\n\r\n".encode())
         s.settimeout(0.4)
         deadline = time.time() + 2.0
         while time.time() < deadline:

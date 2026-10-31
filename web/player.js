@@ -2,6 +2,7 @@
 // heartbeat, ducking, resume-for-long-tracks, radio now-playing, mini card updates.
 import Webamp from "/vendor/webamp.butterchurn-bundle.min.mjs";
 import { normalizeItem, normalizeItems, legacyKind, legacyUrl } from "./items.js";
+import { createMiniVis } from "./minivis.mjs";
 import { getFocus } from "./focus/adapter.js";
 import {
   MAIN_VIS_MODES, mainVisPrefs, mainVisFalloff, mainVisPeakFalloff, mainVisModePatch,
@@ -80,7 +81,7 @@ export async function initPlayer(ctx) {
   const playUrl = (item) => {
     const u = item.playback.url;
     // Our own routes need the token; never send it to another host.
-    return u.startsWith("/") ? authedUrl(u) : u;
+    return u.startsWith("/") && !u.startsWith("//") ? authedUrl(u) : u;
   };
   const toWebampTrack = (item) => {
     const n = nextEntry++;
@@ -902,6 +903,7 @@ export async function initPlayer(ctx) {
   // its context released right away — repeated open/close cycles must not exhaust the pool.
   let webglProbe = null;
   let softwareGL = false;
+  let miniVis = null; // REVamp's own main-window analyzer (web/minivis.mjs), once attached
   function hasWebGL() {
     if (webglProbe !== null) return webglProbe;
     try {
@@ -917,6 +919,66 @@ export async function initPlayer(ctx) {
     } catch { webglProbe = false; }
     return webglProbe;
   }
+  // Under software WebGL every MilkDrop frame is drawn by the CPU, about a core at the
+  // display's 60 Hz. Webamp renders on every animation frame with no cap, so its
+  // Butterchurn instance gets a frame budget here instead: same look, far less CPU.
+  const SOFTWARE_MILKDROP_FPS = 24;
+  // The small analyzer is tiny, but under software compositing every frame it draws makes
+  // the host repaint its whole window on the CPU: at 60 Hz that cost Hermes several cores
+  // while music played. The vendored loop reads this budget (unset: every frame).
+  const SOFTWARE_ANALYZER_FPS = 12;
+  hasWebGL();
+  if (softwareGL) window.__revampVisFps = SOFTWARE_ANALYZER_FPS;
+  function butterchurnInstance() {
+    // MilkDrop's canvas has no id: check each player canvas's component for the instance.
+    for (const canvas of document.querySelectorAll("#webamp canvas:not(#visualizer):not(#eqGraph)")) {
+      const key = Object.keys(canvas).find((k) => k.startsWith("__reactFiber$"));
+      let fiber = key ? canvas[key] : null;
+      for (let depth = 0; fiber && depth < 3; depth += 1, fiber = fiber.return) {
+        // React keeps two copies of each component; the canvas may point at the one from
+        // before Butterchurn was created, so look in both.
+        for (const copy of [fiber, fiber.alternate]) {
+          let hook = copy?.memoizedState;
+          for (let hops = 0; hook && typeof hook === "object" && "next" in hook && hops < 200; hops += 1, hook = hook.next) {
+            const st = hook.memoizedState;
+            const v = Array.isArray(st) ? st[0] : st;
+            if (v && typeof v.render === "function" && typeof v.loadPreset === "function") return v;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  // Even on a GPU each MilkDrop frame runs the preset's equations in JavaScript; above
+  // 30 fps the extra frames cost CPU and are hard to tell apart.
+  const MILKDROP_FPS = 30;
+  let tameRetry = 0;
+  function tameMilkdrop(tries = 20) {
+    hasWebGL();
+    if (!milkdropOpen()) { clearTimeout(tameRetry); tameRetry = 0; return; }
+    let viz = null;
+    // Runs inside Webamp's store dispatch: a surprise in React's internals must not throw there.
+    try { viz = butterchurnInstance(); } catch { return; }
+    if (!viz) {
+      // Every store update calls this; keep one retry chain, not one per update.
+      if (!tameRetry && tries > 0) tameRetry = setTimeout(() => { tameRetry = 0; tameMilkdrop(tries - 1); }, 100);
+      return;
+    }
+    clearTimeout(tameRetry); tameRetry = 0;
+    if (viz.__revampFrameBudget) return;
+    const render = viz.render.bind(viz);
+    const fps = softwareGL ? SOFTWARE_MILKDROP_FPS : MILKDROP_FPS;
+    const gap = 1000 / fps;
+    let last = 0;
+    viz.render = (...args) => {
+      const now = performance.now();
+      if (now - last < gap - 2) return undefined; // skip this frame; the canvas keeps the last one
+      last = now;
+      return render(...args);
+    };
+    viz.__revampFrameBudget = fps;
+  }
+  try { webamp.store.subscribe(() => { if (milkdropOpen()) tameMilkdrop(); }); } catch { /* no store: uncapped */ }
   api.visualizerOpen = () => milkdropOpen();
   api.toggleVisualizer = (open) => {
   // Mini-only has no visible surface for the window: toggling there would edit
@@ -957,6 +1019,7 @@ export async function initPlayer(ctx) {
     const offscreen = visualizerPlacement === "mini" || document.hidden || hostSaysVisible === false;
     if (offscreen) suspendMilkdrop();
     else resumeMilkdrop();
+    miniVis?.wake(); // stops itself while offscreen; restarts here when shown
   }
   api.setVisualizerPlacement = (placement) => {
     visualizerPlacement = placement === "docked" || placement === "floating" || placement === "mini" || placement === "desktop" ? placement : "page";
@@ -1030,13 +1093,49 @@ export async function initPlayer(ctx) {
       const inst = visInstance(canvas);
       if (!inst?._vis) continue;
       inst._vis.bandwidth = bandwidth;
+      // Webamp binds its bar paint once, in the constructor; rebind it for the saved style.
+      const paint = inst[`paintBar${prefs.coloring[0].toUpperCase()}${prefs.coloring.slice(1)}`];
+      if (typeof paint === "function" && inst._vis.coloring !== prefs.coloring) {
+        inst._vis.coloring = prefs.coloring;
+        inst.paintBar = paint.bind(inst);
+      }
       inst._vis.peaks = prefs.peaks;
       inst._vis.saFalloff = prefs.saFalloff;
       inst._vis.saPeakFalloff = prefs.saPeakFalloff;
       inst.falloff = falloff;
       inst.peakFalloff = peakFalloff;
-      canvas.dataset.revampVis = `${bandwidth}:${prefs.peaks ? "peaks" : "flat"}:${prefs.saFalloff}`;
+      canvas.dataset.revampVis = `${bandwidth}:${prefs.coloring}:${prefs.peaks ? "peaks" : "flat"}:${prefs.saFalloff}`;
     }
+    syncMiniVis(prefs);
+  }
+  // REVamp's own analyzer replaces Webamp's bars (not the oscilloscope) unless "classic".
+  function syncMiniVis(prefs) {
+    const canvas = visCanvases()[0];
+    let style = 0;
+    try { style = webamp.store.getState().display.visualizerStyle ?? 0; } catch { /* store not ready */ }
+    const want = canvas && prefs.renderer === "revamp" && MAIN_VIS_MODES[style] === "BAR";
+    if (!want) {
+      miniVis?.detach();
+      window.__revampVisFps = softwareGL ? SOFTWARE_ANALYZER_FPS : undefined;
+      return;
+    }
+    hasWebGL();
+    miniVis ||= createMiniVis({
+      getAnalyser: () => { try { return webamp.media?._analyser || null; } catch { return null; } },
+      getColors: () => { try { return webamp.store.getState().display.skinColors; } catch { return null; } },
+      isPlaying: () => media().status === "PLAYING",
+      // Parked offscreen (Mini, or Hermes says the frame is hidden): no frames at all.
+      isVisible: () => visualizerPlacement !== "mini" && hostSaysVisible !== false,
+      getStyle: () => {
+        const p = mainVisPrefs(saved.settings);
+        // Caps are part of this look; only an explicit "peaks: false" turns them off.
+        const explicit = saved.settings?.mainVisualizer?.peaks;
+        return { coloring: p.coloring, peaks: typeof explicit === "boolean" ? explicit : true };
+      },
+      software: softwareGL,
+    });
+    window.__revampVisFps = 0.001; // Webamp's loop keeps ticking but no longer draws
+    miniVis.attach(canvas);
   }
   function flattenVis() {
     let status = "STOPPED";
@@ -1063,6 +1162,7 @@ export async function initPlayer(ctx) {
     } else {
       requestAnimationFrame(applyMainVis);
     }
+    miniVis?.wake();
   };
   markIdle();
   try { webamp.store.subscribe(markIdle); } catch { /* keep it visible */ }
@@ -1129,6 +1229,9 @@ export async function initPlayer(ctx) {
   // deliberately not tied to the approval lifecycle: waiting to be answered
   // must never leave the player quiet.
   let duck = { active: false, timer: null, savedVol: null, evId: null, sessionId: null };
+  // A new fade (or an explicit volume change) invalidates every scheduled step
+  // from the previous one. Otherwise sleep/duck fades can overwrite the user.
+  let volumeAnimation = 0;
   const seenApprovalIds = new Set();
   const APPROVAL_ALERT_MAX_AGE_MS = 10_000;
   function playApprovalChime() {
@@ -1172,16 +1275,20 @@ export async function initPlayer(ctx) {
     // so denial, timeout, and session-end restore the correct dip as well.
     if (!duck.active || (sessionId && duck.sessionId && sessionId !== duck.sessionId) || (!sessionId && whoseId && duck.evId && whoseId !== duck.evId)) return;
     clearTimeout(duck.timer);
-    if (duck.savedVol != null) animateVolume(clamp(currentVolume()), duck.savedVol, 400, false);
+    // Mid sleep fade the next fade tick sets the level: climbing to the pre-fade one would overshoot.
+    if (duck.savedVol != null && sleepFrom == null) animateVolume(clamp(currentVolume()), duck.savedVol, 400, false);
     duck.active = false;
     duck.evId = null;
     duck.sessionId = null;
     if (saved.settings.duck_toast !== false) toast("Music back to normal volume", { kind: "ok" });
   }
   function currentVolume() { const v = media().volume; return typeof v === "number" ? v : safe(() => webamp.getVolume?.()) ?? 75; }
+  function cancelVolumeAnimation() { volumeAnimation += 1; }
   function animateVolume(from, to, ms, persist = true) {
+    const animation = ++volumeAnimation;
     const t0 = performance.now();
     const step = (t) => {
+      if (animation != volumeAnimation) return;
       const k = Math.min(1, (t - t0) / ms);
       const v = Math.round(from + (to - from) * k);
       try { webamp.setVolume(v); } catch { /* guard */ }
@@ -1241,7 +1348,14 @@ export async function initPlayer(ctx) {
         case "queue_remove": queueOps.remove(cmd.index | 0); break;
         case "queue_move": queueOps.move(cmd.from | 0, cmd.to | 0); break;
         case "queue_clear": queueOps.clear(); break;
-        case "volume": api.setVolume(cmd.percent); break;
+        case "volume":
+          // The user owns the final level, even while an approval dip is active.
+          if (duck.active) duck.savedVol = clamp(cmd.percent);
+          // Mid sleep fade: the fade continues down from the level the user just chose.
+          if (sleepFrom != null) sleepFrom = clamp(cmd.percent);
+          cancelVolumeAnimation();
+          api.setVolume(cmd.percent);
+          break;
         case "shuffle": api.setShuffle(cmd.on); break;
         case "repeat": api.setRepeat(cmd.on); break;
         case "load": api.loadTracks(cmd.items || [], { mode: cmd.mode || "replace", play: cmd.play !== false }); break;
@@ -1375,10 +1489,12 @@ export async function initPlayer(ctx) {
     const focusPlaying = (() => { try { return focus?.status?.()?.state === "playing"; } catch { return false; } })();
     const playing = media().status === "PLAYING" || (activeBackend === "focus" && focusPlaying);
     if (left <= fade && playing) {
-      if (sleepFrom == null) sleepFrom = currentVolume();
+      // Under an approval dip the real level is the one the dip will restore.
+      if (sleepFrom == null) sleepFrom = duck.active && duck.savedVol != null ? duck.savedVol : currentVolume();
       if (activeBackend === "focus") {
         try { focus?.command({ action: "volume", percent: Math.round(sleepFrom * (left / fade)) }); } catch { /* guard */ }
-      } else {
+      } else if (!duck.active) {
+        // Ducking owns the temporary output level; do not fight its short fade.
         try { webamp.setVolume(Math.round(sleepFrom * (left / fade))); } catch { /* guard */ }
       }
     }
@@ -1387,7 +1503,8 @@ export async function initPlayer(ctx) {
     clearInterval(sleepTimer);
     sleepTimer = null;
     sleep = null;
-    if (sleepFrom != null) try { webamp.setVolume(sleepFrom); } catch { /* guard */ }
+    if (duck.active && sleepFrom != null) duck.savedVol = sleepFrom; // the un-dip restores the pre-fade level
+    else if (sleepFrom != null) try { webamp.setVolume(sleepFrom); } catch { /* guard */ }
     sleepFrom = null;
     paintNpExtras();
     setTimeout(beat, 50);
@@ -1592,7 +1709,9 @@ function visInstance(canvas) {
   let fiber = canvas[key];
   for (let depth = 0; fiber && depth < 15; depth += 1, fiber = fiber.return) {
     let hook = fiber.memoizedState;
-    for (let hops = 0; hook && hops < 40; hops += 1, hook = hook.next) {
+    // Webamp's analyzer keeps its painter around hook 46 (each store selector is several
+    // hooks), so a 40-hop search never found it and the saved look was never applied.
+    for (let hops = 0; hook && hops < 200; hops += 1, hook = hook.next) {
       const state = hook.memoizedState;
       const candidates = [state, Array.isArray(state) ? state[0] : null, state?.current];
       for (const candidate of candidates) {

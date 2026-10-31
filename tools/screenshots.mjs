@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const root = resolve(new URL("..", import.meta.url).pathname), output = join(root, "assets/screenshots"), fixture = join(root, "lanes/_e2e/lib"), temp = mkdtempSync(join(tmpdir(), "revamp-shots-")), books = join(temp, "books"), browser = process.env.CHROME_BIN || "google-chrome";
+const root = resolve(new URL("..", import.meta.url).pathname), output = join(root, "assets/screenshots"), captureRoot = process.env.REVAMP_CAPTURE_TMP || join(process.env.HOME || ".", ".cache", "revamp-screenshots"), temp = (mkdirSync(captureRoot, { recursive: true }), mkdtempSync(join(captureRoot, "revamp-shots-"))), fixture = join(temp, "music"), books = join(temp, "books"), browser = process.env.CHROME_BIN || "google-chrome", stage = process.env.REVAMP_CAPTURE_STAGE || "all";
+const capture = (...stages) => stage === "all" || stages.includes(stage);
 let server;
 const sleep = (n) => new Promise((r) => setTimeout(r, n));
 const port = () => Number(execFileSync("python3", ["-c", "import socket;s=socket.socket();s.bind(('127.0.0.1',0));print(s.getsockname()[1]);s.close()"], { encoding: "utf8" }));
@@ -18,7 +18,7 @@ const command = (p, t, body) => post(p, t, "/api/command", body);
 const connected = (p, t) => json(`http://127.0.0.1:${p}/api/state`, { headers: { "X-Revamp-Token": t } }).then((s) => s.live?.player_connected);
 
 async function pageFor(serverPort, width = 1440, height = 900, query = "") {
-  const debug = port(), profile = mkdtempSync(join(tmpdir(), "revamp-chrome-"));
+  const debug = port(), profile = mkdtempSync(join(captureRoot, "revamp-chrome-"));
   const process = spawn(browser, ["--headless=new", "--no-sandbox", "--mute-audio", "--autoplay-policy=no-user-gesture-required", "--use-gl=angle", "--use-angle=swiftshader-webgl", "--enable-unsafe-swiftshader", `--remote-debugging-port=${debug}`, `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
   await waitFor(async () => { try { await json(`http://127.0.0.1:${debug}/json/list`); return true; } catch { return false; } }, "Chrome");
   const target = (await json(`http://127.0.0.1:${debug}/json/list`)).find((x) => x.type === "page");
@@ -37,10 +37,17 @@ async function playing(page, p, t, items, at = 2) { await waitFor(() => connecte
 async function view(page, id, text) { await evalJs(page, `window.revampSetView(${JSON.stringify(id)})`); await waitFor(() => evalJs(page, `document.querySelector('#panel-body')?.innerText.includes(${JSON.stringify(text)})`), `${id} view`); }
 
 try {
-  mkdirSync(output, { recursive: true }); mkdirSync(books, { recursive: true });
+  mkdirSync(output, { recursive: true }); mkdirSync(fixture, { recursive: true }); mkdirSync(books, { recursive: true });
+  for (const [file, title, artist, album, tone] of [
+    ["Neon Boulevard.mp3", "Neon Boulevard", "REVamp Studio", "Night Drive", "220"],
+    ["Signal Bloom.mp3", "Signal Bloom", "REVamp Studio", "Night Drive", "330"],
+    ["Soft Machines.mp3", "Soft Machines", "REVamp Studio", "Night Drive", "440"],
+    ["Late Checkout.mp3", "Late Checkout", "REVamp Studio", "Night Drive", "550"],
+  ]) execFileSync("ffmpeg", ["-y", "-f", "lavfi", "-i", `sine=frequency=${tone}:sample_rate=44100`, "-t", "8", "-metadata", `title=${title}`, "-metadata", `artist=${artist}`, "-metadata", `album=${album}`, "-q:a", "5", join(fixture, file)], { stdio: "ignore" });
   const meta = join(temp, "chapters.ffmeta");
+  const bookDuration = capture("views", "books") ? "180" : "2";
   writeFileSync(meta, ";FFMETADATA1\ntitle=The REVamp Field Guide\nartist=REVamp Studio\nalbum=Listening Notes\n\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=60000\ntitle=Welcome to the library\n\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=60000\nEND=120000\ntitle=The long walk\n\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=120000\nEND=180000\ntitle=Closing notes\n");
-  execFileSync("ffmpeg", ["-y", "-f", "lavfi", "-i", "sine=frequency=220:sample_rate=44100", "-f", "ffmetadata", "-i", meta, "-map_metadata", "1", "-map_chapters", "1", "-t", "180", "-c:a", "aac", "-b:a", "64k", join(books, "The REVamp Field Guide.m4b")], { stdio: "ignore" });
+  execFileSync("ffmpeg", ["-y", "-f", "lavfi", "-i", "sine=frequency=220:sample_rate=44100", "-f", "ffmetadata", "-i", meta, "-map_metadata", "1", "-map_chapters", "1", "-t", bookDuration, "-c:a", "aac", "-b:a", "64k", join(books, "The REVamp Field Guide.m4b")], { stdio: "ignore" });
   const p = port(); server = spawn("python3", ["-m", "revamp_core.server", "--port", String(p), "--data", join(temp, "data"), "--library", fixture], { cwd: root, env: { ...process.env, REVAMP_HOME: join(temp, "data"), REVAMP_PORT: String(p) }, stdio: "ignore" });
   await waitFor(async () => { try { await json(`http://127.0.0.1:${p}/api/health`); return true; } catch { return false; } }, "server");
   const token = readFileSync(join(temp, "data/token"), "utf8").trim();
@@ -54,18 +61,34 @@ try {
   await post(p, token, "/api/library/resume", { track_id: book.id.split(":").at(-1), position: 74 }); await post(p, token, "/api/playlists", { name: "Screenshot mix", items: music.slice(0, 3) });
   await post(p, token, "/api/agent_event", { kind: "tool_start", tool: "revamp_library", preview: "Queueing a focused work mix" }); await post(p, token, "/api/agent_event", { kind: "approval_request", tool: "shell", preview: "Waiting for approval" });
   let page;
-  if (!process.env.REVAMP_CAPTURE_TAIL) {
+  if (capture("player")) {
   await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: true, ticker: true, duck_on_approval: true } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(3500); await snap(page, "full-player.png"); await close(page);
   await put(p, token, { playlist: music, current_index: 0, skin: "builtin:REVamp-Nous.wsz", settings: { milkdropOpen: false } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(1800); await snap(page, "nous.png"); await close(page);
+  }
+  if (capture("views", "books")) {
   await put(p, token, { playlist: [book], current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p); await playing(page, p, token, [book], 74); await view(page, "books", "The REVamp Field Guide"); await waitFor(() => evalJs(page, "document.querySelector('.np-book:not([hidden])') && document.querySelector('.np-chapter:not([hidden])')"), "book controls"); await snap(page, "books.png"); await close(page);
-  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p); await playing(page, p, token, music); await view(page, "radio", "Popular"); await waitFor(() => evalJs(page, "document.querySelectorAll('.card-row').length > 2"), "radio presets"); await snap(page, "radio.png"); await close(page);
+  }
+  if (capture("views", "radio")) {
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p); await playing(page, p, token, music); await view(page, "hermes-radio", "Hermes Radio"); await waitFor(() => evalJs(page, "Boolean(document.querySelector('.hermes-hero'))"), "Hermes Radio hero"); await snap(page, "radio.png"); await close(page);
+  }
+  if (capture("views", "library")) {
   page = await pageFor(p); await playing(page, p, token, music); await evalJs(page, "window.revampSetView('library')"); await sleep(900); await evalJs(page, "document.querySelector('button[data-t=artists]')?.click()"); await sleep(600); await snap(page, "library.png"); await close(page);
+  }
+  if (capture("views", "skins")) {
   page = await pageFor(p); await playing(page, p, token, music); await view(page, "skins", "Winamp Skin Museum"); await sleep(1200); await snap(page, "skins.png"); await close(page);
   }
+  if (capture("extras")) {
   page = await pageFor(p); await playing(page, p, token, music); await waitFor(() => evalJs(page, "!document.querySelector('.np-lyrics-btn')?.hidden"), "lyrics"); await evalJs(page, "document.querySelector('.np-lyrics-btn')?.click()"); await sleep(900); await snap(page, "lyrics.png"); await close(page);
   page = await pageFor(p); await playing(page, p, token, music); await post(p, token, "/api/agent_event", { kind: "tool_start", tool: "revamp_library", preview: "Queueing a focused work mix" }); await post(p, token, "/api/agent_event", { kind: "approval_request", tool: "shell", preview: "Waiting for approval" }); await waitFor(() => evalJs(page, "document.querySelector('#ticker-track')?.innerText.includes('revamp_library')"), "agent activity"); await snap(page, "agent-activity.png"); await close(page);
+  }
+  if (capture("modes", "mini")) {
   await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p, 620, 620, "?embed=1"); await playing(page, p, token, music); await sleep(1000); await snap(page, "mini-player.png"); await close(page);
+  }
+  if (capture("modes", "milkdrop")) {
   await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpenFloating: true } }); page = await pageFor(p, 900, 620, "?mode=winamp"); await page.cdp("Emulation.setDefaultBackgroundColorOverride", { color: { r: 8, g: 12, b: 18, a: 1 } }); await playing(page, p, token, music); await evalJs(page, "window.revampPlayerApi?.setVisualizerPlacement('floating')"); await sleep(3500); await snap(page, "winamp-milkdrop.png"); await close(page);
-  page = await pageFor(p); await playing(page, p, token, music); await view(page, "agent", "Duck volume on approval"); await snap(page, "settings.png"); await close(page);
+  }
+  if (capture("modes", "settings")) {
+  page = await pageFor(p); await playing(page, p, token, music); await view(page, "agent", "Chime and dip for approvals"); await snap(page, "settings.png"); await close(page);
+  }
   rmSync(join(output, "nous-dark.png"), { force: true }); console.log(`Saved screenshots in ${output}`);
 } finally { if (server && !server.killed) server.kill("SIGTERM"); rmSync(temp, { recursive: true, force: true }); }

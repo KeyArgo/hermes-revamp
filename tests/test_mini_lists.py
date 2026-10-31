@@ -17,6 +17,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 PLUGIN = REPO / "desktop" / "plugin.js"
 PLAYER = REPO / "web" / "player.js"
+RADIO_VIEW = REPO / "web" / "views" / "radio.js"
 
 
 class RadioResponse:
@@ -65,6 +66,15 @@ def test_radio_search_route_forwards_offset(server, monkeypatch):
     assert status == 200
     assert body == []
     assert calls and calls[0]["offset"] == 40
+
+
+def test_full_page_radio_search_forwards_each_endless_page_offset():
+    """The full-page Search loader must not keep requesting page zero."""
+    text = RADIO_VIEW.read_text(encoding="utf-8")
+    start = text.index("async function doSearch(q)")
+    end = text.index("let debounceT", start)
+    search = text[start:end]
+    assert 'p.set("offset", String(offset))' in search
 
 
 def test_library_tracks_returns_second_page_with_total(server, monkeypatch):
@@ -154,4 +164,47 @@ def test_plugin_has_context_menu_and_queue_labels():
     assert "mode: 'append'" in src
     assert "mode: 'next'" in src
     assert "Loading more…" in src
+
+
+def test_mini_shuffle_replaces_queue_with_only_the_visible_rows():
+    """Shuffle in the mini picker must not reach outside its shown search/list."""
+    src = PLUGIN.read_text(encoding="utf-8")
+    start = src.index("async function shuffleVisible(")
+    end = src.index("function stationItem(", start)
+    helper = src[start:end]
+    assert "const shuffled = [...rows]" in helper
+    assert "await playItems(shuffled.map(toItem))" in helper
+    assert "command('shuffle', { on: true })" in helper
+    radio = src[src.index("function RadioList("):src.index("function LibraryList(")]
+    library = src[src.index("function LibraryList("):src.index("const BooksList")]
+    assert "shuffleVisible(rows, stationItem)" in radio
+    assert "shuffleVisible(tracks, trackItem)" in library
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    script = """
+const fs = require('fs');
+const src = fs.readFileSync(process.argv[1], 'utf8');
+const a = src.indexOf('async function shuffleVisible(');
+const b = src.indexOf('function stationItem(', a);
+const helper = src.slice(a, b);
+const calls = [];
+const shuffleVisible = new Function('playItems', 'holdNp', 'command', helper + '; return shuffleVisible')(
+  async items => calls.push(['load', items]),
+  (key, value) => calls.push(['hold', key, value]),
+  (action, body) => calls.push(['command', action, body]),
+);
+const oldRandom = Math.random;
+Math.random = () => 0;
+const shown = [{ id: 'one' }, { id: 'two' }, { id: 'three' }];
+shuffleVisible(shown, row => ({ id: row.id })).then(() => {
+  Math.random = oldRandom;
+  const want = JSON.stringify([{id:'two'}, {id:'three'}, {id:'one'}]);
+  if (JSON.stringify(calls[0][1]) !== want) throw new Error(JSON.stringify(calls));
+  if (JSON.stringify(calls.at(-1)) !== JSON.stringify(['command', 'shuffle', {on:true}])) throw new Error(JSON.stringify(calls));
+}).catch(err => { console.error(err); process.exit(1); });
+"""
+    result = subprocess.run([node, "-e", script, str(PLUGIN)], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
 

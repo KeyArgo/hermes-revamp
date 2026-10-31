@@ -5,6 +5,7 @@ open_stream headers, ICY now-playing."""
 from __future__ import annotations
 
 import json
+import socket
 
 import pytest
 
@@ -15,6 +16,11 @@ from revamp_core.radio import RadioError
 @pytest.fixture()
 def nets(monkeypatch, tmp_path):
     monkeypatch.setattr(radio, "data_dir", lambda: tmp_path)
+    # Network calls are faked below; make DNS validation deterministic too.
+    monkeypatch.setattr(
+        radio.socket, "getaddrinfo",
+        lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))],
+    )
     saved = (dict(radio._SEARCH_CACHE), dict(radio._NP_CACHE))
     radio._SEARCH_CACHE.clear()
     radio._NP_CACHE.clear()
@@ -226,3 +232,82 @@ def test_nowplaying_paths(nets, monkeypatch):
         raise OSError("stream died")
     monkeypatch.setattr(radio, "_open", boom)
     assert radio.nowplaying("http://a/live3") == {"title": None}       # 422-423
+
+
+def test_browse_next_page_starts_after_the_rows_it_used(nets, monkeypatch):
+    # Broken rows are skipped, so a page of 3 can use 5 raw rows; paging on by 3
+    # repeated stations already shown.
+    rows = [{"stationuuid": f"u{i}", "name": f"S{i}", "url": "" if i in (1, 3) else f"http://s{i}.example/x"}
+            for i in range(10)]
+    seen = []
+    def fake(path, params):
+        seen.append(params["offset"]); off = params["offset"]
+        return rows[off:off + params["limit"]], len(rows)
+    monkeypatch.setattr(radio, "_rb_json", fake)
+    first = radio.browse(limit=3)
+    assert [s["name"] for s in first["stations"]] == ["S0", "S2", "S4"]
+    assert first["next_offset"] == 5 and first["more"]
+    second = radio.browse(limit=3, offset=first["next_offset"])
+    assert [s["name"] for s in second["stations"]] == ["S5", "S6", "S7"]
+
+
+def test_nat64_addresses_are_checked_as_the_ipv4_inside(nets):
+    for addr in ("64:ff9b::a9fe:a9fe", "64:ff9b::a00:1", "64:ff9b::7f00:1", "64:ff9b:1::c0a8:101", "64:ff9b:1:7f00:0:100:808:808"):
+        with pytest.raises(radio.RadioError):
+            radio._public_answers([(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (addr, 80, 0, 0))])
+    assert radio._public_answers([(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("64:ff9b::808:808", 80, 0, 0))])
+
+
+def test_nowplaying_answers_from_cache_without_a_dns_lookup(nets, monkeypatch):
+    # Polled every 15 s: a cached title must not cost a lookup, nor turn into an
+    # error when DNS hiccups.
+    import time
+    url = "http://station.example/live"
+    radio._NP_CACHE[url] = (time.time(), "Song A")
+    def no_dns(*a, **k):
+        raise OSError("dns down")
+    monkeypatch.setattr(radio.socket, "getaddrinfo", no_dns)
+    assert radio.nowplaying(url) == {"title": "Song A"}
+
+
+def test_bom_playlist_resolves_to_the_stream(nets, monkeypatch):
+    class R:
+        def __init__(self): self.headers = {}
+        def read(self, n): return "﻿#EXTM3U\nhttp://stream.example/live\n".encode("utf-8")
+        def geturl(self): return "http://pl.example/a.m3u"
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    monkeypatch.setattr(radio, "_open", lambda *a, **k: R())
+    assert radio.resolve_playlist_url("http://pl.example/a.m3u") == "http://stream.example/live"
+
+
+def test_favorite_with_a_numeric_id_can_be_removed(nets):
+    radio.add_favorite({"url": "http://s.example/x", "id": 123, "name": "S"})
+    assert radio.remove_favorite("123") is True
+    with pytest.raises(radio.RadioError):
+        radio.add_favorite({"url": 5})
+
+
+def test_favorites_file_with_junk_entries_still_works(nets):
+    radio._fav_path().write_text('[1, "x", {"id": "a", "url": "http://a.example/"}]', encoding="utf-8")
+    assert [f["id"] for f in radio.favorites()] == ["a"]
+    assert radio.remove_favorite("a") is True
+
+
+def test_caches_are_bounded(nets):
+    for i in range(radio.MAX_CACHE_ENTRIES + 50):
+        radio._cache_put(radio._SEARCH_CACHE, f"k{i}", (0, i))
+    assert len(radio._SEARCH_CACHE) == radio.MAX_CACHE_ENTRIES and "k0" not in radio._SEARCH_CACHE
+
+
+def test_popular_build_does_not_hold_the_favorites_lock(nets, monkeypatch):
+    import threading, time
+    started = threading.Event()
+    def slow(state, need):
+        started.set(); time.sleep(2); state["raw_done"] = True
+    monkeypatch.setattr(radio, "_popular_extend", slow)
+    t = threading.Thread(target=radio.popular, daemon=True); t.start()
+    started.wait(2)
+    t0 = time.time(); radio.add_favorite({"url": "http://s.example/y", "name": "Y"})
+    assert time.time() - t0 < 1.0
+    t.join(5)

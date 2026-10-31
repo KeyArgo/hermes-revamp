@@ -216,6 +216,7 @@ const EN = {
   liked: 'Liked',
   likedEmpty: 'Tap the heart on a playing track to add it here',
   shuffle: 'Shuffle',
+  shuffleVisible: 'Shuffle this list',
   repeat: 'Repeat',
   back10: 'Back 10 seconds',
   fwd10: 'Forward 10 seconds',
@@ -228,6 +229,7 @@ const EN = {
   moveDown: 'Move down',
   removeItem: 'Remove from queue',
   clearQueue: 'Clear',
+  clearConfirm: 'Confirm clear',
   clearAsk: 'Clear the whole queue?',
   sleep: 'Sleep timer',
   sleepOff: 'Off',
@@ -246,6 +248,10 @@ const EN = {
   reportBugHint: 'Opens GitHub with your environment filled in. Nothing is sent until you submit the issue.',
   copyBugDetails: 'Copy details',
   bugCopied: 'Bug details copied',
+  recoverPlayer: 'Recover player',
+  copyDiagnostics: 'Copy diagnostics',
+  recoveryStarted: 'REVamp is reloading. Your queue is kept.',
+  recoveryFailed: 'REVamp did not answer yet. Try Recover player again.',
   placeMenuTip: 'Put the player in a Frame, pop it out, or go full screen',
   dismissTip: 'Dismiss'
 }
@@ -253,6 +259,10 @@ const EN = {
 // Disk plugins are not scanned by Tailwind. Only plugin layout lives here;
 // Button, SearchField and Popover own their own chrome. Theme tokens only.
 const CSS = `
+/* Player chrome is not page content: select-all + copy in Hermes must not pick up the
+   track name, transport labels or the braille waveform. Text fields stay selectable. */
+[class^="revamp-"],[class*=" revamp-"]{-webkit-user-select:none;user-select:none}
+[class^="revamp-"] input,[class*=" revamp-"] input,[class^="revamp-"] textarea,[class*=" revamp-"] textarea{-webkit-user-select:text;user-select:text}
 .revamp-bar{display:flex;align-items:center;gap:2px;height:100%;color:var(--ui-text-tertiary)}
 .revamp-bar .revamp-name{max-width:150px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .revamp-bar[data-playing=true] .revamp-name{color:var(--ui-text-secondary)}
@@ -425,10 +435,37 @@ function formatBugReportBody(env) {
     `- Player place: ${env.playerPlace ?? 'unknown'}`,
     `- Skin: ${env.skin ?? 'unknown'}`,
     `- Theme: ${env.theme ?? 'unknown'}`,
-    '', '## Logs or screenshots', '', env.logs ?? '', '',
+    '', '## Logs or screenshots', '', env.logs ?? '', env.diagnostics ?? '', '',
     'Please remove library paths, tokens, and personal media names before posting.'
   )
   return lines.join('\n')
+}
+
+function savedDiagnostics() {
+  const value = ctxRef?.storage.get('diagnostics', [])
+  return Array.isArray(value) ? value.slice(-12) : []
+}
+
+function formatDiagnostics() {
+  const rows = savedDiagnostics()
+  if (!rows.length) return 'No browser failures recorded by REVamp.'
+  return ['## REVamp browser diagnostics', '', ...rows.flatMap(row => [
+    `- ${Math.abs(row.ts) <= 8.64e15 ? new Date(row.ts).toISOString() : '?'} ${row.kind}: ${row.message}${row.placement ? ` (${row.placement})` : ''}`,
+    row.stack ? `  ${row.stack}` : ''
+  ]), ''].join('\n')
+}
+
+function saveDiagnostic(record) {
+  if (!ctxRef || !record || (record.kind !== 'error' && record.kind !== 'rejection')) return
+  if (typeof record.message !== 'string' || typeof record.stack !== 'string' || !(Math.abs(record.ts) <= 8.64e15)) return
+  const entry = {
+    ts: record.ts,
+    kind: record.kind,
+    message: record.message.slice(0, 240),
+    stack: record.stack.slice(0, 700),
+    placement: typeof record.placement === 'string' ? record.placement.slice(0, 32) : ''
+  }
+  ctxRef.storage.set('diagnostics', [...savedDiagnostics(), entry].slice(-12))
 }
 
 function buildBugReportUrl(env, options = {}) {
@@ -479,8 +516,19 @@ async function collectPluginBugEnv() {
     browser: (navigator.userAgent || 'n/a').slice(0, 160),
     playerPlace: pluginPlayerPlaceLabel(),
     skin: live?.skin ? String(live.skin) : 'unknown',
-    theme
+    theme,
+    diagnostics: formatDiagnostics()
   }
+}
+
+async function recoverPlayer() {
+  engine?.reload()
+  wakeEngineRetry?.()
+  const ready = await engine?.whenReady?.(7000)
+  if (ready) {
+    void refreshLive()
+    host.notify({ kind: 'success', message: EN.recoveryStarted })
+  } else host.notify({ kind: 'error', message: EN.recoveryFailed })
 }
 
 async function openBugReport(copyOnly = false) {
@@ -544,9 +592,8 @@ function setCrispScale(on) {
   refitPane()
 }
 let disposeDockedPlayerPane = null
-// A hidden Frame is still a Frame.  In particular it must not borrow the mini
-// player's placement: that would make hiding the pane silently move the live
-// player into the bottom bar and change what reopening the route displays.
+// Hiding Frame unregisters its UI pane, but it does not change the selected
+// player location: that would silently move the live player into the mini bar.
 function placementLocation() {
   const loc = $playerLocation.get()
   return loc
@@ -585,8 +632,11 @@ function setFrameHidden(hidden) {
   $frameHidden.set(hidden)
   const paneId = scopedPaneId($dockedPlayerSide.get())
   if (hidden) {
+    // Hiding must unregister as well as hide: hosts that retain an empty pane
+    // after hidePane otherwise leave a blank Frame in their layout.
+    disposeDockedPlayerPane?.()
+    disposeDockedPlayerPane = null
     if (typeof host.hidePane === 'function') host.hidePane(paneId)
-    else { disposeDockedPlayerPane?.(); disposeDockedPlayerPane = null }
   } else {
     if (!disposeDockedPlayerPane && PANE_SPIKE && ctxRef) disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane($dockedPlayerSide.get()))
     try { host.revealPane?.(paneId) } catch { /* older hosts */ }
@@ -606,10 +656,9 @@ function dockedPlayerPane(side) {
       minWidth: '279px',
       maxWidth: '600px',
       headerContent: () => jsx(PaneHeaderButtons, {}),
-      lifecycleKeepAlive: true,
-      // Closing a plugin's only pane disables the whole plugin (and stops the music): offer
-      // Hermes's show/hide instead of close (pane-shell track-model.ts hideOnly).
-      hideOnly: true
+      // Normal closable-pane chrome: use Hermes's standard × like Files. The
+      // contribution stays registered, so Show docked player adds it back.
+      lifecycleKeepAlive: true
     },
     render: () => jsx(ClassicPaneSpike, {})
   }
@@ -789,6 +838,20 @@ async function playItems(items, index = 0) {
   await command('load', { items, mode: 'replace', play: index === 0 })
   if (index > 0) await command('play_index', { index })
   setTimeout(refreshLive, 600)
+}
+
+// Shuffle only the rows the person can see in the mini picker.  Replacing the
+// queue first makes the player shuffle that list, never the whole library.
+async function shuffleVisible(rows, toItem) {
+  if (!Array.isArray(rows) || rows.length < 2) return
+  const shuffled = [...rows]
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  await playItems(shuffled.map(toItem))
+  holdNp('shuffle', true)
+  command('shuffle', { on: true })
 }
 
 function stationItem(s) {
@@ -1076,6 +1139,7 @@ function createEngine(ctx, url, bridgeKey = '') {
     if (e.data.type === 'revamp:location' && PLAYER_LOCATIONS.includes(e.data.location)) {
       setPlayerLocation(e.data.location)
     }
+    if (e.data.type === 'revamp:diagnostic') saveDiagnostic(e.data.record)
     // Duck/unduck notices while docked to mini: the iframe's own toasts are invisible
     // there (docked off-screen), so surface them through the host instead.
     if (e.data.type === 'revamp:toast' && typeof e.data.text === 'string' && e.data.text) {
@@ -1146,16 +1210,24 @@ function createEngine(ctx, url, bridgeKey = '') {
     // Stop this player (the desktop window took over) / start it again.
     // Parked: the desktop window plays. The page here runs in control mode (no audio) so
     // the mini player can still reach the server when the Hermes gateway is stale.
-    park() { if (parked) return; parked = true; dropPending(); frame.src = `${url}/?control=1`; place() },
-    unpark() { if (!parked) return; parked = false; frame.src = `${url}/?embed=1`; place() },
+    park() { if (parked) return; parked = true; dropPending(); sawRevamp = false; frame.src = `${url}/?control=1`; place() },
+    unpark() { if (!parked) return; parked = false; sawRevamp = false; frame.src = `${url}/?embed=1`; place() },
     // Reconnect: reload the player page (the server keeps the queue and position).
-    reload() { dropPending(); frame.src = parked ? `${url}/?control=1` : `${url}/?embed=1`; place() },
+    // The library page's control frame reloads too: a server update otherwise left
+    // it showing the old web app until Hermes itself restarted.
+    // A reload forgets the old handshake: whenReady() must wait for the new page.
+    reload() { dropPending(); sawRevamp = false; frame.src = parked ? `${url}/?control=1` : `${url}/?embed=1`; controlFrame.src = `${url}/?embed=1&control=1`; place() },
     // Resolves true once the page says it is Revamp's player, false after ms.
     whenReady(ms) {
       return new Promise(resolve => {
         if (sawRevamp) return resolve(true)
-        const timer = setTimeout(() => resolve(false), ms)
-        readyWaiters.push(ok => { clearTimeout(timer); resolve(ok) })
+        const waiter = ok => { clearTimeout(timer); resolve(ok) }
+        const timer = setTimeout(() => {
+          const i = readyWaiters.indexOf(waiter)
+          if (i >= 0) readyWaiters.splice(i, 1)
+          resolve(false)
+        }, ms)
+        readyWaiters.push(waiter)
       })
     }
   }
@@ -1453,6 +1525,25 @@ function resample(samples, n) {
   return Array.from({ length: n }, (_, i) => samples[Math.floor((i * samples.length) / n)] || 0)
 }
 
+// Hermes falls back to software rendering (SwiftShader) on many NVIDIA Linux setups. There
+// every animated frame makes it repaint its window on the CPU, so the bar's waveform runs
+// slower and rests while Hermes is in the background. Probed once; the context is released.
+let softwareRendering = null
+function hostRendersInSoftware() {
+  if (softwareRendering !== null) return softwareRendering
+  softwareRendering = false
+  try {
+    const gl = document.createElement('canvas').getContext('webgl')
+    const info = gl?.getExtension('WEBGL_debug_renderer_info')
+    const renderer = String((info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) || '')
+    softwareRendering = !gl || /swiftshader|llvmpipe|softpipe|software/i.test(renderer)
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
+  } catch { /* keep the full rate */ }
+  return softwareRendering
+}
+const WAVE_FPS = 12
+const SOFTWARE_WAVE_FPS = 6
+
 function Waveform({ compact = false }) {
   const width = compact ? 6 : 36
   const rows = compact ? 1 : 2
@@ -1477,7 +1568,11 @@ function Waveform({ compact = false }) {
       const cells = brailleTrace(resample(waveSamples, width * 2), rows)
       paint(0, history[0]); paint(1, history[1]); paint(2, cells)
       history = [history[1], cells]
-    }, { fps: 12, pauseWhenUnfocused: false, idleWhen: () => !active || motion.matches })
+    }, {
+      fps: hostRendersInSoftware() ? SOFTWARE_WAVE_FPS : WAVE_FPS,
+      pauseWhenUnfocused: hostRendersInSoftware(),
+      idleWhen: () => !active || motion.matches
+    })
     const updateMotion = () => { reset(); loop.wake() }
     motion.addEventListener('change', updateMotion)
     return () => { loop.dispose(); motion.removeEventListener('change', updateMotion) }
@@ -1707,6 +1802,7 @@ function usePagedList({ queryKey, pageSize, fetchPage, enabled = true, maxOffset
           : prev))
       })
       .catch(error => {
+        seen.current.delete(tag) // a failed page can be asked for again
         if (token !== run.current) return
         setState(prev => (prev.key === key ? { ...prev, loading: false, error } : prev))
       })
@@ -1806,6 +1902,9 @@ function RadioList({ text, np, onPending, onText }) {
   }, g)) }, 'chips') : null
   return jsx(Fragment, { children: [
     chips,
+    rows.length > 1 ? jsx('div', { className: 'revamp-list-action', children: jsx(SmallAction, {
+      label: t('shuffleVisible'), icon: ShuffleIcon, size: 'icon-xs', onClick: () => void shuffleVisible(rows, stationItem)
+    }) }, 'shuffle') : null,
     ...rows.map(s => jsx(Row, {
       name: s.name, sub: (s.tags || []).slice(0, 3).join(' · ') || s.source,
       current: np.kind === 'stream' && sameUrl(np.url, s.url), playing: np.playing,
@@ -1840,6 +1939,9 @@ function LibraryList({ text, np, onPending, kind = 'music' }) {
   const pending = text !== query || (result.loading && !tracks.length)
   useEffect(() => onPending(pending), [pending])
   return jsx(Fragment, { children: [
+    tracks.length > 1 ? jsx('div', { className: 'revamp-list-action', children: jsx(SmallAction, {
+      label: t('shuffleVisible'), icon: ShuffleIcon, size: 'icon-xs', onClick: () => void shuffleVisible(tracks, trackItem)
+    }) }, 'shuffle') : null,
     scanning && jsx('div', { className: 'revamp-note', role: 'status', children: progress?.total
       ? t('scanningOf').replace('{done}', progress.done.toLocaleString()).replace('{total}', progress.total.toLocaleString())
       : t('scanning') }, 'scan'),
@@ -2162,6 +2264,9 @@ function QueuePanel({ np }) {
     queueEdits = queueEdits
       .then(() => command(next.action, next.extra))
       .then(() => setTimeout(refreshLive, 500))
+      // One failed edit used to leave the chain rejected, so every later edit silently
+      // never ran. Drop the optimistic view and re-read the real queue instead.
+      .catch(() => { heldQueue = null; refreshLive() })
   }
   const move = (item, direction) => edit((playlist, index) => {
     const from = playlist.indexOf(item)
@@ -2498,7 +2603,9 @@ function ReportBugRow({ compact = false }) {
       compact ? null : jsx('span', { style: { fontSize: 12, color: 'var(--ui-text-secondary)' }, children: t('reportBug') }),
       compact ? null : jsx('span', { style: { fontSize: 11, color: 'var(--ui-text-tertiary)', marginBottom: 4 }, children: t('reportBugHint') }),
       jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(false), children: t('reportBug') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(true), children: t('copyBugDetails') })
+      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(true), children: t('copyBugDetails') }),
+      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void recoverPlayer(), children: t('recoverPlayer') }),
+      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void ctxRef?.os.writeClipboard(formatDiagnostics()), children: t('copyDiagnostics') })
     ]
   })
 }
@@ -2531,8 +2638,26 @@ function RevampBar() {
   const live = useValue($live)
   const open = useValue($open)
   const queueOpen = useValue($queueOpen)
+  const [clearArmed, setClearArmed] = useState(false)
   const docked = useValue($playerLocation) === 'docked'
   const frameHidden = useValue($frameHidden)
+  const where = useValue($where)
+  // A normal Hermes × removes the pane but keeps this contribution alive.
+  // Surface Show Frame here so it is immediately recoverable from Mini.
+  const frameOpen = docked && !frameHidden && where === 'pane'
+  const hasQueue = Array.isArray(live?.playlist) && live.playlist.length > 0
+  useEffect(() => {
+    if (!clearArmed) return undefined
+    const timer = setTimeout(() => setClearArmed(false), 3000)
+    return () => clearTimeout(timer)
+  }, [clearArmed])
+  const clearQueue = () => {
+    if (!clearArmed) { setClearArmed(true); return }
+    heldQueue = { playlist: [], index: -1, until: Date.now() + 3000 }
+    $live.set(withHeld($live.get()))
+    command('queue_clear')
+    setClearArmed(false)
+  }
   const np = nowPlaying(live)
   const triggerRef = useRef(null)
   const [browseWidth, setBrowseWidth] = useState(null)
@@ -2572,14 +2697,13 @@ function RevampBar() {
     ] }),
     np.online ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, onClick: toggle }) : null,
     np.online ? jsx(SmallAction, { label: t('next'), icon: NextIcon, onClick: () => command('next') }) : null,
-    // One click between the docked player and the mini player alone (also Ctrl+Alt+D / Ctrl+Alt+M).
+    hasQueue ? jsx(SmallAction, {
+      label: clearArmed ? t('clearConfirm') : t('clearQueue'), icon: TrashIcon, pressed: clearArmed,
+      onClick: clearQueue
+    }) : null,
     jsx(SmallAction, {
-      label: t(docked ? 'hideDocked' : 'showDocked'), icon: DockIcon, pressed: docked, className: 'revamp-dock-toggle',
-      onClick: () => setPlayerLocation(docked ? 'mini' : 'docked')
-    }),
-    jsx(SmallAction, {
-      label: t(frameHidden ? 'showFrame' : 'hideFrame'), icon: DockIcon, pressed: !frameHidden,
-      onClick: () => setFrameHidden(!frameHidden)
+      label: t(frameOpen ? 'hideFrame' : 'showFrame'), icon: DockIcon, pressed: frameOpen, className: 'revamp-dock-toggle',
+      onClick: () => frameOpen ? setFrameHidden(true) : setPlayerLocation('docked')
     })
   ] })
 }

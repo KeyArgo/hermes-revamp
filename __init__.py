@@ -312,7 +312,7 @@ def _tool_radio(args: dict, **kw) -> str:
                 # Popular first: ask Radio Browser before the local lists, so a query
                 # finds the world's most popular match, not whichever preset names it.
                 try:
-                    hits = c.get("/api/radio/search", q=args["query"], limit=5)
+                    hits = c.get("/api/radio/search", q=q, limit=5)  # q: query or name
                 except Exception:
                     hits = None
                 if isinstance(hits, list) and hits:

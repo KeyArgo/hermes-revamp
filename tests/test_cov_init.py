@@ -398,6 +398,15 @@ def test_radio_search_fallback_and_add_favorite(fake):
     assert post[2] == {"id": "x", "name": "S", "url": "http://u"}
 
 
+def test_radio_play_by_name_alone_searches_the_world(fake):
+    # Only "name" given: the world search used args["query"], hit a KeyError (swallowed)
+    # and silently skipped Radio Browser.
+    plug = _plugin()
+    fake(dict(RAD_ROUTES, **{"/api/radio/search": [{"id": "rb", "name": "Live Hit", "url": "http://r"}]}))
+    out = json.loads(plug._tool_radio({"action": "play", "name": "unseen band"}))
+    assert out["ok"] and out["station"] == "Live Hit"
+
+
 # ---------------------------------------------------------------------------
 # hooks
 # ---------------------------------------------------------------------------

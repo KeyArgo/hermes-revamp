@@ -141,6 +141,9 @@ class Client:
     def delete(self, path, **kw):
         return self._req("DELETE", path, **kw)
 
+    def options(self, path, **kw):
+        return self._req("OPTIONS", path, **kw)
+
 
 class Server:
     def __init__(self, base: str, token: str, data_dir: Path, lib: Path):
@@ -158,7 +161,8 @@ class Server:
         out: list = []
         sock = socket.create_connection(("127.0.0.1", int(self.base.rsplit(":", 1)[1])),
                                         timeout=5)
-        req = (f"GET {path}?t={self.token} HTTP/1.1\r\nHost: x\r\n"
+        host = self.base.removeprefix("http://")
+        req = (f"GET {path}?t={self.token} HTTP/1.1\r\nHost: {host}\r\n"
                f"Accept: text/event-stream\r\n\r\n")
         sock.sendall(req.encode())
 
@@ -294,6 +298,15 @@ def threading_start(port: int, data: str, lib: str):
 
 
 @pytest.fixture(autouse=True)
+def _private_home(tmp_path, monkeypatch):
+    """Every test gets a throwaway HOME: tests used to rewrite the user's real
+    ~/.local/share/applications launcher entries and write into ~/.hermes/revamp."""
+    home = tmp_path / "home-sandbox"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+
+
+@pytest.fixture(autouse=True)
 def _private_backup_dir(tmp_path, monkeypatch):
     """Every test (and every server it spawns) backs up into a temp dir, never the user's real
     ~/.local/share/revamp/backups."""
@@ -307,3 +320,15 @@ def _radio_browser_not_in_cooldown():
     radio._rb_down_until = 0.0
     yield
     radio._rb_down_until = 0.0
+
+
+@pytest.fixture(autouse=True)
+def _server_latches_do_not_leak():
+    """ensure_server() latches process-wide flags. One test leaving _started set made a
+    later takeover test return early and fail only in the full suite, so every test
+    starts and ends with them cleared."""
+    for name in ("_started", "_owned", "_watching"):
+        setattr(srv, name, False)
+    yield
+    for name in ("_started", "_owned", "_watching"):
+        setattr(srv, name, False)

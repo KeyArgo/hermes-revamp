@@ -35,6 +35,19 @@ def mask(text: str) -> str:
         return text
 
 
+def _mask_value(value):
+    """Copy JSON-shaped event data while masking strings at every depth."""
+    if isinstance(value, str):
+        return mask(value)
+    if isinstance(value, dict):
+        return {k: _mask_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_mask_value(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_mask_value(v) for v in value)
+    return value
+
+
 def mask_event(event: dict) -> dict:
-    """A copy of *event* with every string field masked."""
-    return {k: (mask(v) if isinstance(v, str) else v) for k, v in event.items()}
+    """A copy of *event* with every nested string field masked."""
+    return _mask_value(event)

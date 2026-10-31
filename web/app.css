@@ -36,6 +36,10 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* The player is an instrument, not a document: select-all + copy (in the page or in Hermes)
+   must not carry track names, labels or controls. Fields people type in stay selectable. */
+body { -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
 body {
   margin: 0;
   font-family: var(--font);
@@ -252,6 +256,14 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-size: 12px; c
 .btn.sm { padding: 3px 9px; font-size: 12px; }
 .btn[disabled] { opacity: 0.45; cursor: default; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* Music libraries can be thousands of rows long. Keep search available while
+   the panel body scrolls instead of making users travel back to the top. */
+.panel-body .lib-search-toolbar {
+  position: sticky; top: -4px; z-index: 4;
+  padding: 6px 0 8px;
+  background: var(--panel-solid);
+  border-bottom: 1px solid var(--glass-brd);
+}
 
 /* playlist / radio / skins cards */
 .card-list { display: flex; flex-direction: column; gap: 8px; }

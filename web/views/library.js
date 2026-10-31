@@ -39,12 +39,13 @@ export async function render(root, api, kind = "music") {
   let currentAlbum = null;
   let trackMenu = null;
   let trackMenuCleanup = null;
+  let loadMoreObserver = null;
 
   root.innerHTML = "";
 
   // ---- toolbar
   const bar = document.createElement("div");
-  bar.className = "btn-row";
+  bar.className = "btn-row lib-search-toolbar";
   bar.style.marginBottom = "10px";
   bar.innerHTML = `
     <div class="searchbox" style="flex:1;min-width:160px">
@@ -130,25 +131,46 @@ export async function render(root, api, kind = "music") {
       total = res.total ?? tracks.length;
     } catch (e) {
       if (generation !== tracksGeneration) return;
+      if (requestOffset > 0) {
+        // A failed "load more" keeps the rows already shown; the button can try again.
+        statusEl.textContent = `${tracks.length} / ${total} (couldn't load more)`;
+        return;
+      }
       listElEmpty(listEl, e.message);
     }
     if (generation !== tracksGeneration) return;
     statusEl.textContent = `${tracks.length} / ${total}`;
     renderList();
   }
+  // Every list load takes a ticket: a slow answer for a tab or album the user already
+  // left must not paint over the one they are looking at now.
   async function loadArtists() {
+    const generation = ++tracksGeneration;
     statusEl.innerHTML = `<span class="spinner"></span>`;
-    try { artists = await api(`/api/library/artists?kind=${apiKind}`); } catch (e) { artists = []; listElEmpty(listEl, e.message); }
+    let rows = [];
+    try { rows = await api(`/api/library/artists?kind=${apiKind}`); } catch (e) {
+      if (generation !== tracksGeneration) return;
+      listElEmpty(listEl, e.message);
+    }
+    if (generation !== tracksGeneration) return;
+    artists = rows;
     statusEl.textContent = `${artists.length} artists`;
     renderList();
   }
   async function loadAlbums(artist = "") {
+    const generation = ++tracksGeneration;
     statusEl.innerHTML = `<span class="spinner"></span>`;
+    let rows = [];
     try {
       const q = new URLSearchParams({ kind: apiKind });
       if (artist) q.set("artist", artist);
-      albums = await api(`/api/library/albums?${q}`);
-    } catch (e) { albums = []; listElEmpty(listEl, e.message); }
+      rows = await api(`/api/library/albums?${q}`);
+    } catch (e) {
+      if (generation !== tracksGeneration) return;
+      listElEmpty(listEl, e.message);
+    }
+    if (generation !== tracksGeneration) return;
+    albums = rows;
     statusEl.textContent = `${albums.length} albums`;
     renderList();
   }
@@ -180,6 +202,8 @@ export async function render(root, api, kind = "music") {
   }
 
   function renderTracks() {
+    loadMoreObserver?.disconnect();
+    loadMoreObserver = null;
     listEl.innerHTML = "";
     if (!tracks.length) {
       listElEmpty(listEl,
@@ -244,9 +268,25 @@ export async function render(root, api, kind = "music") {
       const b = document.createElement("button");
       b.className = "btn";
       b.textContent = `Load more (${total - tracks.length} left)`;
-      b.addEventListener("click", () => { offset = tracks.length; loadTracksAppend(); });
+      let requested = false;
+      const loadNext = () => {
+        if (requested) return;
+        requested = true;
+        loadMoreObserver?.disconnect();
+        offset = tracks.length;
+        loadTracksAppend();
+      };
+      // Scrolling into the marker is the normal path. The button remains a
+      // keyboard/accessibility fallback when IntersectionObserver is absent.
+      b.addEventListener("click", loadNext);
       more.appendChild(b);
       listEl.appendChild(more);
+      if (typeof IntersectionObserver === "function") {
+        loadMoreObserver = new IntersectionObserver((entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) loadNext();
+        }, { root: listEl.closest(".panel-body"), rootMargin: "0px 0px 240px" });
+        loadMoreObserver.observe(more);
+      }
     }
   }
 
@@ -308,9 +348,11 @@ export async function render(root, api, kind = "music") {
   }
 
   async function renderAlbumTracks() {
+    const generation = ++tracksGeneration;
     listEl.innerHTML = `<div style="padding:20px;text-align:center"><span class="spinner"></span></div>`;
     try {
       const res = await api(`/api/library/tracks?${new URLSearchParams({ album: currentAlbum.album, artist: currentAlbum.artist || "", kind: apiKind, limit: "200", offset: "0" })}`);
+      if (generation !== tracksGeneration) return;
       tracks = res.tracks || [];
       selected.clear();
       total = res.total ?? tracks.length;
@@ -320,7 +362,7 @@ export async function render(root, api, kind = "music") {
       back.className = "btn btn-ghost sm"; back.textContent = "← All albums"; back.style.margin = "6px 0";
       back.addEventListener("click", () => { currentAlbum = null; tab = "albums"; renderList(); });
       listEl.prepend(back);
-    } catch (e) { listElEmpty(listEl, e.message); }
+    } catch (e) { if (generation === tracksGeneration) listElEmpty(listEl, e.message); }
   }
 
   // ---- likes: a heart per track; the player owns the set (shared with the Hermes mini player)
@@ -552,15 +594,17 @@ export async function render(root, api, kind = "music") {
   bar.querySelectorAll(".tabs button").forEach((b) =>
     b.addEventListener("click", () => {
       tab = b.dataset.t; setTabs(); selected.clear(); offset = 0;
+      currentAlbum = null; // any tab leaves an open album
       if (tab === "tracks") loadTracksAppend();
       if (tab === "artists") loadArtists();
-      if (tab === "albums") { currentAlbum = null; loadAlbums(); }
+      if (tab === "albums") loadAlbums();
     }));
   let debounceT;
   qInput.addEventListener("input", () => {
     clearTimeout(debounceT);
     debounceT = setTimeout(() => {
       query = qInput.value.trim(); offset = 0; selected.clear();
+      currentAlbum = null; // a search is over the whole library
       if (tab !== "tracks") { tab = "tracks"; setTabs(); }
       loadTracksAppend();
     }, 200);
@@ -574,6 +618,7 @@ export async function render(root, api, kind = "music") {
     if (!document.body.contains(statusEl)) {
       moreAbort.abort();
       moreWatch?.disconnect();
+      loadMoreObserver?.disconnect();
       return clearInterval(scanPoll);
     }
     if (document.hidden) return;
@@ -584,7 +629,8 @@ export async function render(root, api, kind = "music") {
       const sig = `${st.count}|${st.last_scan}|${st.scanning}`;
       const changed = lastSig !== null && sig !== lastSig;
       lastSig = sig;
-      if (changed && tab === "tracks" && offset === 0) await loadTracksAppend();
+      if (changed && currentAlbum) { /* an open album stays as it is */ }
+      else if (changed && tab === "tracks" && offset === 0) await loadTracksAppend();
       else if (changed && tab !== "tracks") await (tab === "artists" ? loadArtists() : loadAlbums());
       if (st.scanning) {
         const p = st.progress || {};
@@ -596,6 +642,7 @@ export async function render(root, api, kind = "music") {
     if (!root.isConnected) {
       moreAbort.abort();
       moreWatch.disconnect();
+      loadMoreObserver?.disconnect();
       clearInterval(scanPoll);
     }
   });

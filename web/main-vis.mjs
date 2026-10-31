@@ -8,6 +8,14 @@
 
 export const MAIN_VIS_MODES = ["BAR", "OSCILLOSCOPE", "NONE"];
 
+// Webamp's three bar paints: flat skin colors, the classic Winamp "fire"
+// gradient that rises with each bar, or a single bright line per bar.
+export const MAIN_VIS_COLORINGS = ["normal", "fire", "line"];
+
+// "revamp": REVamp's own smooth, high-resolution bars (web/minivis.mjs).
+// "classic": Webamp's original 76x16 pixel analyzer.
+export const MAIN_VIS_RENDERERS = ["revamp", "classic"];
+
 export const MAIN_VIS_FALLOFF = {
   slower: 3,
   slow: 6,
@@ -28,7 +36,9 @@ export const MAIN_VIS_PEAK_FALLOFF = {
 // bands already ("wide"), with peaks on and a moderate drop, which reads as jitter.
 export const MAIN_VIS_DEFAULTS = {
   mode: "BAR",
+  renderer: "revamp",
   bandwidth: "wide",
+  coloring: "fire",
   peaks: false,
   saFalloff: "slower",
   saPeakFalloff: "slow",
@@ -47,6 +57,8 @@ export function mainVisPrefs(settings) {
   const bandwidth = over.bandwidth === "thin" || over.bandwidth === "wide"
     ? over.bandwidth
     : MAIN_VIS_DEFAULTS.bandwidth;
+  const renderer = MAIN_VIS_RENDERERS.includes(over.renderer) ? over.renderer : MAIN_VIS_DEFAULTS.renderer;
+  const coloring = MAIN_VIS_COLORINGS.includes(over.coloring) ? over.coloring : MAIN_VIS_DEFAULTS.coloring;
   const peaks = typeof over.peaks === "boolean" ? over.peaks : MAIN_VIS_DEFAULTS.peaks;
   const saFalloff = Object.prototype.hasOwnProperty.call(MAIN_VIS_FALLOFF, over.saFalloff)
     ? over.saFalloff
@@ -54,7 +66,7 @@ export function mainVisPrefs(settings) {
   const saPeakFalloff = Object.prototype.hasOwnProperty.call(MAIN_VIS_PEAK_FALLOFF, over.saPeakFalloff)
     ? over.saPeakFalloff
     : MAIN_VIS_DEFAULTS.saPeakFalloff;
-  return { mode, bandwidth, peaks, saFalloff, saPeakFalloff };
+  return { mode, renderer, bandwidth, coloring, peaks, saFalloff, saPeakFalloff };
 }
 
 export function mainVisFalloff(prefs) {

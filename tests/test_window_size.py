@@ -212,3 +212,10 @@ def test_desktop_page_pins_player_and_uses_the_winamp_menu_for_milkdrop():
     assert "visualizerPlacement !== \"desktop\"" in player or 'visualizerPlacement !== "desktop"' in player
     assert "float-desktop" in css and "#0b0e14" in css
     assert "float-milkdrop" not in css
+
+
+def test_context_menu_is_fitted_inside_the_player_not_counted_as_frame_height():
+    app = (REPO / "web" / "app.js").read_text(encoding="utf-8")
+    report = app[app.index("function reportBox()"):app.index("function hostDragsThis", app.index("function reportBox()"))]
+    assert "fitContextMenus" in app
+    assert "webamp-context-menu" not in report

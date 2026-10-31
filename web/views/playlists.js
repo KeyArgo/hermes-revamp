@@ -140,9 +140,12 @@ export async function render(root, api) {
     return openPl({ id: LIKED }, { id: LIKED, name: "♥ Liked", items: await likedItems().catch(() => []) });
   }
 
+  let openSeq = 0; // the newest click wins: a slow earlier open must not paint over it
   async function openPl(pl, preloaded) {
+    const seq = ++openSeq;
     let data = preloaded;
-    if (!data) try { data = await api(`/api/playlists/${pl.id}`); } catch (e) { return toast(e.message, { kind: "error" }); }
+    if (!data) try { data = await api(`/api/playlists/${pl.id}`); } catch (e) { return seq === openSeq && toast(e.message, { kind: "error" }); }
+    if (seq !== openSeq) return;
     detail.innerHTML = "";
     detail.dataset.pid = pl.id; // which playlist is open (delete only closes that one)
     const heading = document.createElement("div");
@@ -230,8 +233,12 @@ export async function render(root, api) {
     } catch (e) { toast(e.message, { kind: "error" }); }
   }
   async function playFrom(items, i) {
-    player().loadTracks(items, { mode: "replace", play: false });
-    player().playIndex(i);
+    // One call that loads, then plays: on the control page these are two server commands,
+    // and sent separately the play could land before the new queue (wrong song).
+    const p = player();
+    if (p.playItemsAt) return p.playItemsAt(i, items);
+    await p.loadTracks(items, { mode: "replace", play: false });
+    return p.playIndex(i);
   }
   async function append(id) {
     try {

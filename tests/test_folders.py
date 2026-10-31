@@ -355,6 +355,9 @@ def test_scan_publishes_tracks_while_it_runs(tmp_path, monkeypatch):
     prog = library.scan_progress()
     assert prog["total"] == 40 and 0 < prog["done"] < 40
     gate.set()
+    # Its own budget: on a busy machine the first wait can use most of a shared one,
+    # and the check then ran while the released file was still being read.
+    deadline = time.time() + 10
     while library.is_scanning() and time.time() < deadline:
         time.sleep(0.05)
     assert len(library.all_tracks()) == 40
@@ -386,6 +389,9 @@ def test_slow_file_does_not_block_others_and_errors_are_isolated(tmp_path, monke
         time.sleep(0.05)
     assert len(library.all_tracks()) == 28  # everything but the slow one and the broken one
     gate.set()
+    # Its own budget: on a busy machine the first wait can use most of a shared one,
+    # and the check then ran while the released file was still being read.
+    deadline = time.time() + 10
     while library.is_scanning() and time.time() < deadline:
         time.sleep(0.05)
     assert len(library.all_tracks()) == 29  # the crash cost one file, not the scan

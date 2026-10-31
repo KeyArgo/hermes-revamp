@@ -80,7 +80,7 @@ State lives in `$REVAMP_HOME`, otherwise `$HERMES_HOME/revamp`, otherwise `~/.he
 
 ![Classic player with MilkDrop](assets/screenshots/full-player.png)
 
-Classic player, EQ, playlist, and a live MilkDrop visual.
+Classic player, EQ, playlist, and the named Visualizer control for MilkDrop.
 
 ![REVamp Nous light skin](assets/screenshots/nous.png)
 
@@ -90,9 +90,9 @@ REVamp Nous light skin on the full player page.
 
 Audiobook resume position, speed, and chapter picker.
 
-![Radio presets](assets/screenshots/radio.png)
+![Hermes Radio](assets/screenshots/radio.png)
 
-Radio: popular stations, plus browse by genre, country and language.
+Hermes Radio: a curated station lineup, with Radio Browser search, genres, countries, and languages available alongside it.
 
 ![Library artists](assets/screenshots/library.png)
 
@@ -108,7 +108,7 @@ Agent activity ticker with a live tool event.
 
 ![Settings](assets/screenshots/settings.png)
 
-Player settings and music ducking during approval.
+Player settings, approval chime/dip controls, recovery backup actions, and the event log.
 
 ## Troubleshooting
 

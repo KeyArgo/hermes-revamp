@@ -81,10 +81,12 @@ def chapters_for(path: str) -> List[Dict[str, Any]]:
         with _CACHE_LOCK:
             hit = _CACHE.get(key)
         return hit if hit is not None else []
+    chapters: List[Dict[str, Any]] = []
+    probed = False  # only a probe that ran is worth remembering; a failure is retried later
     try:
         ffprobe = shutil.which("ffprobe")
         if not ffprobe:
-            chapters: List[Dict[str, Any]] = []
+            chapters = []
         else:
             cmd = [ffprobe, "-v", "quiet", "-print_format", "json",
                    "-show_chapters", real]
@@ -103,12 +105,14 @@ def chapters_for(path: str) -> List[Dict[str, Any]]:
                 if not isinstance(data, dict):
                     data = {}
                 chapters = _normalise(data)
+                probed = True
     finally:
         with _CACHE_LOCK:
-            _CACHE[key] = chapters
-            _CACHE.move_to_end(key)
-            while len(_CACHE) > MAX_CACHE:
-                _CACHE.popitem(last=False)
+            if probed:
+                _CACHE[key] = chapters
+                _CACHE.move_to_end(key)
+                while len(_CACHE) > MAX_CACHE:
+                    _CACHE.popitem(last=False)
             evt = _INFLIGHT.pop(key, None)
         if evt is not None:
             evt.set()

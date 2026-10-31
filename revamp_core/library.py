@@ -26,6 +26,8 @@ from . import tags as tags_mod
 INDEX_NAME = "library.json"
 
 _LOCK = threading.RLock()
+# Serialises index writes: without it an older payload could be written after a newer one.
+_SAVE_LOCK = threading.Lock()
 # Scans are numbered. Only the newest one may commit, so an older scan of
 # folders the user just removed can't finish last and overwrite the index.
 _GEN = 0          # number of the newest scan started
@@ -76,16 +78,18 @@ def save_index(complete: bool = True) -> None:
 
     global _COMPLETE
     path = _index_path()
-    with _LOCK:
-        _COMPLETE = complete
-        payload = {"tracks": _INDEX, "last_scan": _LAST_SCAN, "complete": complete}
-    try:
-        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".lib-", suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh)
-        os.replace(tmp, path)
-    except OSError:
-        pass
+    with _SAVE_LOCK:
+        with _LOCK:
+            _COMPLETE = complete
+            payload = {"tracks": {k: dict(v) for k, v in _INDEX.items()},
+                       "last_scan": _LAST_SCAN, "complete": complete}
+        try:
+            fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".lib-", suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh)
+            os.replace(tmp, path)
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -195,12 +199,15 @@ def _scan(roots: Optional[List[str]], gen: int) -> int:
             _PROGRESS.update(gen=gen, done=0, total=0)
     work: List[tuple] = []
     root_names = set()
+    offline = set()  # configured but unreachable now (NAS asleep, drive unplugged)
     for root in roots:
         r = Path(root).expanduser()
         root_names.add(str(r))
         files: List[str] = []
         if r.is_dir():
             _walk(r, set(), files)
+        else:
+            offline.add(str(r))
         if _superseded(gen):
             return len(_INDEX)
         work.extend((path, str(r)) for path in files)
@@ -267,8 +274,14 @@ def _scan(roots: Optional[List[str]], gen: int) -> int:
     with _LOCK:
         if _superseded(gen):
             return len(_INDEX)
-        # Files that vanished from disk are dropped: the index reflects the disk.
-        _INDEX = found
+        # Files that vanished from disk are dropped: the index reflects the disk. A whole
+        # folder that is unreachable keeps its tracks: an unplugged NAS is not a deletion.
+        # A duration the player learned while this scan ran lives in the current index only.
+        for tid, entry in found.items():
+            cur = _INDEX.get(tid)
+            if entry.get("duration") is None and isinstance(cur, dict) and cur.get("duration") is not None:
+                found[tid] = dict(entry, duration=cur["duration"])
+        _INDEX = {**{k: v for k, v in known.items() if v.get("root") in offline}, **found}
         _LAST_SCAN = time.time()
         _PROGRESS["done"] = len(work)
         save_index()
@@ -352,7 +365,8 @@ def set_learned_duration(track_id: str, duration: Any) -> Optional[float]:
         if old is not None and old == old and abs(old - dur) < 0.5:
             return round(old, 3)
         track["duration"] = dur
-    save_index()
+        complete = _COMPLETE
+    save_index(complete=complete)  # mid-scan, the saved index stays a checkpoint
     return dur
 
 

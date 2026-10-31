@@ -19,6 +19,7 @@ test("calm defaults are thick bands, no peaks, and the slowest Webamp falloff", 
   assert.deepEqual(mainVisPrefs(undefined), MAIN_VIS_DEFAULTS);
   assert.equal(MAIN_VIS_DEFAULTS.bandwidth, "wide");
   assert.equal(MAIN_VIS_DEFAULTS.peaks, false);
+  assert.equal(MAIN_VIS_DEFAULTS.coloring, "fire");
   assert.equal(MAIN_VIS_DEFAULTS.saFalloff, "slower");
   assert.equal(MAIN_VIS_DEFAULTS.mode, "BAR");
   assert.equal(mainVisFalloff(MAIN_VIS_DEFAULTS), 3);
@@ -33,7 +34,9 @@ test("a saved choice overrides one field and leaves the others calm", () => {
   });
   assert.deepEqual(prefs, {
     mode: "OSCILLOSCOPE",
+    renderer: "revamp",
     bandwidth: "thin",
+    coloring: "fire",
     peaks: true,
     saFalloff: "slower",
     saPeakFalloff: "slow",
@@ -76,8 +79,26 @@ test("the vendored analyzer follows the user's mode and starts calm", () => {
   // MilkDrop still asks whether its own window is the selected visualizer.
   assert.match(bundle, /const a=zq\(sy\)/);
   // The small analyzer must not: that selector turns it off while MilkDrop is open.
-  assert.match(bundle, /const t=zq\(ay\),n=zq\(Tf\)/);
+  // Tf reads the display slice; handed the whole store it returned no mode and the
+  // analyzer drew nothing at all (regression), so it must be given state.display.
+  assert.match(bundle, /const t=zq\(ay\),n=zq\(e=>Tf\(e\.display\)\)/);
+  assert.doesNotMatch(bundle, /n=zq\(Tf\)/);
   assert.doesNotMatch(bundle, /n=zq\(sy\)/);
   assert.match(bundle, /bandwidth:"wide",coloring:"normal",peaks:!1,saFalloff:"slower",saPeakFalloff:"slow"/);
   assert.doesNotMatch(bundle, /peaks:!0,saFalloff:"moderate"/);
+});
+
+test("bar coloring is a saved choice limited to Webamp's three paints", () => {
+  assert.equal(mainVisPrefs({ mainVisualizer: { coloring: "line" } }).coloring, "line");
+  assert.equal(mainVisPrefs({ mainVisualizer: { coloring: "normal" } }).coloring, "normal");
+  assert.equal(mainVisPrefs({ mainVisualizer: { coloring: "rainbow" } }).coloring, "fire");
+  // Webamp binds its paint in the constructor, so the player must rebind it.
+  assert.match(player, /inst\.paintBar = paint\.bind\(inst\)/);
+});
+
+test("under software WebGL the analyzer draws on a frame budget", () => {
+  // Every analyzer frame made Hermes repaint its whole window on the CPU (several cores
+  // while playing). The vendored loop skips drawing until the budget allows a frame.
+  assert.match(bundle, /const f=window\.__revampVisFps;if\(f&&x-l<1e3\/f-2\)return;l=x,e\.drawImage\(d,0,0\),g\.paintFrame\(\)/);
+  assert.match(player, /if \(softwareGL\) window\.__revampVisFps = SOFTWARE_ANALYZER_FPS/);
 });

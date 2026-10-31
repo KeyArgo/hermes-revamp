@@ -173,7 +173,7 @@ def mcp_serve() -> int:
             send({"jsonrpc": "2.0", "id": mid, "result": {
                 "protocolVersion": params.get("protocolVersion") or "2025-06-18",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "revamp", "version": "1.0.0-alpha.4"},
+                "serverInfo": {"name": "revamp", "version": "1.0.0-alpha.5"},
                 "instructions": "REVamp is the user's music player. Use these tools only when the user asks about or for music."}})
         elif method == "ping":
             send({"jsonrpc": "2.0", "id": mid, "result": {}})

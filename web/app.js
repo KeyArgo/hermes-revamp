@@ -8,9 +8,10 @@ import { render as renderSkins } from "./views/skins.js";
 import { render as renderAgent } from "./views/agent.js";
 import { render as renderFocus } from "./views/focus.js";
 import { maybeOfferRestore } from "./views/backups.js";
-import { toast } from "./views/modal.js";
+import { toast, confirmDialog } from "./views/modal.js";
 import { mountThemeButton } from "./theme.js";
 import { labelHostPlace, setHostPlayerPlace } from "./host-place.js";
+import "./diagnostics.js";
 
 // ---------------------------------------------------------------- token
 const TOKEN =
@@ -51,7 +52,10 @@ viewApi.token = TOKEN; // for fetches that send it as a header (never in a URL)
 
 /** Authenticated absolute URL for media/streams/SSE/art. */
 export function authedUrl(path, extra = {}) {
-  const u = new URL(path, location.origin);
+  const here = new URL(location.href);
+  const u = new URL(path, here);
+  // The token only ever goes to this server: "//elsewhere.example/x" also starts with "/".
+  if (u.host !== here.host || u.protocol !== here.protocol) return u.toString();
   u.searchParams.set("t", TOKEN);
   for (const [k, v] of Object.entries(extra)) u.searchParams.set(k, v);
   return u.toString();
@@ -87,6 +91,8 @@ export function setView(id) {
     b.setAttribute("aria-current", b.dataset.view === id ? "page" : "false");
   });
   const body = document.getElementById("panel-body");
+  // Views which attach global listeners clean them up before their DOM is discarded.
+  window.dispatchEvent(new Event("revamp:view-changing"));
   body.innerHTML = "";
   body.setAttribute("aria-busy", "true");
   const viewRoot = document.createElement("div");
@@ -293,12 +299,9 @@ function reportBox() {
   // The player windows alone (no transient menus): the host sizes its scale from this.
   const bx = Math.min(...r.map((b) => b.left)), by = Math.min(...r.map((b) => b.top));
   const base = { bw: Math.ceil(Math.max(...r.map((b) => b.right)) - bx), bh: Math.ceil(Math.max(...r.map((b) => b.bottom)) - by) };
-  // An open context menu (EQ presets) must not be clipped by the overlay: count it
-  // and its visible submenu in the frame Hermes sizes the pop-out to.
-  for (const m of document.querySelectorAll("#webamp-context-menu ul")) {
-    const b = m.getBoundingClientRect();
-    if (b.width > 1 && b.height > 1 && getComputedStyle(m).visibility !== "hidden") r.push(b);
-  }
+  // Context menus are fitted back inside this stack by fitContextMenus(). They
+  // are transient overlays, never player geometry: reporting them here makes a
+  // right-click permanently grow the Frame and exposes blank canvas below it.
   const x = Math.min(...r.map((b) => b.left)), y = Math.min(...r.map((b) => b.top));
   const box = { x: Math.floor(x), y: Math.floor(y), ...base,
     w: Math.ceil(Math.max(...r.map((b) => b.right)) - x), h: Math.ceil(Math.max(...r.map((b) => b.bottom)) - y) };
@@ -693,10 +696,14 @@ function installControlPlayerApi() {
     stop: () => cmd({ action: "stop" }),
     next: () => cmd({ action: "next" }),
     prev: () => cmd({ action: "prev" }),
+    // Focus audio is owned by the live player iframe. A control-only Frame must
+    // ask it to switch backends instead of starting a second local engine.
+    focusStart: () => cmd({ action: "focus_start" }),
     setSkin: (id) => cmd({ action: "skin", id }),
     setLiked: (trackId, liked) => trackId ? apiPost("/api/likes", { track_id: trackId, liked: !!liked }) : Promise.resolve(),
     nowStatus: () => "STOPPED",
   };
+  window.revampFocusActivate = window.revampPlayerApi.focusStart;
 }
 
 // ---------------------------------------------------------------- boot
@@ -705,6 +712,11 @@ function mountControlStage() {
   const stage = document.getElementById("stage");
   if (!stage) return;
   const copy = { docked: "Playing in the frame", floating: "Playing in the pop-out", desktop: "Playing on the desktop" };
+  // This view sits above the normal Library/Artists page.  A large queue made
+  // that page effectively unreadable, especially with a long playlist, so it
+  // starts as a compact summary and expands only when the user asks for it.
+  let queueExpanded = false;
+  let currentQueue = [];
   const render = (place = "docked") => {
     stage.replaceChildren();
     const box = document.createElement("div");
@@ -732,8 +744,36 @@ function mountControlStage() {
   const queue = document.createElement("div");
   queue.style.cssText = "min-width:0;max-height:260px;overflow:auto;padding:8px;border:1px solid var(--line,#303746);border-radius:10px;background:var(--panel,#151a27);font-size:12px";
   const paintQueue = (list) => {
+    currentQueue = list;
     queue.replaceChildren();
-    const title = document.createElement("strong"); title.textContent = `Queue · ${list.length}`; queue.append(title);
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;gap:8px";
+    const title = document.createElement("strong"); title.textContent = `Queue · ${list.length}`;
+    head.append(title);
+    if (list.length) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "btn btn-ghost";
+      toggle.style.cssText = "margin-left:auto;font-size:11px";
+      toggle.textContent = queueExpanded ? "Hide queue" : `Show queue (${list.length})`;
+      toggle.addEventListener("click", () => { queueExpanded = !queueExpanded; paintQueue(currentQueue); });
+      head.append(toggle);
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "btn btn-ghost";
+      clear.style.cssText = "font-size:11px";
+      clear.textContent = "Clear queue";
+      clear.addEventListener("click", async () => {
+        // Hermes sandboxes this frame without allow-modals, so window.confirm()
+        // returns false at once and the queue would never clear.
+        if (!(await confirmDialog("Clear the whole queue?", { title: "Clear queue", okLabel: "Clear" }))) return;
+        await apiPost("/api/command", { action: "queue_clear" });
+        refreshQueue();
+      });
+      head.append(clear);
+    }
+    queue.append(head);
+    if (!queueExpanded) return;
     list.slice(0, 12).forEach((item, index) => {
       const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;align-items:center;margin-top:5px";
       const play = document.createElement("button"); play.className = "btn btn-ghost"; play.textContent = item.title || "Untitled"; play.style.cssText = "flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
@@ -822,8 +862,11 @@ async function boot() {
 
 boot().catch((e) => {
   console.error("revamp boot failed", e);
-  document.getElementById("panel-body").innerHTML =
-    `<div class="empty"><span class="big">⚠</span>Boot failed: ${String(e.message || e)}</div>`;
+  const box = document.createElement("div");
+  box.className = "empty";
+  box.innerHTML = `<span class="big">⚠</span>`;
+  box.append(`Boot failed: ${String(e?.message || e)}`); // text, never markup
+  document.getElementById("panel-body").replaceChildren(box);
 });
 
 // ---------------------------------------------------------------- REST bridge

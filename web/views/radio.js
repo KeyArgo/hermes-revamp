@@ -116,6 +116,14 @@ export async function render(root, api) {
     btn.setAttribute("aria-label", `${on ? "Unfavorite" : "Favorite"}: ${st.name}`);
   }
 
+  // The list may have been refreshed since a row was drawn: then play that station on its
+  // own, never whatever now sits first in the new list.
+  function playStationFrom(list, st) {
+    const at = list.indexOf(st);
+    if (at < 0) window.revampPlayerApi.playItemsAt(0, [stationItem(st)]);
+    else window.revampPlayerApi.playItemsAt(at, list.map(stationItem));
+  }
+
   function stationRow(st, getList) {
     const row = document.createElement("div");
     row.className = "radio-row card-row";
@@ -176,7 +184,7 @@ export async function render(root, api) {
     play.addEventListener("click", (e) => {
       e.stopPropagation();
       const list = getList();
-      window.revampPlayerApi.playItemsAt(Math.max(0, list.indexOf(st)), list.map(stationItem));
+      playStationFrom(list, st);
     });
     const heart = document.createElement("button");
     heart.type = "button";
@@ -244,7 +252,7 @@ export async function render(root, api) {
     };
     addItem("▶ Play", () => {
       const list = getList();
-      window.revampPlayerApi.playItemsAt(Math.max(0, list.indexOf(st)), list.map(stationItem));
+      playStationFrom(list, st);
     });
     addItem("＋ Add to queue", () => window.revampPlayerApi.loadTracks([stationItem(st)], { mode: "append" }));
     addItem(favIds.has(st.id) ? "♥ Unfavorite" : "♡ Favorite", () => {
@@ -326,6 +334,7 @@ export async function render(root, api) {
     let items = [];
     let rawOffset = 0;
     let done = false;
+    let emptyPages = 0;
     let loading = false;
     let total = null;
     let spinnerEl = null;
@@ -371,10 +380,14 @@ export async function render(root, api) {
         listEl.appendChild(row);
       }
       items.push(...found);
-      rawOffset += PAGE;
+      // The server reports how many raw rows it read (it skips broken ones).
+      rawOffset = Number.isFinite(page.next_offset) && page.next_offset > rawOffset ? page.next_offset : rawOffset + PAGE;
       if (page.total != null) total = page.total;
-      done = !page.more || found.length === 0;
+      // A page of nothing but broken rows is not the end: read on, a few pages at most.
+      emptyPages = found.length ? 0 : emptyPages + 1;
+      done = !page.more || (found.length === 0 && (emptyPages > 4 || !(page.next_offset > 0)));
       paint();
+      if (!done && !found.length) return loadNext();
       if (!items.length && done) {
         const shown = offline ? await offline() : false;
         if (!shown) errEmpty(listEl, emptyMsg);
@@ -825,6 +838,7 @@ export async function render(root, api) {
       const p = new URLSearchParams({ limit: String(PAGE), sort: browseSort });
       if (name) p.set("q", name);
       if (tag) p.set("tag", tag);
+      p.set("offset", String(offset));
       return await api(`/api/radio/browse?${p}`);
     }, {
       emptyMsg: `No stations found for “${q}”.`,
@@ -883,7 +897,14 @@ export async function render(root, api) {
     } catch (e) { toast(e.message, { kind: "error" }); }
   });
 
-  window.addEventListener("scroll", () => closeStationMenu(), true);
+  const onWindowScroll = () => closeStationMenu();
+  const onViewChanging = () => {
+    closeStationMenu();
+    window.removeEventListener("scroll", onWindowScroll, true);
+    window.removeEventListener("revamp:view-changing", onViewChanging);
+  };
+  window.addEventListener("scroll", onWindowScroll, true);
+  window.addEventListener("revamp:view-changing", onViewChanging);
 
   // init: favorites first so hearts are right everywhere, then the default tab
   try { const f = await api("/api/radio/favorites"); favIds = new Set(f.map((x) => x.id)); } catch { /* offline */ }

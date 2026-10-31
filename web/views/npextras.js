@@ -1,6 +1,8 @@
 // npextras.js — now-playing extras on the full page: book controls (−10 / +30, speed,
 // chapters) and synced lyrics. Fed by the player's onNow hook; plain DOM, no Webamp internals.
 
+import { confirmDialog } from "./modal.js";
+
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5];
 const clock = (s) => {
   s = Math.max(0, Math.floor(s || 0));
@@ -52,6 +54,37 @@ export function mount(api, viewApi) {
     lyrBtn.setAttribute("aria-pressed", String(!pane.hidden));
     if (!pane.hidden) loadLyrics(current.tid);
   });
+
+  // The Winamp menu is authentic, but it is not discoverable to people who
+  // have never used Winamp. Keep a named control in the normal player UI too.
+  const vizBtn = document.createElement("button");
+  vizBtn.type = "button";
+  vizBtn.className = "btn sm np-visualizer";
+  vizBtn.textContent = "Visualizer";
+  vizBtn.title = "Show or hide the MilkDrop visualizer";
+  vizBtn.setAttribute("aria-label", "Show or hide the MilkDrop visualizer");
+  vizBtn.setAttribute("aria-pressed", "false");
+  card.querySelector(".np-extras")?.appendChild(vizBtn);
+  const paintVisualizer = () => vizBtn.setAttribute("aria-pressed", String(Boolean(api.visualizerOpen?.())));
+  vizBtn.addEventListener("click", () => { api.toggleVisualizer?.(); paintVisualizer(); });
+  paintVisualizer();
+
+  // The classic playlist's menu is not obvious in full-page mode. Keep queue
+  // clearing alongside the other named full-player controls, with a guard
+  // against an accidental click.
+  const clearQueueBtn = document.createElement("button");
+  clearQueueBtn.type = "button";
+  clearQueueBtn.className = "btn sm np-clear-queue";
+  clearQueueBtn.textContent = "Clear queue";
+  clearQueueBtn.title = "Remove every item from the current queue";
+  clearQueueBtn.addEventListener("click", async () => {
+    // In-page dialog: window.confirm() is blocked in the Hermes sandbox (no allow-modals).
+    if (!(await confirmDialog("Clear the whole queue?", { title: "Clear queue", okLabel: "Clear" }))) return;
+    // Go through the shared command route so the live Winamp instance clears
+    // even when this full page is a control surface rather than the owner.
+    await viewApi("/api/command", "POST", { action: "queue_clear" });
+  });
+  card.querySelector(".np-extras")?.appendChild(clearQueueBtn);
 
   // ---- state per item
   let current = { key: null, tid: null, book: false, item: null };
@@ -147,7 +180,7 @@ export function mount(api, viewApi) {
   // Lyrics follow the music more finely than the 2 s now-playing tick.
   setInterval(() => {
     if (document.hidden) return;
-    paintViz();
+    paintVisualizer();
     if (pane.hidden) return;
     const m = api.webamp?.store?.getState?.()?.media;
     if (m) follow(Number(m.timeElapsed) || 0);

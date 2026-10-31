@@ -8,9 +8,12 @@ All network calls are stdlib ``urllib`` with hard timeouts; failures map to
 from __future__ import annotations
 
 import hashlib
+import http.client
+import ipaddress
 import json
 import os
 import re
+import socket
 import threading
 import unicodedata
 import time
@@ -93,6 +96,10 @@ _TAG_ALIASES = {
 }
 
 _LOCK = threading.RLock()
+# popular() builds its pool over several network rounds: a lock of its own, so favorites
+# and the other caches never wait on that.
+_POPULAR_LOCK = threading.RLock()
+MAX_CACHE_ENTRIES = 500
 _SEARCH_CACHE: Dict[str, tuple[float, Any]] = {}
 _NP_CACHE: Dict[str, tuple[float, Optional[str]]] = {}
 _CAT_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
@@ -310,10 +317,19 @@ def hermes_lineup() -> List[Dict[str, Any]]:
     return [dict(s) for s in HERMES_LINEUP]
 
 
+def _cache_put(cache: Dict[str, Any], key: str, value: tuple) -> None:
+    """Insert, keeping at most MAX_CACHE_ENTRIES (oldest out). Expired entries were only
+    skipped on read, so every distinct search used to stay for the life of the process."""
+    cache.pop(key, None)
+    cache[key] = value
+    while len(cache) > MAX_CACHE_ENTRIES:
+        cache.pop(next(iter(cache)))
+
+
 def _reset_caches() -> None:
     """Forget every cached response (tests; also handy after a network outage)."""
     global _POPULAR, _POPULAR_STALE
-    with _LOCK:
+    with _POPULAR_LOCK, _LOCK:
         _SEARCH_CACHE.clear()
         _CAT_CACHE.clear()
         _NP_CACHE.clear()
@@ -421,7 +437,7 @@ def browse(q: str = "", tag: str = "", country: str = "", language: str = "",
         if hit and now - hit[0] < SEARCH_CACHE_TTL:
             page = hit[1]
             return {"stations": [dict(s) for s in page["stations"]],
-                    "total": page["total"], "more": page["more"]}
+                    "total": page["total"], "more": page["more"], "next_offset": page.get("next_offset")}
     # /stations/search is the only endpoint that ANDs the exact-match filters
     # with a name search (the bytagexact/… paths silently ignore `name`).
     # Over-fetch 2x: _normalize_station drops broken/spam rows, and a page
@@ -444,16 +460,22 @@ def browse(q: str = "", tag: str = "", country: str = "", language: str = "",
     data, total = _rb_json("stations/search", params)
     raw_list = data if isinstance(data, list) else []
     out: List[Dict[str, Any]] = []
-    for raw in raw_list:
+    used = len(raw_list)
+    for i, raw in enumerate(raw_list):
         st = _normalize_station(raw, "radiobrowser")
         if st:
             out.append(st)
             if len(out) >= limit:
+                used = i + 1
                 break
-    page = {"stations": out, "total": total, "more": len(raw_list) >= win}
+    # Dropped rows mean more than `limit` raw rows were read: the next page starts after
+    # the last one used, or it would repeat stations already shown.
+    page = {"stations": out, "total": total, "more": len(raw_list) >= win or used < len(raw_list),
+            "next_offset": offset + used}
     with _LOCK:
-        _SEARCH_CACHE[key] = (now, page)
-    return {"stations": [dict(s) for s in out], "total": total, "more": page["more"]}
+        _cache_put(_SEARCH_CACHE, key, (now, page))
+    return {"stations": [dict(s) for s in out], "total": total, "more": page["more"],
+            "next_offset": page["next_offset"]}
 
 
 # ---------------------------------------------------------------------------
@@ -549,7 +571,7 @@ def search_radiobrowser(q: str = "", tag: str = "", limit: int = 30,
         if st:
             out.append(st)
     with _LOCK:
-        _SEARCH_CACHE[key] = (now, [dict(s) for s in out])
+        _cache_put(_SEARCH_CACHE, key, (now, [dict(s) for s in out]))
     return out
 
 
@@ -729,7 +751,7 @@ def popular(limit: int = POPULAR_LIMIT, offset: int = 0) -> List[Dict[str, Any]]
     """
     limit = max(1, min(200, int(limit)))
     offset = max(0, int(offset))
-    with _LOCK:
+    with _POPULAR_LOCK:
         state = _popular_state()
         try:
             if not state["raw_done"]:
@@ -756,7 +778,7 @@ def favorites() -> List[Dict[str, Any]]:
         data = json.loads(_fav_path().read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise ValueError("favorites must be a list")
-        return data
+        return [f for f in data if isinstance(f, dict)]
     except FileNotFoundError:
         return []
     except (OSError, ValueError) as exc:
@@ -785,8 +807,10 @@ def _save_favorites(items: List[Dict[str, Any]]) -> None:
 def add_favorite(station: Dict[str, Any]) -> Dict[str, Any]:
     st = dict(station or {})
     st["source"] = st.get("source") or "custom"
-    if not st.get("url"):
+    if not st.get("url") or not isinstance(st["url"], str):
         raise RadioError("station needs a url")
+    if st.get("id") not in (None, ""):
+        st["id"] = str(st["id"])  # DELETE ?id= always compares strings
     if not st.get("id"):
         url_hash = hashlib.sha256(str(st["url"]).encode("utf-8")).hexdigest()
         st["id"] = "custom-" + url_hash
@@ -805,7 +829,7 @@ def add_favorite(station: Dict[str, Any]) -> Dict[str, Any]:
 def remove_favorite(sid: str) -> bool:
     with _LOCK:
         favs = favorites()
-        keep = [f for f in favs if f.get("id") != sid]
+        keep = [f for f in favs if str(f.get("id")) != str(sid)]
         if len(keep) == len(favs):
             return False
         _save_favorites(keep)
@@ -817,9 +841,132 @@ def remove_favorite(sid: str) -> bool:
 # Stream URL resolution + proxy + ICY now playing
 # ---------------------------------------------------------------------------
 
+MAX_ICY_METAINT = 256 * 1024
+# NAT64 prefixes count as global, but a DNS64 gateway turns them into the IPv4 address inside.
+_NAT64 = (ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("64:ff9b:1::/48"))
+
+
+def _validate_stream_url(url: str) -> str:
+    """Only proxy public HTTP(S) streams.
+
+    A playlist is upstream data, not a trusted redirect instruction. It must
+    not turn a public ``.m3u`` request into a local-file or private-network
+    read through REVamp's authenticated proxy.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(str(url or ""))
+    except ValueError as exc:
+        raise RadioError("invalid stream URL") from exc
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname:
+        raise RadioError("stream URL must be public http(s)")
+    if parsed.username is not None or parsed.password is not None:
+        raise RadioError("stream URL credentials are not allowed")
+    try:
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        answers = socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
+    except (OSError, ValueError) as exc:
+        raise RadioError("stream host could not be resolved") from exc
+    _public_answers(answers)
+    return url
+
+
+def _public_answers(answers: list) -> list:
+    """Every getaddrinfo answer must be a public address; returns them unchanged."""
+    if not answers:
+        raise RadioError("stream host could not be resolved")
+    for answer in answers:
+        try:
+            address = ipaddress.ip_address(answer[4][0])
+        except (IndexError, ValueError):
+            raise RadioError("stream host returned an invalid address") from None
+        if address.version == 6 and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        elif address.version == 6 and address in _NAT64[1]:
+            # Local-use NAT64: the IPv4 inside is scattered, and nothing public uses it.
+            raise RadioError("stream host is not a public address")
+        elif address.version == 6 and address in _NAT64[0]:
+            address = ipaddress.ip_address(int(address) & 0xFFFFFFFF)  # the IPv4 it reaches
+        if not address.is_global:
+            raise RadioError("stream host resolves to a non-public address")
+    return answers
+
+
+def _pinned_socket(host: str, port: int, timeout: Any, source_address: Any = None) -> socket.socket:
+    """Resolve once, check, and connect to exactly the checked address.
+
+    Validating a URL and then letting urllib resolve it again leaves a DNS
+    rebinding gap: a zero-TTL record can answer public for the check and
+    127.0.0.1 or a metadata address for the connect.
+    """
+    try:
+        answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except (OSError, ValueError) as exc:
+        raise RadioError("stream host could not be resolved") from exc
+    err: Optional[OSError] = None
+    for family, socktype, proto, _canon, addr in _public_answers(answers):
+        sock = socket.socket(family, socktype, proto)
+        try:
+            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:  # type: ignore[attr-defined]
+                sock.settimeout(timeout)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(addr)
+            return sock
+        except OSError as exc:
+            sock.close()
+            err = exc
+    raise err or OSError("stream host could not be reached")
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def connect(self) -> None:
+        self.sock = _pinned_socket(self.host, self.port, self.timeout, self.source_address)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self) -> None:
+        sock = _pinned_socket(self.host, self.port, self.timeout, self.source_address)
+        # TLS still verifies the certificate against the hostname, not the IP.
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)  # type: ignore[attr-defined]
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):  # type: ignore[no-untyped-def]
+        return self.do_open(_PinnedHTTPConnection, req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):  # type: ignore[no-untyped-def]
+        return self.do_open(_PinnedHTTPSConnection, req, context=self._context)  # type: ignore[attr-defined]
+
+
+def safe_stream_url(url: str) -> bool:
+    """Whether *url* resolves only to public HTTP(S) stream endpoints."""
+    try:
+        _validate_stream_url(url)
+        return True
+    except RadioError:
+        return False
+
+
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    """Validate every target before urllib follows an HTTP redirect."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        _validate_stream_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _open(url: str, headers: Dict[str, str], timeout: float):
+    _validate_stream_url(url)
     req = urllib.request.Request(url, headers=headers)
-    return urllib.request.urlopen(req, timeout=timeout)
+    # Do not honour HTTP(S)_PROXY: the player connects only to the public
+    # stream target it just validated.
+    # Every connection (including each redirect hop) goes through the pinned
+    # handlers, so the address checked is the address connected to.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SafeRedirect(),
+                                         _PinnedHTTPHandler(), _PinnedHTTPSHandler())
+    return opener.open(req, timeout=timeout)
 
 
 def resolve_playlist_url(url: str) -> str:
@@ -829,18 +976,25 @@ def resolve_playlist_url(url: str) -> str:
         return url
     try:
         with _open(url, {"User-Agent": UA}, NOWPLAYING_TIMEOUT) as resp:
-            text = resp.read(64 * 1024).decode("utf-8", errors="replace")
+            # utf-8-sig: Windows tools start playlists with a BOM, which made "#EXTM3U" a URL.
+            text = resp.read(64 * 1024).decode("utf-8-sig", errors="replace")
+            # Relative entries belong to where the playlist actually came from, which
+            # after a redirect is not the URL we asked for.
+            geturl = getattr(resp, "geturl", None)
+            base = (geturl() if callable(geturl) else None) or url
     except Exception:
         return url
     # pls: File1=... ; m3u: first non-comment line
     import re
     m = re.search(r"^File\d+\s*=\s*(\S+)", text, re.M | re.I)
     if m:
-        return urllib.parse.urljoin(url, m.group(1).strip())
+        candidate = urllib.parse.urljoin(base, m.group(1).strip())
+        return candidate if safe_stream_url(candidate) else url
     for line in text.splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
-            return urllib.parse.urljoin(url, line)
+            candidate = urllib.parse.urljoin(base, line)
+            return candidate if safe_stream_url(candidate) else url
     return url
 
 
@@ -851,6 +1005,8 @@ def open_stream(url: str, icy: bool = False):
     Request headers never include Icy-MetaData unless *icy* (nowplaying only).
     """
     target = resolve_playlist_url(url)
+    if not safe_stream_url(target):
+        raise RadioError("stream url must be public http(s)")
     headers = {"User-Agent": UA}
     if icy:
         headers["Icy-MetaData"] = "1"
@@ -865,21 +1021,35 @@ def nowplaying(url: str) -> Dict[str, Any]:
     """ICY StreamTitle for *url*; cached 15 s. Returns {'title': str|None}."""
     now = time.time()
     key = url
+    # Cache first: only checked URLs are cached, and a poll every 15 s should not cost
+    # a DNS lookup (or turn a DNS hiccup into an error) when the answer is known.
     with _LOCK:
         hit = _NP_CACHE.get(key)
         if hit and now - hit[0] < NP_CACHE_TTL:
             return {"title": hit[1]}
+    if not safe_stream_url(url):
+        raise RadioError("stream url must be public http(s)")
     title: Optional[str] = None
     try:
         target = resolve_playlist_url(url)
+        if not safe_stream_url(target):
+            raise RadioError("stream url must be public http(s)")
         resp = _open(target, {"User-Agent": UA, "Icy-MetaData": "1"}, NOWPLAYING_TIMEOUT)
         with resp:
             metaint = resp.headers.get("icy-metaint")
             if metaint:
                 interval = int(metaint)
-                # Read one full interval + one metadata block.
-                chunk = resp.read(interval)
-                if len(chunk) == interval:
+                # The interval is the station's say-so: a huge one made us buffer that
+                # much audio in memory. Real stations use 8-64 KiB; skip it in pieces.
+                if not 0 < interval <= MAX_ICY_METAINT:
+                    raise RadioError("implausible icy-metaint")
+                got = 0
+                while got < interval:
+                    piece = resp.read(min(16 * 1024, interval - got))
+                    if not piece:
+                        break
+                    got += len(piece)
+                if got == interval:
                     blen = resp.read(1)[0] * 16
                     if blen:
                         meta = resp.read(blen).decode("utf-8", errors="replace")
@@ -894,5 +1064,5 @@ def nowplaying(url: str) -> Dict[str, Any]:
     except Exception:
         title = None
     with _LOCK:
-        _NP_CACHE[key] = (now, title)
+        _cache_put(_NP_CACHE, key, (now, title))
     return {"title": title}

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 import json
 import os
 import shutil
@@ -22,6 +23,8 @@ import time
 import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 #: Files under the data dir that get backed up (relpaths). ``library.json`` is
 #: rebuildable and big, ``token`` is a secret, ``skins/`` is cache — none of
@@ -258,6 +261,32 @@ def _atomic_copy(src: Path, dst: Path) -> None:
         raise
 
 
+def _undo_point(data_dir: Path, rels) -> Dict[str, Optional[bytes]]:
+    """Current bytes of every file a restore will replace (None: not there yet). These are
+    small (state, settings, playlists), and a write that fails half-way puts them back."""
+    saved: Dict[str, Optional[bytes]] = {}
+    for rel in rels:
+        try:
+            saved[rel] = (data_dir / rel).read_bytes()
+        except FileNotFoundError:
+            saved[rel] = None
+    return saved
+
+
+def _roll_back(data_dir: Path, saved: Dict[str, Optional[bytes]]) -> None:
+    for rel, payload in saved.items():
+        dst = data_dir / rel
+        try:
+            if payload is None:
+                dst.unlink(missing_ok=True)
+            else:
+                tmp = dst.with_name(f".rollback-{dst.name}.tmp")
+                tmp.write_bytes(payload)
+                os.replace(tmp, dst)
+        except OSError:
+            logger.warning("revamp: could not roll back %s", rel)
+
+
 def restore(backup_id, data_dir, *, root=None) -> List[str]:
     """Put the backup's files back (each via a temp file + ``os.replace``).
 
@@ -286,11 +315,17 @@ def restore(backup_id, data_dir, *, root=None) -> List[str]:
         if src.is_symlink() or not src.is_file() or _sha256(src) != digest:
             raise ValueError(f"backup {manifest['id']} is damaged: {rel}")
     snapshot(data_dir, root=root)
-    for rel in sorted(files):
-        src = src_dir / rel
-        dst = data_dir / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_copy(src, dst)
+    saved = _undo_point(data_dir, files)
+    try:
+        for rel in sorted(files):
+            src = src_dir / rel
+            dst = data_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_copy(src, dst)
+    except OSError:
+        # Half old, half new is worse than either: put the current files back.
+        _roll_back(data_dir, saved)
+        raise
     # Playlists mirror the backup exactly: drop ones the backup lacks.
     keep = {rel.split("/", 1)[1] for rel in files if rel.startswith(PLAYLIST_DIR + "/")}
     try:
@@ -376,9 +411,15 @@ def import_zip(data: bytes, data_dir, *, root=None) -> List[str]:
     # First pass: validate names and declared sizes from the central directory
     # only, so a zip bomb is refused before anything is decompressed.
     declared = 0
+    names: set = set()
     for info in zf.infolist():
         if not _valid_entry_name(info.filename):
             raise ValueError(f"entry not allowed: {info.filename!r}")
+        # Two entries with one name: reads go by name, so the checks and the write could
+        # see different entries. A real export never has duplicates.
+        if info.filename in names:
+            raise ValueError(f"duplicate entry in the zip: {info.filename!r}")
+        names.add(info.filename)
         if _entry_is_symlink(info):
             raise ValueError(f"symlink entries are not allowed: {info.filename!r}")
         try:
@@ -428,21 +469,26 @@ def import_zip(data: bytes, data_dir, *, root=None) -> List[str]:
 
     data_dir = Path(data_dir)
     snapshot(data_dir, root=root)
-    for rel, payload in sorted(payloads.items()):
-        dst = data_dir / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(dst.parent), prefix=".import-", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(payload)
-            os.chmod(tmp, 0o600)
-            os.replace(tmp, dst)
-        except BaseException:
+    saved = _undo_point(data_dir, payloads)
+    try:
+        for rel, payload in sorted(payloads.items()):
+            dst = data_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=str(dst.parent), prefix=".import-", suffix=".tmp")
             try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(payload)
+                os.chmod(tmp, 0o600)
+                os.replace(tmp, dst)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+    except OSError:
+        _roll_back(data_dir, saved)
+        raise
     return sorted(payloads)
 
 

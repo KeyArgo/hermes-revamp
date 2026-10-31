@@ -242,7 +242,10 @@ def _write_m3u(path: Path, name: str, items: List[Dict[str, Any]]) -> None:
         ) or str(it.get("title") or "Unknown")
         lines.append(f"#EXTINF:{secs},{label}")
         lines.append(item_path(it))
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Write beside, then swap: a failed write (disk full) used to leave the playlist truncated.
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _unique_slug(base: str) -> str:
@@ -271,14 +274,22 @@ def list_playlists() -> List[Dict[str, Any]]:
 def get_playlist(pid: str) -> Optional[Dict[str, Any]]:
     """id | slug; name match fallback for friendlier lookups."""
     with _LOCK:
-        p = playlists_dir() / f"{slugify(pid)}.m3u8"
-        if not p.exists():
-            for cand in playlists_dir().glob("*.m3u8"):
-                if cand.stem == pid or _stored_name(cand) == pid:
+        # Display names can normalize to another playlist's slug ("Rock!"
+        # versus "Rock"). Resolve exact ids/names before the friendly slug
+        # fallback so a valid name never opens a different playlist.
+        # Exact id first: a playlist *named* "chill" must not shadow the one whose id is "chill".
+        exact = playlists_dir() / f"{pid}.m3u8"
+        p = exact if "/" not in pid and "\\" not in pid and exact.is_file() else None
+        if p is None:
+            for cand in sorted(playlists_dir().glob("*.m3u8")):
+                if _stored_name(cand) == pid:
                     p = cand
                     break
-            else:
+        if p is None:
+            candidate = playlists_dir() / f"{slugify(pid)}.m3u8"
+            if not candidate.exists():
                 return None
+            p = candidate
         items = _read_m3u(p)
         return {"id": p.stem, "name": _stored_name(p), "items": items}
 

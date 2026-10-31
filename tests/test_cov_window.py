@@ -250,3 +250,35 @@ def test_claim_handoff(win):
     assert window.claim_handoff("hermes")["position"] == 5
     win.state["handoff"] = {"for": "hermes", "ts": time.time() - window.HANDOFF_TTL - 1}
     assert window.claim_handoff("hermes") is None                   # too old
+
+
+def test_popout_devtools_is_loopback_only_and_grants_no_origin(monkeypatch, win):
+    # Review item 4: --remote-allow-origins=* let any web page drive the pop-out's
+    # DevTools. The window's own client sends no Origin, so it needs no grant.
+    monkeypatch.setattr(window, "find_browser", lambda: "/usr/bin/chromium")
+    monkeypatch.setattr(window, "install_linux_desktop_identity", lambda: None)  # never the real ~/.local
+    seen = {}
+    def capture(args, **kw):
+        seen["args"] = list(args)
+        return FakeProc()
+    monkeypatch.setattr(window.subprocess, "Popen", capture)
+    monkeypatch.setattr(window.threading, "Thread",
+                        lambda *a, **k: type("T", (), {"start": lambda self: None})())
+    window.open_window(8114)
+    args = seen["args"]
+    assert not any(a.startswith("--remote-allow-origins") for a in args), args
+    assert "--remote-debugging-address=127.0.0.1" in args
+
+
+def test_devtools_client_sends_no_origin_header(monkeypatch):
+    # Chrome refuses a DevTools websocket that carries an Origin it was not told to
+    # allow; the pop-out works without --remote-allow-origins only because of this.
+    sent = []
+    class Sock:
+        def settimeout(self, t): pass
+        def sendall(self, b): sent.append(b); raise OSError("stop after handshake")
+        def close(self): pass
+    monkeypatch.setattr(window.socket, "create_connection", lambda *a, **k: Sock())
+    with pytest.raises(Exception):
+        window._cdp_calls("ws://127.0.0.1:9222/devtools/browser/x", [("Browser.getVersion", {})])
+    assert sent and b"\r\nOrigin:" not in sent[0]

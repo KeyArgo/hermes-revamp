@@ -159,7 +159,11 @@ def install_linux_desktop_identity() -> None:
                 "NoDisplay=true\n"
             )
             destination = desktop_dir / filename
-            if not destination.is_file() or destination.read_text(encoding="utf-8") != entry:
+            try:
+                current = destination.read_text(encoding="utf-8") if destination.is_file() else None
+            except ValueError:  # a garbled old entry is simply replaced
+                current = None
+            if current != entry:
                 destination.write_text(entry, encoding="utf-8")
     except OSError:
         # A read-only home must not prevent the optional player from opening.
@@ -214,7 +218,8 @@ def _watch(proc: subprocess.Popen) -> None:
     global _proc
     with _lock:
         ours = _closing is proc
-    if not ours:  # the user closed it: hand over from its last heartbeat, BEFORE reporting closed
+        current = _proc is proc  # a newer window may already have replaced this one
+    if not ours and current:  # the user closed it: hand over from its last heartbeat, BEFORE reporting closed
         _handoff_from_live()
     with _lock:
         if _proc is proc:
@@ -241,7 +246,6 @@ def open_window(port: int, position: float = 0.0, playing: bool = False) -> Dict
             # Localhost only, in this window's private profile. The page uses it to
             # shrink the window to the player (resizeTo is ignored on many app windows).
             "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1",
-            "--remote-allow-origins=*",
             "--no-first-run", "--no-default-browser-check",
             "--autoplay-policy=no-user-gesture-required", "--disable-features=Translate",
         ]
@@ -276,11 +280,16 @@ def close_window() -> bool:
             return False
         _closing = proc
     _handoff_from_live()  # its last heartbeat, before Hermes's player takes over
-    proc.terminate()
     try:
+        proc.terminate()  # it may have exited on its own just now
         proc.wait(5)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    except OSError:
+        pass
     return True
 
 

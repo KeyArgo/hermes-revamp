@@ -45,18 +45,25 @@ class Page:
             ],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        self.ws = self._connect(chrome_port, timeout=20)
-        self.seq = 0
-        self.shot = shot
-        self.call("Page.enable")
-        self.call("Runtime.enable")
-        self.call(
-            "Emulation.setDeviceMetricsOverride",
-            {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
-        )
-        self.call("Page.navigate", {"url": url})
-        self.wait("document.querySelector('#webamp-host')?.offsetWidth")
-        self.wait("document.querySelectorAll('#nav button').length > 0")
+        self.ws = None
+        # A failed boot raises before the caller holds a Page to close(), which
+        # used to leave a headless Chrome running for days.
+        try:
+            self.ws = self._connect(chrome_port, timeout=20)
+            self.seq = 0
+            self.shot = shot
+            self.call("Page.enable")
+            self.call("Runtime.enable")
+            self.call(
+                "Emulation.setDeviceMetricsOverride",
+                {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
+            )
+            self.call("Page.navigate", {"url": url})
+            self.wait("document.querySelector('#webamp-host')?.offsetWidth")
+            self.wait("document.querySelectorAll('#nav button').length > 0")
+        except BaseException:
+            self.close()
+            raise
 
     @staticmethod
     def _profile() -> str:
@@ -113,7 +120,8 @@ class Page:
 
     def close(self):
         try:
-            self.ws.close()
+            if self.ws:
+                self.ws.close()
         except OSError:
             pass
         self.proc.terminate()

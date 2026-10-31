@@ -277,6 +277,7 @@ def install(md5: str, name: str = "") -> Dict[str, Any]:
             except (MuseumError, OSError):
                 cached.unlink(missing_ok=True)
                 cached = None
+        fresh = cached is None
         if cached is None:
             data = _download(md5)
             if data[:2] != b"PK":
@@ -304,8 +305,10 @@ def install(md5: str, name: str = "") -> Dict[str, Any]:
             try:
                 _save_index(index)
             except OSError as exc:
-                # Don't report a half-installed skin as installed.
-                (_dir() / f"{md5}.wsz").unlink(missing_ok=True)
+                # Don't report a half-installed skin as installed; but a reinstall of a
+                # skin that was already there must not delete it.
+                if fresh:
+                    (_dir() / f"{md5}.wsz").unlink(missing_ok=True)
                 raise MuseumError(f"could not save the skin list: {exc}") from exc
         return entry(md5)
 

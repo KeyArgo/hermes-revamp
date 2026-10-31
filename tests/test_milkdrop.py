@@ -17,7 +17,7 @@ def test_visualizer_command_accepted(server, cmd):
     assert st == 200 and res["ok"] is True, res
 
 
-def test_docked_milkdrop_has_its_own_preference_and_uses_main_menu():
+def test_docked_milkdrop_has_its_own_preference_menu_and_plain_language_toggle():
     player = Path("web/player.js").read_text(encoding="utf-8")
     app = Path("web/app.js").read_text(encoding="utf-8")
     assert 'visualizerPlacement === "docked") return "milkdropOpenDocked"' in player
@@ -26,7 +26,13 @@ def test_docked_milkdrop_has_its_own_preference_and_uses_main_menu():
     assert 'e.key.toLowerCase() !== "m"' in app
     assert 'id = "docked-milkdrop"' not in app
     assert 'id = "float-milkdrop"' not in app
-    assert "np-visualizer" not in Path("web/views/npextras.js").read_text(encoding="utf-8")
+    extras = Path("web/views/npextras.js").read_text(encoding="utf-8")
+    # The classic menu remains available, but full-page users should not need to
+    # know Winamp conventions to find MilkDrop.
+    assert 'className = "btn sm np-visualizer"' in extras
+    assert 'textContent = "Visualizer"' in extras
+    assert 'api.toggleVisualizer?.()' in extras
+    assert 'api.visualizerOpen?.()' in extras
     css = Path("web/app.css").read_text(encoding="utf-8")
     assert "float-milkdrop" not in css
     assert "body.mode-winamp #webamp-host { min-height: 0; background: transparent !important; }" in css

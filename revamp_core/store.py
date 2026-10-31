@@ -94,7 +94,9 @@ def _load() -> Dict[str, Any]:
     saved_settings = base.get("settings")
     # Merge newly introduced controls without replacing a user's existing choices.
     base["settings"] = {**_defaults()["settings"], **(saved_settings if isinstance(saved_settings, dict) else {})}
-    eq = base.setdefault("eq", _defaults()["eq"])
+    eq = base.get("eq")
+    if not isinstance(eq, dict):  # {"eq": null} saved fine but broke every later load
+        eq = base["eq"] = _defaults()["eq"]
     if not isinstance(eq.get("bands"), list) or len(eq["bands"]) != 10:
         eq["bands"] = [0.0] * 10
     return base
@@ -290,11 +292,12 @@ def run_locked(fn):
     Restore/import rewrite state.json; the lock keeps a concurrent state
     write from landing the stale cached copy back on disk in between
     (the cache reset makes the next read reload the restored files)."""
+    global _STATE
     with _LOCK:
-        result = fn()
-        global _STATE
-        _STATE = None
-        return result
+        try:
+            return fn()
+        finally:
+            _STATE = None  # also after a failed restore: the disk may have changed
 
 
 def heartbeat(now_playing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -305,7 +308,7 @@ def heartbeat(now_playing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         live = dict(st.get("live") or {})
         live["player_connected"] = True
         live["last_heartbeat"] = time.time()
-        live["now_playing"] = dict(now_playing or {})
+        live["now_playing"] = dict(now_playing) if isinstance(now_playing, dict) else {}  # junk is a 500, not state
         live["playback"] = _playback_from(live["now_playing"])
         st["live"] = live
         _STATE = st

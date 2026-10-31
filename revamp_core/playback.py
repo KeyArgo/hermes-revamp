@@ -131,7 +131,9 @@ def dispatch(body: Dict[str, Any], broadcast: Callable[[str, Dict[str, Any]], in
                      "error": f"{action} isn't possible on what's playing", "delivered": 0}
     cmd["backend"] = target
     backend = get_backend(target)
-    if backend is not None and backend.remote:
+    # Page-level actions (settings, sleep, queue edits, skin...) belong to the page even
+    # while a remote service (Spotify) is what's playing; only playback goes remote.
+    if backend is not None and backend.remote and (action == "load" or action not in APP_ACTIONS):
         try:
             extra = backend.command(cmd) or {}
         except Exception as exc:  # the remote service failed: say so

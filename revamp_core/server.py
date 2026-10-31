@@ -31,7 +31,7 @@ from .config import (data_dir, library_dirs, library_dirs_custom, library_folder
 
 logger = logging.getLogger("revamp.server")
 
-VERSION = "1.0.0-alpha.4"
+VERSION = "1.0.0-alpha.5"
 APP_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = APP_ROOT / "web"
 
@@ -140,11 +140,29 @@ def _jsonify(obj: Any) -> bytes:
 class Handler(BaseHTTPRequestHandler):
     server_version = "Revamp/" + VERSION
     protocol_version = "HTTP/1.1"
+    # Socket timeout while a request is read: a client that opens a connection and
+    # stalls mid-headers or mid-body used to hold a server thread forever.
+    # Long-lived responses (audio, event stream, radio) set their own afterwards.
+    timeout = 30
 
     # -- plumbing -----------------------------------------------------------
 
     def log_message(self, fmt: str, *args: Any) -> None:  # silence stdout
         logger.debug("revamp http: " + fmt, *args)
+
+    def _send_cors(self) -> None:
+        # Hermes sandboxes both player iframes without allow-same-origin, so the
+        # page's origin is "null": its module scripts, API calls, event stream and
+        # media all load cross-origin and are blocked without this header. Grant
+        # exactly that opaque origin and no real web origin. /api/ still requires
+        # the token, which only the index page (sent acao=False) carries, and the
+        # loopback Host check keeps a rebinding page from ever reading it.
+        if self.headers.get("Origin") != "null":
+            return
+        self.send_header("Access-Control-Allow-Origin", "null")
+        self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Headers", "X-Revamp-Token, Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 
     def _send(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8",
               extra: Optional[Dict[str, str]] = None, acao: bool = True) -> None:
@@ -153,11 +171,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             if acao:
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers",
-                                 "X-Revamp-Token, Content-Type")
-                self.send_header("Access-Control-Allow-Methods",
-                                 "GET, POST, PUT, DELETE, OPTIONS")
+                self._send_cors()
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
             self.end_headers()
@@ -177,16 +191,35 @@ class Handler(BaseHTTPRequestHandler):
         if not want:
             return False
         hdr = self.headers.get("X-Revamp-Token")
-        if hdr is not None and hdr.strip() == want:
+        import hmac
+        # Bytes, not str: compare_digest raises TypeError on non-ASCII text.
+        want_b = want.encode("utf-8")
+        if hdr is not None and hmac.compare_digest(hdr.strip().encode("utf-8", "surrogateescape"), want_b):
             return True
         qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-        return str((qs.get("t") or [""])[0]) == want
+        return hmac.compare_digest(str((qs.get("t") or [""])[0]).encode("utf-8", "surrogateescape"), want_b)
+
+    def _loopback_host(self) -> bool:
+        """True only when the browser still names this loopback server."""
+        try:
+            parsed = urllib.parse.urlsplit("//" + self.headers.get("Host", ""))
+            host, port = parsed.hostname, parsed.port
+            expected = int(self.server.server_address[1])
+            if not host or port != expected:
+                return False
+            return host in ("127.0.0.1", "localhost")
+        except ValueError:
+            return False
 
     def _wants_token(self) -> bool:
         path = urllib.parse.urlsplit(self.path).path
         return path.startswith("/api/")
 
     def do_OPTIONS(self) -> None:  # noqa: N802
+        # OPTIONS is a route too.  Do not let a hostile web origin use it to
+        # probe a loopback listener with an attacker-controlled Host header.
+        if not self._loopback_host():
+            return self._err(421, "request host must be loopback")
         self._send(204, b"", "text/plain")
 
     def do_GET(self) -> None:
@@ -201,16 +234,33 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         self._dispatch("DELETE")
 
+    def do_HEAD(self) -> None:
+        # Without this every HEAD got 501, and the HEAD branches below never ran.
+        self._dispatch("HEAD")
+
+    STREAM_WRITE_TIMEOUT = 60.0  # seconds a radio listener may stop reading before we hang up
     MAX_BODY = 4 * 1024 * 1024  # JSON bodies only (folders, playlists, commands): never near this
     # A backup import carries a zip as base64 (a 50 MB zip becomes ~67 MB of
     # base64), so only that route gets a bigger budget.
     MAX_BACKUP_IMPORT_BODY = 72 * 1024 * 1024
 
     def _dispatch(self, method: str) -> None:
+        # Reject hostile Host headers before looking at a route or request body.
+        # The local HTML carries the capability token, so this is the boundary
+        # that prevents DNS-rebinding pages from becoming the token's origin.
+        self._body_read = False
+        if not self._loopback_host():
+            self.close_connection = True
+            return self._err(421, "request host must be loopback")
+        if self.headers.get("Transfer-Encoding"):
+            # Never sent by the player; unread, its body would be parsed as the next request.
+            self.close_connection = True
+            return self._err(411, "send a Content-Length")
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
-            length = 0
+            self.close_connection = True
+            return self._err(400, "bad Content-Length")
         limit = self.MAX_BODY
         try:
             if urllib.parse.urlsplit(self.path).path == "/api/backups/import":
@@ -222,6 +272,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(413, "request too large")
         try:
             self._route_dispatch(method)
+            if length > 0 and not self._body_read:
+                # A body nobody read (rejected early, or sent with a GET) would be read
+                # as the next request on this connection.
+                self.close_connection = True
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception:
@@ -235,13 +289,13 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlsplit(self.path).path
         qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
 
-        if path == "/api/health" and method == "GET":
+        if path == "/api/health" and method in ("GET", "HEAD"):
             return self._send_json(_health_payload(self.server))
 
         if path.startswith("/api/"):
             if not self._token_ok():
                 return self._err(401, "invalid or missing token")
-            if method == "GET":
+            if method in ("GET", "HEAD"):
                 return self._api_get(path, qs)
             if method == "POST":
                 return self._api_post(path)
@@ -264,6 +318,7 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         try:
             raw = self.rfile.read(length)
+            self._body_read = True
             obj = json.loads(raw.decode("utf-8"))
             return obj if isinstance(obj, dict) else {}
         except (ValueError, OSError):
@@ -378,7 +433,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/radio/search":
             try:
                 out = radio.search_radiobrowser(
-                    q=(qs.get("q") or [""])[0], tag=(qs.get("tag") or [""])[0],
+                    q=(qs.get("q") or [""])[0][:120], tag=(qs.get("tag") or [""])[0][:80],
                     limit=_int_qs(qs, "limit", 30, 1, 100),
                     offset=_int_qs(qs, "offset", 0, 0, 1000000))
             except radio.RadioError as exc:
@@ -392,8 +447,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/radio/nowplaying":
             url = (qs.get("url") or [""])[0]
             if not url:
-                return self._err(400, "url required")
-            return self._send_json(radio.nowplaying(url))
+                return self._err(400, "url must be public http(s)")
+            try:  # validates the URL itself on a cache miss: no DNS lookup per poll
+                return self._send_json(radio.nowplaying(url))
+            except radio.RadioError as exc:
+                return self._err(400, str(exc))
         if path == "/api/radio/stream":
             return self._stream_proxy((qs.get("url") or [""])[0])
         if path == "/api/window":
@@ -507,7 +565,7 @@ class Handler(BaseHTTPRequestHandler):
             out = playlists.import_playlist(str(body.get("name") or ""),
                                             str(body.get("format") or ""),
                                             str(body.get("text") or ""),
-                                            body.get("origin_dir"))
+                                            body.get("origin_dir") if isinstance(body.get("origin_dir"), str) else None)
             if out is None:
                 return self._err(400, "bad import (need name, format m3u|pls, text)")
             HUB.broadcast("playlists", {"action": "created", "id": out["id"]})
@@ -742,21 +800,63 @@ class Handler(BaseHTTPRequestHandler):
         ctype = _content_type(path)
         rng = self.headers.get("Range")
         headers = {"Accept-Ranges": "bytes"}
-        if not rng:
+
+        def stream(start: int, length: int, code: int, extra: Dict[str, str]) -> None:
+            """Write a bounded slice without ever materialising it in memory."""
+            headers_sent = False
             try:
                 with open(path, "rb") as fh:
-                    body = fh.read()
-            except OSError:
-                return self._err(500, "unreadable file")
-            return self._send(200, body, ctype, extra=headers)
-        m = re.match(r"bytes=(\d*)-(\d*)$", rng.strip())
+                    fh.seek(start)
+                    self.send_response(code)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(length))
+                    self._send_cors()
+                    for key, value in extra.items():
+                        self.send_header(key, value)
+                    self.end_headers()
+                    headers_sent = True
+                    if self.command == "HEAD":
+                        return
+                    # A paused <audio> stops reading for as long as it likes and resumes
+                    # on the same connection: no send deadline for local media.
+                    conn = getattr(self, "connection", None)
+                    if conn is not None:
+                        conn.settimeout(None)
+                    left = length
+                    while left:
+                        chunk = fh.read(min(64 * 1024, left))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        left -= len(chunk)
+                    if left:
+                        # The file shrank: the client still waits for the promised bytes,
+                        # so the connection cannot carry another response.
+                        self.close_connection = True
+                    elif conn is not None:
+                        # Keep-alive: the next request read gets its deadline back.
+                        conn.settimeout(self.timeout)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                if headers_sent:
+                    self.close_connection = True
+                # A disappeared file or client disconnect must not kill the
+                # request thread. Before headers, retain the existing 500.
+                if not headers_sent:
+                    try:
+                        self._err(500, "unreadable file")
+                    except OSError:
+                        pass
+
+        if not rng:
+            return stream(0, size, 200, headers)
+        m = re.match(r"bytes=(\d{0,18})-(\d{0,18})$", rng.strip())
         if not m:
             return self._send(416, b"", ctype, extra={"Content-Range": f"bytes */{size}"})
         start_s, end_s = m.groups()
         if not start_s and end_s:
             # suffix form: last N bytes
             n = int(end_s)
-            if n <= 0:
+            if n <= 0 or size == 0:
                 return self._send(416, b"", ctype,
                                   extra={"Content-Range": f"bytes */{size}"})
             start = max(0, size - n)
@@ -769,14 +869,8 @@ class Handler(BaseHTTPRequestHandler):
                                   extra={"Content-Range": f"bytes */{size}"})
             end = min(end, size - 1)
         length = end - start + 1
-        try:
-            with open(path, "rb") as fh:
-                fh.seek(start)
-                body = fh.read(length)
-        except OSError:
-            return self._err(500, "unreadable file")
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-        return self._send(206, body, ctype, extra=headers)
+        return stream(start, length, 206, headers)
 
     def pipe(self, url: str, headers: Optional[Dict[str, str]] = None,
              timeout: float = 15.0) -> None:
@@ -800,7 +894,9 @@ class Handler(BaseHTTPRequestHandler):
             for h in ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"):
                 if upstream.headers.get(h):
                     self.send_header(h, upstream.headers[h])
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "sandbox")
+            self._send_cors()
             self.send_header("Cache-Control", "no-store")
             if not upstream.headers.get("Content-Length"):
                 self.send_header("Connection", "close")
@@ -842,11 +938,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(404, "no art")
         is_png = data[:8] == b"\x89PNG\r\n\x1a\n"
         ctype = "image/png" if is_png else "image/jpeg"
-        return self._send(200, data, ctype, acao=True)
+        return self._send(200, data, ctype)
 
     def _stream_proxy(self, url: str) -> None:
-        if not url.startswith(("http://", "https://")):
-            return self._err(400, "url must be http(s)")
+        if not radio.safe_stream_url(url):
+            return self._err(400, "url must be public http(s)")
         try:
             upstream = radio.open_stream(url, icy=False)
         except Exception as exc:
@@ -855,9 +951,20 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.send_response(200)
             self.send_header("Content-Type", ctype)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            # This origin also serves the token page: a station answering text/html must
+            # not get a page that runs here.
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "sandbox")
+            self._send_cors()
             self.send_header("Cache-Control", "no-store")
+            # This response is deliberately streamed rather than chunked. Tell
+            # HTTP/1.1 clients that EOF, not a missing Content-Length, ends it.
+            self.send_header("Connection", "close")
+            self.close_connection = True
             self.end_headers()
+            # A paused or vanished player stops reading; without a send timeout
+            # this thread and its upstream connection would block forever.
+            self.connection.settimeout(self.STREAM_WRITE_TIMEOUT)
             while True:
                 chunk = upstream.read(16 * 1024)
                 if not chunk:
@@ -878,8 +985,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-store")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_cors()
             self.end_headers()
+            # Pings go out every 15 s; a reader that takes none for a minute is gone.
+            self.connection.settimeout(self.STREAM_WRITE_TIMEOUT)
             hello = _jsonify({"hello": True})
             self.wfile.write(b"retry: 3000\n\n")
             self.wfile.write(b": ping\n\n")
@@ -888,10 +997,13 @@ class Handler(BaseHTTPRequestHandler):
             while True:
                 try:
                     kind, data = q.get(timeout=2.0)
+                except Exception:  # nothing queued
+                    kind = None
+                if kind is not None:
+                    # Write errors end the stream: after a timed-out half frame, more
+                    # writes would only corrupt it.
                     self.wfile.write(f"event: {kind}\ndata: {data}\n\n".encode("utf-8"))
                     self.wfile.flush()
-                except Exception:
-                    pass
                 if time.time() - last_ping > 15.0:
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
@@ -923,7 +1035,10 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_dir(self, base: Path, rel: str, allow_token: bool = False) -> None:
         rel = urllib.parse.unquote(rel).lstrip("/")
         root = base.resolve()
-        target = (base / rel).resolve()
+        try:
+            target = (base / rel).resolve()
+        except (ValueError, OSError):  # NUL bytes and the like
+            return self._err(404, "bad path")
         # Strictly inside the served folder: its parent can hold the token
         # (data dir for /skins/user/) or source files (repo for /web/).
         if not target.is_relative_to(root):
@@ -959,6 +1074,7 @@ class Handler(BaseHTTPRequestHandler):
                 html = html.replace("</head>", meta + "\n</head>", 1)
             else:
                 html = meta + html
+        # The index carries the token: never let another origin read it.
         self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", acao=False,
                    extra={"Cache-Control": "no-cache"})
 
