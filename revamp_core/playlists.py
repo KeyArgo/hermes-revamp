@@ -278,10 +278,12 @@ def get_playlist(pid: str) -> Optional[Dict[str, Any]]:
         # versus "Rock"). Resolve exact ids/names before the friendly slug
         # fallback so a valid name never opens a different playlist.
         # Exact id first: a playlist *named* "chill" must not shadow the one whose id is "chill".
-        exact = playlists_dir() / f"{pid}.m3u8"
-        p = exact if "/" not in pid and "\\" not in pid and exact.is_file() else None
+        # Compare listed file names, not exact.is_file(): macOS and Windows match names
+        # case-insensitively, so "Chill" would open chill.m3u8 under the id "Chill".
+        cands = sorted(playlists_dir().glob("*.m3u8"))
+        p = next((c for c in cands if c.stem == pid), None)
         if p is None:
-            for cand in sorted(playlists_dir().glob("*.m3u8")):
+            for cand in cands:
                 if _stored_name(cand) == pid:
                     p = cand
                     break

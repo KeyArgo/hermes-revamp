@@ -1,0 +1,2 @@
+# Vendored bundles ship byte-for-byte (tests check their SHA-256): no CRLF conversion on Windows.
+web/vendor/** -text

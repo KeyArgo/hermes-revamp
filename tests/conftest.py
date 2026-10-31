@@ -304,6 +304,7 @@ def _private_home(tmp_path, monkeypatch):
     home = tmp_path / "home-sandbox"
     home.mkdir(exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))  # Windows: Path.home() reads this, not HOME
 
 
 @pytest.fixture(autouse=True)

@@ -188,3 +188,23 @@ def test_exact_id_wins_over_another_playlists_name(home):
     assert pl.get_playlist("chill")["id"] == "chill"
     assert pl.get_playlist("chill-2")["id"] == "chill-2"
     assert pl.get_playlist("Chill")["id"] == "chill"
+
+
+def test_lookup_keeps_the_real_id_on_case_insensitive_disks(home, monkeypatch):
+    # macOS and Windows disks match file names case-insensitively: chill.m3u8 "exists" when
+    # asked for Chill.m3u8, so get_playlist("Chill") answered with the id "Chill", which no
+    # file has. Simulate such a disk here so Linux CI catches it too.
+    real_is_file, real_exists = pathlib.Path.is_file, pathlib.Path.exists
+
+    def folded(real):
+        def check(self):
+            if real(self):
+                return True
+            return any(c.name.lower() == self.name.lower() for c in self.parent.glob("*")) if self.parent.is_dir() else False
+        return check
+
+    pl.create_playlist("Chill", [{"kind": "file", "path": "/a.mp3", "title": "A"}])
+    monkeypatch.setattr(pathlib.Path, "is_file", folded(real_is_file))
+    monkeypatch.setattr(pathlib.Path, "exists", folded(real_exists))
+    assert pl.get_playlist("Chill")["id"] == "chill"
+    assert pl.get_playlist("CHILL")["id"] == "chill"
