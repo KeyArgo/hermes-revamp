@@ -42,9 +42,14 @@ _closing: Optional[subprocess.Popen] = None  # closed by us: the handoff is alre
 # works differently there). {"proc", "w", "r", "lock", "id", "buf"} or None.
 _cdp_pipe: Optional[Dict[str, Any]] = None
 # Hands the two pipe ends to the browser as fds 3 and 4 (where Chrome expects them) and
-# execs it; avoids preexec_fn, which is unsafe in this threaded server.
-_PIPE_SHIM = 'r=$1; w=$2; shift 2; exec "$@" 3<&"$r" 4>&"$w"'
-USE_CDP_PIPE = os.name == "posix" and os.path.exists("/bin/sh")
+# execs it; avoids preexec_fn, which is unsafe in this threaded server. Python, not a shell
+# one-liner: dash (/bin/sh on Debian/Ubuntu) can't redirect fds above 9, and in a busy
+# server the pipe ends often are. Both ends move above 9 first so neither is overwritten.
+_PIPE_SHIM = ("import fcntl,os,sys\n"
+              "r,w=(fcntl.fcntl(int(a),fcntl.F_DUPFD,10) for a in sys.argv[1:3])\n"
+              "os.dup2(r,3);os.dup2(w,4);os.close(r);os.close(w)\n"
+              "os.execvp(sys.argv[3],sys.argv[3:])")
+USE_CDP_PIPE = os.name == "posix" and bool(sys.executable)
 HANDOFF_TTL = 120.0
 LEASE = "float-window.json"  # survives a server restart, so an orphaned window can be found
 # One entry per window identity, each matching ONLY the pop-out:
@@ -322,7 +327,7 @@ def open_window(port: int, position: float = 0.0, playing: bool = False) -> Dict
             from_chrome_r, from_chrome_w = os.pipe()  # Chrome writes (its fd 4), we read
             pipe_ends = (to_chrome_r, from_chrome_w)
             args.insert(1, "--remote-debugging-pipe")
-            args = ["/bin/sh", "-c", _PIPE_SHIM, "sh", str(to_chrome_r), str(from_chrome_w)] + args
+            args = [sys.executable, "-I", "-c", _PIPE_SHIM, str(to_chrome_r), str(from_chrome_w)] + args
         else:
             args[1:1] = ["--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"]
         try:

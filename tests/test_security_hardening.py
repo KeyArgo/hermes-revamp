@@ -497,7 +497,7 @@ def test_the_pop_out_uses_a_private_devtools_pipe_not_a_port(monkeypatch, tmp_pa
         args = seen["args"]
         assert "--remote-debugging-pipe" in args
         assert not any(a.startswith("--remote-debugging-port") for a in args)
-        assert args[:3] == ["/bin/sh", "-c", window._PIPE_SHIM]
+        assert args[:4] == [window.sys.executable, "-I", "-c", window._PIPE_SHIM]
         assert len(seen["kw"]["pass_fds"]) == 2
     finally:
         window._set_cdp_pipe(None)
@@ -712,7 +712,7 @@ def test_stream_proxy_answers_head_without_streaming():
 def test_bridge_refuses_upgrade_and_backup_routes_but_keeps_what_desktop_uses():
     import re as _re
     from pathlib import Path as _P
-    app = (_P(__file__).resolve().parents[1] / "web" / "app.js").read_text()
+    app = (_P(__file__).resolve().parents[1] / "web" / "app.js").read_text(encoding="utf-8")
     never = _re.compile(_re.search(r"const BRIDGE_NEVER = /(.+)/;", app).group(1).replace("\\/", "/"))
     for p in ("/shutdown-for-upgrade", "/backups/restore", "/backups/import", "/info"):
         assert never.search("/api" + p), p
@@ -770,7 +770,7 @@ def test_bridge_dot_segment_cannot_reach_a_refused_route():
     from pathlib import Path as _P
     if not _sh.which("node"):
         pytest.skip("node")
-    app = (_P(__file__).resolve().parents[1] / "web" / "app.js").read_text()
+    app = (_P(__file__).resolve().parents[1] / "web" / "app.js").read_text(encoding="utf-8")
     never = _re.search(r"const BRIDGE_NEVER = (/.+/);", app).group(1)
     js = (f"const N={never};const out={{}};for(const p of {_json.dumps(['/./shutdown-for-upgrade', '/./backups/export', '/x/../info', '/state'])})"
           "{out[p]=N.test(new URL('/api'+p,'http://127.0.0.1:1').pathname)};console.log(JSON.stringify(out))")
@@ -848,3 +848,31 @@ def test_opened_media_is_read_blocking(tmp_path):
 
 def test_favorite_keeps_the_station_description():
     assert "description" in radio._FAV_FIELDS
+
+
+
+@pytest.mark.skipif(os.name != "posix", reason="DevTools pipe is POSIX only")
+def test_pipe_launcher_hands_over_high_fds_as_3_and_4(tmp_path):
+    # Regression (alpha.8 CI): the /bin/sh shim failed under dash when the pipe fds were above
+    # 9, so the pop-out never opened on Debian/Ubuntu. Force high fds and check what the
+    # launched program actually gets on 3 and 4.
+    from revamp_core import window
+    r1, w1 = os.pipe()
+    r2, w2 = os.pipe()
+    hi = [fcntl_dup(fd) for fd in (r1, w2)]  # well above 9
+    out = tmp_path / "got.txt"
+    child = ("import os\n"
+             f"open({str(out)!r},'w').write(os.read(3,5).decode())\n"
+             "os.write(4,b'pong')\n")
+    os.write(w1, b"ping!")
+    proc = subprocess.Popen([window.sys.executable, "-I", "-c", window._PIPE_SHIM, str(hi[0]), str(hi[1]),
+                             window.sys.executable, "-c", child], pass_fds=tuple(hi))
+    assert proc.wait(10) == 0
+    assert out.read_text() == "ping!" and os.read(r2, 4) == b"pong"
+    for fd in (r1, w1, r2, w2, *hi):
+        os.close(fd)
+
+
+def fcntl_dup(fd):
+    import fcntl
+    return fcntl.fcntl(fd, fcntl.F_DUPFD, 40)

@@ -2,6 +2,10 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.9 - 2026-11-02 (pre-release)
+
+- Pop out to desktop works on Debian and Ubuntu again. Alpha.8 handed the window its private DevTools connection through a shell command that Debian's and Ubuntu's `/bin/sh` can't run when the server has many connections open, so the window could fail to open.
+
 ## 1.0.0-alpha.8 - 2026-11-02 (pre-release)
 
 - Bringing the player back from its desktop window ("Dock it here", Frame, the mini player's "put in frame") no longer leaves a white Frame. Before, it only drew once you went full screen and back.
