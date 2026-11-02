@@ -136,7 +136,8 @@ export async function render(root, api) {
       img.loading = "lazy";
       img.alt = "";
       img.addEventListener("error", () => { img.remove(); art.classList.add("none"); });
-      img.src = st.favicon;
+      // Through REVamp's checked logo proxy, never straight from the station's chosen URL.
+      img.src = api.authedUrl("/api/radio/favicon", { url: st.favicon });
       art.appendChild(img);
     } else {
       art.classList.add("none");

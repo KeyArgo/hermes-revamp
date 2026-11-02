@@ -1,4 +1,5 @@
 // app.js — bootstrap: token, API client, shell wiring (nav/panel/np card), SSE, view registry.
+import { untrustedEmbed } from "./embed-trust.js";
 import { initPlayer } from "./player.js";
 import { contentSize, outerWindowSize } from "./float-layout.js";
 import { renderMusic, renderBooks } from "./views/library.js";
@@ -14,6 +15,13 @@ import { labelHostPlace, setHostPlayerPlace } from "./host-place.js";
 import "./diagnostics.js";
 
 // ---------------------------------------------------------------- token
+// Framed by a web site (not Hermes, not this computer): refuse to run at all, so nothing
+// this page knows (token, what is playing, approvals) can reach that site.
+if (untrustedEmbed()) {
+  document.body.textContent = "REVamp only runs inside Hermes or on this computer.";
+  throw new Error("revamp: refused to run inside an untrusted page");
+}
+
 const TOKEN =
   document.querySelector('meta[name="revamp-token"]')?.content ||
   new URLSearchParams(location.search).get("t") ||
@@ -282,10 +290,13 @@ function fitClassicStack() {
   document.documentElement.style.setProperty("--revamp-fit", fit.toFixed(3));
 }
 
+const showPage = () => document.documentElement.classList.remove("awaiting-mode");
+
 function setMode(next, placement) {
   mode = next === "winamp" ? "winamp" : "full";
   lastBox = "";
   applyLayoutClasses();
+  showPage(); // laid out for the view Hermes asked for: safe to show now
   player?.setVisualizerPlacement?.(placement);
   if (placement) setHostPlayerPlace(labelHostPlace(placement));
   reportBox();
@@ -858,10 +869,12 @@ async function boot() {
   // Book controls and lyrics on the now-playing card (optional: the page works without them).
   import("./views/npextras.js").then((m) => m.mount(player, viewApi)).catch((e) => console.warn("npextras", e));
   if (hosted) window.parent.postMessage({ type: "revamp:ready", bridge: Boolean(BRIDGE_KEY) }, "*");
+  setTimeout(showPage, 1500); // a host that never sends a mode still gets the page
 }
 
 boot().catch((e) => {
   console.error("revamp boot failed", e);
+  showPage();
   const box = document.createElement("div");
   box.className = "empty";
   box.innerHTML = `<span class="big">⚠</span>`;
@@ -877,6 +890,9 @@ boot().catch((e) => {
 // is refused), only /api paths, JSON in and out.
 const BRIDGE_PATH = /^\/[A-Za-z0-9_\-./]*(\?[A-Za-z0-9_\-.~%=&+:@,*!']*)?$/;
 const BRIDGE_METHODS = new Set(["GET", "POST", "PUT", "DELETE"]);
+// Routes the Hermes plugin never needs: a leaked bridge key still can't stop the server or
+// read and restore backups through here.
+const BRIDGE_NEVER = /^\/api\/(info|shutdown-for-upgrade|backups)(\/|$)/;  // judged on the parsed URL
 // Only the Hermes plugin knows this (it gets it from the server through Hermes); a page that
 // merely embeds this one cannot. Without it the bridge stays off.
 const sameKey = (a) => {
@@ -894,7 +910,10 @@ if (hosted) {
     const reply = (r) => window.parent.postMessage({ type: "revamp:rest-result", id: d.id, ...r }, e.origin === "null" ? "*" : e.origin);
     if (!localOrigin(e.origin) || !sameKey(d.key)) { console.warn("revamp bridge: refused", e.origin); return; }
     const path = String(d.path || ""), method = String(d.method || "GET").toUpperCase();
-    if (!BRIDGE_PATH.test(path) || path.includes("..") || /^\/info\b/.test(path) || !BRIDGE_METHODS.has(method)) {
+    // The URL parser drops "." segments ("/./backups"): judge the address fetch will use.
+    const target = new URL("/api" + path, location.origin);
+    if (!BRIDGE_PATH.test(path) || /(^|\/)\.\.?(\/|\?|$)/.test(path) || BRIDGE_NEVER.test(target.pathname)
+        || !BRIDGE_METHODS.has(method)) {
       return reply({ ok: false, status: 400, error: "not allowed" });
     }
     const body = d.body === undefined || method === "GET" ? undefined : JSON.stringify(d.body);
@@ -902,7 +921,7 @@ if (hosted) {
     try {
       const headers = { "X-Revamp-Token": TOKEN };
       if (body) headers["Content-Type"] = "application/json";
-      const res = await fetch(new URL("/api" + path, location.origin), { method, headers, body });
+      const res = await fetch(target, { method, headers, body });
       let data = null;
       try { data = await res.json(); } catch { /* not json */ }
       reply({ ok: res.ok, status: res.status, body: data, error: res.ok ? undefined : (data?.error || `HTTP ${res.status}`) });

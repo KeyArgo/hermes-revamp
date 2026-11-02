@@ -7,6 +7,7 @@ from there by the HTTP server.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -53,6 +54,14 @@ class MuseumError(Exception):
 # Network primitives
 # ---------------------------------------------------------------------------
 
+
+def _read_capped(resp, limit: int) -> bytes:
+    """A compromised or hostile answer must not fill memory: cap it."""
+    body = resp.read(limit + 1)
+    if len(body) > limit:
+        raise ValueError("museum answer too large")
+    return body
+
 def _graphql(query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
     payload = json.dumps({"query": query, "variables": variables}).encode("utf-8")
     req = urllib.request.Request(
@@ -61,7 +70,7 @@ def _graphql(query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
                  "User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+            body = json.loads(_read_capped(resp, 4 * 1024 * 1024).decode("utf-8"))
     except Exception as exc:
         raise MuseumError(f"graphql failed: {exc}") from exc
     if not isinstance(body, dict) or body.get("errors"):
@@ -262,6 +271,11 @@ def _stored_name(md5: str) -> str:
     return str(stored.get("name") or "") if isinstance(stored, dict) else ""
 
 
+def _checksum_ok(md5: str, data: bytes) -> bool:
+    """The museum names every skin by the MD5 of its file."""
+    return hashlib.md5(data, usedforsecurity=False).hexdigest() == md5.lower()
+
+
 def install(md5: str, name: str = "") -> Dict[str, Any]:
     """Download (once), validate and cache a museum skin; returns its entry.
 
@@ -280,6 +294,10 @@ def install(md5: str, name: str = "") -> Dict[str, Any]:
         fresh = cached is None
         if cached is None:
             data = _download(md5)
+            # The museum names every skin by the MD5 of its file: a substituted file (a
+            # compromised mirror, say) doesn't match the one that was picked.
+            if not _checksum_ok(md5, data):
+                raise MuseumError("downloaded skin does not match its checksum")
             if data[:2] != b"PK":
                 raise MuseumError("not a wsz/zip file")
             check_skin(data)

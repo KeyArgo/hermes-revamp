@@ -2,6 +2,18 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.8 - 2026-11-02 (pre-release)
+
+- Bringing the player back from its desktop window ("Dock it here", Frame, the mini player's "put in frame") no longer leaves a white Frame. Before, it only drew once you went full screen and back.
+- Opening Hermes no longer flashes the full library and menus in the Frame before the classic windows appear.
+- Security review, four more rounds (six in all, the last with nothing of medium severity or worse), each fix with a regression test:
+  - A music file or cover image that is swapped for a link to one of your private files is refused, even if the swap happens at the moment it is opened.
+  - Your REVamp key never goes through a proxy or follows a redirect, and a music source's login never follows a redirect to another site or down to plain http.
+  - The key file is created safely, can't be read or written through a planted link, and is made private if an older copy was readable by others.
+  - On Linux, connections from another account on the same computer are refused; WSL and containers keep working.
+  - Playlist and station addresses are checked more strictly, and the Hermes bridge can't shut the player down or touch backups.
+- Radio keeps playing stations whose secure link hands over to a plain-http stream (about 1 in 40 of the most-played ones).
+
 ## 1.0.0-alpha.7 - 2026-11-02 (pre-release)
 
 - Full-screen MilkDrop is sharp again: with a graphics card it now draws at your screen's resolution instead of stretching a small picture about 7x. Machines without a graphics card keep the lighter stretched picture, so nothing gets slower there.

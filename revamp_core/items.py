@@ -116,6 +116,36 @@ def is_canonical(raw: Any) -> bool:
         and isinstance(raw.get("playback"), dict)
 
 
+# The only local routes an item may point at (an allowlist, not a prefix test: "/\\host"
+# starts with "/" yet the browser reads it as another host). Backslashes and control
+# characters are refused outright.
+_PLAYBACK_ROUTES = ("/api/media/", "/api/radio/stream?url=", "/api/sources/")
+_ART_ROUTES = ("/api/art/", "/api/sources/", "/api/radio/favicon?url=")
+_BAD_URL_CHARS = re.compile(r"[\\\x00-\x1f\x7f]")
+
+
+# A path segment that is "." or ".." -- literal or %2e-encoded, which browsers treat the same.
+# An encoded slash is fine: the server splits the path before decoding each part, and source
+# refs like "track%2F5531" depend on it.
+_DOT_SEGMENT = re.compile(r"(^|/)(\.|%2e){1,2}(/|$)", re.I)
+
+
+def local_route(url: Any, routes: tuple) -> bool:
+    # No dot segments either: "/api/sources/../backups/export"
+    # starts with an allowed route but the browser resolves it to another one.
+    return isinstance(url, str) and not _BAD_URL_CHARS.search(url) and url.startswith(routes) \
+        and not _DOT_SEGMENT.search(url.split("?", 1)[0])
+
+
+def _safe_art(art: Any) -> Optional[str]:
+    if not isinstance(art, str) or not art.strip():
+        return None
+    a = art.strip()
+    if a.lower().startswith(("http://", "https://")) and not _BAD_URL_CHARS.search(a):
+        return "/api/radio/favicon?url=" + urllib.parse.quote(a, safe="")  # checked, pinned proxy
+    return a if local_route(a, _ART_ROUTES) else None
+
+
 def normalize(raw: Any) -> Optional[Dict[str, Any]]:
     """Any queue item (canonical or legacy) -> a clean canonical item, or None."""
     if not isinstance(raw, dict):
@@ -128,6 +158,21 @@ def normalize(raw: Any) -> Optional[Dict[str, Any]]:
     pb["backend"] = backend
     if backend == "webamp" and not (isinstance(pb.get("url"), str) and pb.get("url")):
         return None  # a URL backend item with nothing to fetch
+    if pb.get("url") is not None and not isinstance(pb.get("url"), str):
+        return None
+    # Backends can be added by extensions, so any backend is kept, but a URL on any of them
+    # gets the same checks: an unknown backend must not carry an address past them.
+    if pb.get("url"):
+        url = pb["url"].strip()
+        if url.lower().startswith(("http://", "https://")) and not _BAD_URL_CHARS.search(url):
+            # Never handed to the browser as is: an outside address goes through the
+            # stream proxy, which checks it (public only) and connects to what it checked.
+            # A shared playlist could otherwise point the player at the LAN or loopback.
+            if not pb.get("stream"):
+                pb["stream"] = url
+            pb["url"] = radio_stream_url(url)
+        elif not local_route(url, _PLAYBACK_ROUTES):
+            return None  # file:, data:, javascript:, //host, /\\host ... are never playback URLs
     item["playback"] = pb
     iid = str(item["id"])
     item["id"] = iid
@@ -138,6 +183,7 @@ def normalize(raw: Any) -> Optional[Dict[str, Any]]:
     for k in _TEXT:
         v = item.get(k)
         item[k] = v if isinstance(v, str) and v else None
+    item["art"] = _safe_art(item.get("art"))  # never an arbitrary address for an <img>
     item["duration"] = _num(item.get("duration"))
     caps = item.get("capabilities")
     if not isinstance(caps, list):

@@ -37,7 +37,10 @@ def test_open_status_close(server, fake_browser):
     port = server.base.rsplit(":", 1)[1]
     assert f"--app=http://127.0.0.1:{port}/?mode=winamp&float=1" in args
     assert "--user-data-dir=" in args and "float-browser" in args  # its own profile
-    assert "--remote-debugging-port=0" in args and "--remote-debugging-address=127.0.0.1" in args
+    if window.USE_CDP_PIPE:  # Linux/macOS: DevTools over a private pipe, no port
+        assert "--remote-debugging-pipe" in args and "--remote-debugging-port" not in args
+    else:
+        assert "--remote-debugging-port=0" in args and "--remote-debugging-address=127.0.0.1" in args
     if sys.platform.startswith("linux"):
         assert "--class=REVamp" in args
     _, _, state = c.get("/api/state")

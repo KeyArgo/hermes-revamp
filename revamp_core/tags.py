@@ -13,6 +13,7 @@ import json
 import mimetypes
 import os
 import shutil
+import stat
 import struct
 import subprocess
 from pathlib import Path
@@ -25,6 +26,10 @@ except Exception:  # pragma: no cover - depends on env
     _HAVE_MUTAGEN = False
 
 FFPROBE_TIMEOUT = 5.0
+
+# Audio containers only: a file named .mp3 that is really an ffconcat/HLS playlist would
+# otherwise make ffprobe open the local files it lists.
+FFPROBE_FORMATS = "mp3,flac,ogg,mov,mp4,m4a,3gp,3g2,mj2,wav,aac,matroska,webm,asf,aiff"
 
 AUDIO_EXTS = (
     ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".m4b", ".aac", ".wav", ".webm",
@@ -72,7 +77,9 @@ def _background_prefix() -> list:
 
 def _probe_ffprobe(path: str) -> Dict[str, Any]:
     cmd = _background_prefix() + [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
+        # Local file only: a crafted container must not reach other files or the network.
+        "ffprobe", "-v", "quiet", "-protocol_whitelist", "file", "-format_whitelist", FFPROBE_FORMATS,
+        "-print_format", "json",
         "-show_format", "-show_streams", path,
     ]
     try:
@@ -238,14 +245,33 @@ def read_cover(path: str) -> Optional[bytes]:
     for name in ("cover", "folder", "front"):
         for ext in (".jpg", ".jpeg", ".png"):
             p = folder / (name + ext)
-            if p.exists():
-                try:
-                    if p.stat().st_size > _MAX_ART:  # a stray multi-GB file is not cover art
-                        continue
-                    return p.read_bytes()
-                except OSError:
-                    pass
+            data = _read_plain_image(p)
+            if data is None:
+                continue
+            if data.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")):
+                return data
     return None
+
+
+def _read_plain_image(p: Path) -> Optional[bytes]:
+    """A real file in this folder only: a cover.jpg that links elsewhere (even if swapped in
+    after a check) could be any file of the person's, served to the page as an "image".
+    Opened once, no-follow and non-blocking, and judged by what was opened."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        if p.is_symlink():  # O_NOFOLLOW is missing on Windows
+            return None
+        fd = os.open(str(p), flags)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as fh:
+            st = os.fstat(fh.fileno())
+            if not stat.S_ISREG(st.st_mode) or st.st_size > _MAX_ART:  # a stray multi-GB file is not cover art
+                return None
+            return fh.read(_MAX_ART + 1)[:_MAX_ART]
+    except OSError:
+        return None
 
 
 _META_KEYS = (

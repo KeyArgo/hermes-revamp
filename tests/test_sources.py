@@ -58,7 +58,10 @@ def test_normalize_legacy_items():
     assert fm["playback"]["stream"] == "https://x.example/s?a=1"
     assert fm["playback"]["url"] == "/api/radio/stream?url=https%3A%2F%2Fx.example%2Fs%3Fa%3D1"
     assert bare["id"].startswith("radio:url:")
-    assert web["source"] == "url" and web["playback"]["url"] == "https://h.example/z.mp3"
+    # Security audit 11-02: an outside address is never handed to the browser as is; it
+    # plays through the checked, pinned stream proxy (the original is kept as the stream).
+    assert web["source"] == "url" and web["playback"]["stream"] == "https://h.example/z.mp3"
+    assert web["playback"]["url"] == "/api/radio/stream?url=https%3A%2F%2Fh.example%2Fz.mp3"
     for it in out:  # no legacy keys left
         assert not {"url", "track_id", "station_id", "book"} & set(it)
     assert items.legacy_kind(fm) == "stream" and items.legacy_kind(book) == "track"

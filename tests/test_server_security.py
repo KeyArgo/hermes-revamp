@@ -141,8 +141,18 @@ def test_media_that_shrinks_mid_response_closes_the_connection(server, monkeypat
     # the next response look like the missing media bytes.
     import os, socket
     song, port = _media_server(server, monkeypatch, tmp_path)
-    real = os.path.getsize
-    monkeypatch.setattr(os.path, "getsize", lambda p: real(p) + 1000 if str(p) == str(song) else real(p))
+    from revamp_core import server as srv
+    real = os.fstat
+    song_ino = os.stat(song).st_ino
+
+    def bigger(fd):  # the file "shrinks" after its size was read: 1000 bytes promised extra
+        st = real(fd)
+        if st.st_ino != song_ino:
+            return st
+        vals = list(st)
+        vals[6] += 1000
+        return os.stat_result(vals)
+    monkeypatch.setattr(srv.os, "fstat", bigger)
     s = socket.create_connection(("127.0.0.1", port)); s.settimeout(10)
     try:
         s.sendall(f"GET /api/media/t1?t={server.token} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n".encode())

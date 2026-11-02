@@ -76,11 +76,47 @@ def _token() -> str:
         return ""
 
 
+def _listener_is_revamp(base: str, tok: str) -> bool:
+    """Same check as revamp_core/proof.py (this module stays standalone): the listener must
+    prove it already knows the token before it is sent (another local program could hold
+    REVamp's port). Checked before every request: REVamp may have restarted meanwhile."""
+    import hashlib
+    import hmac
+    import secrets
+    nonce = secrets.token_hex(16)
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **kw):
+            return None
+
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect()).open(f"{base}/api/health?nonce={nonce}", timeout=2.0) as r:
+            payload = json.loads(r.read(4096).decode("utf-8-sig"))
+    except Exception:
+        return False
+    port = urllib.parse.urlsplit(base).port or 0
+    want = hmac.new(tok.encode("utf-8"), f"revamp-health:{port}:{nonce}".encode("ascii"), hashlib.sha256).hexdigest()
+    got = payload.get("proof") if isinstance(payload, dict) else None
+    return isinstance(got, str) and hmac.compare_digest(got, want)
+
+
+class _NoRedirectLocal(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **kw):
+        return None
+
+
+def _local_open(req, timeout):
+    """REVamp on loopback, with the token: never through HTTP(S)_PROXY, never redirected."""
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirectLocal()).open(req, timeout=timeout)
+
+
 def _request(method: str, path: str, body: dict | None = None,
              timeout: float = 5.0) -> tuple[int, dict]:
     base = f"http://127.0.0.1:{_port()}"
     req = urllib.request.Request(base + path, method=method)
     tok = _token()
+    if tok and not _listener_is_revamp(base, tok):
+        return 503, {"error": "REVamp is not running (or the program on its port could not prove it is REVamp)"}
     if tok:
         req.add_header("X-Revamp-Token", tok)
     if body is not None:
@@ -88,7 +124,7 @@ def _request(method: str, path: str, body: dict | None = None,
         req.add_header("Content-Type", "application/json")
         req.data = data
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _local_open(req, timeout) as resp:
             raw = resp.read()
             return resp.status, (json.loads(raw) if raw else {})
     except urllib.error.HTTPError as exc:

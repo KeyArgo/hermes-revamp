@@ -15,7 +15,13 @@ import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
+from . import proof
 from .config import data_dir, setting
+
+
+def _open(req: urllib.request.Request, timeout: float):
+    """The one way a token-bearing request leaves (no proxy, no redirects; tests fake it)."""
+    return proof.local_opener().open(req, timeout=timeout)
 
 
 class RevampUnavailable(RuntimeError):
@@ -48,13 +54,18 @@ class RevampClient:
             if clean:
                 url += ("&" if "?" in url else "?") + urllib.parse.urlencode(clean)
         data = json.dumps(body).encode("utf-8") if body is not None else None
+        # Never send the token to a listener that hasn't proved it already knows it: another
+        # local program could hold REVamp's port and pose as it.
+        if not proof.verify_listener(self.base, self.token, timeout=min(2.0, float(self.timeout))):
+            raise RevampUnavailable(f"revamp at {self.base} unreachable (or not REVamp: "
+                                    "it could not prove it is; the token was not sent)")
         req = urllib.request.Request(url, data=data, method=method.upper())
         req.add_header("X-Revamp-Token", self.token)
         if data is not None:
             req.add_header("Content-Type", "application/json")
         req.add_header("Accept", "application/json")
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with _open(req, self.timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
             raw = exc.read()

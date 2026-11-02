@@ -96,6 +96,24 @@ def save_index(complete: bool = True) -> None:
 # Scanning
 # ---------------------------------------------------------------------------
 
+# Places a symlinked folder inside a music folder must never lead the scanner: system
+# trees, and hidden folders (~/.ssh, ~/.hermes ...). Links to other music drives still work.
+_NEVER_FOLLOW = ("/proc", "/sys", "/dev", "/etc", "/boot", "/run", "/root", "/var/run")  # not /var/lib: MPD keeps music there
+
+
+def _safe_link_dir(target: str) -> bool:
+    t = target.replace("\\", "/")
+    if any(t == p or t.startswith(p + "/") for p in _NEVER_FOLLOW):
+        return False
+    return not any(part.startswith(".") for part in t.split("/") if part)
+
+
+def is_audio_target(path: str) -> bool:
+    """A library file (or the file a link points to) must really be audio by name: a link
+    called song.mp3 that points at ~/.ssh/id_rsa is not a song."""
+    return os.path.splitext(os.path.realpath(path))[1].lower() in tags_mod.AUDIO_EXTS
+
+
 def _walk(root: Path, visited: set[str], out: List[str]) -> None:
     try:
         real = os.path.realpath(root)
@@ -110,10 +128,14 @@ def _walk(root: Path, visited: set[str], out: List[str]) -> None:
         if entry.name.startswith("."):
             continue
         try:
+            link = entry.is_symlink()
             if entry.is_dir(follow_symlinks=True):
+                if link and not _safe_link_dir(os.path.realpath(entry.path)):
+                    continue
                 _walk(Path(entry.path), visited, out)
             elif entry.is_file(follow_symlinks=True):
-                if os.path.splitext(entry.name)[1].lower() in tags_mod.AUDIO_EXTS:
+                if os.path.splitext(entry.name)[1].lower() in tags_mod.AUDIO_EXTS \
+                        and (not link or is_audio_target(entry.path)):
                     out.append(entry.path)
         except OSError:
             continue

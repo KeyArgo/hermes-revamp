@@ -85,7 +85,7 @@ def test_distinct_station_urls_without_radio_browser_uuid_keep_distinct_ids(monk
     radio._SEARCH_CACHE.clear()
 
     class Response:
-        def read(self):
+        def read(self, n=-1):
             return json.dumps([
                 {"name": "One", "url": "https://one.example/live"},
                 {"name": "Two", "url": "https://two.example/live"},

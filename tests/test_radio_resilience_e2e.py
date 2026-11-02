@@ -27,7 +27,7 @@ class _Resp:
         self._body = json.dumps(body).encode()
         self.headers = {"x-rbtotal": str(total)}
 
-    def read(self):
+    def read(self, n=-1):
         return self._body
 
     def __enter__(self):

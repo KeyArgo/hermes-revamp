@@ -151,3 +151,18 @@ test("the bring-back itself refuses to overlap, whatever calls it (the shortcut 
   const guard = back.indexOf("if (deskBusy) { pendingBringBack = true; return }");
   assert.ok(guard >= 0 && guard < back.indexOf("deskBusy = true"));
 });
+
+test("docking back from the desktop loads the player where it goes, then nudges its size", () => {
+  // Regression (user, 11-02): desktop -> "Dock it here" left the Frame white until Full
+  // screen resized it. The page had loaded in the off-screen dock and was then moved with
+  // moveBefore; Chromium never started drawing it. Verified live: 100% white -> 0%.
+  const load = between("function loadWhereItGoes(src)", "function nudgeFrame(");
+  const remove = load.indexOf("frame.remove()");
+  const setSrc = load.indexOf("frame.src = src");
+  const place = load.indexOf("place()");
+  assert.ok(remove >= 0 && setSrc > remove && place > setSrc, "taken out, pointed at the page, then placed");
+  assert.match(src, /park\(\) \{[^}]*loadWhereItGoes\(`\$\{url\}\/\?control=1`\)/);
+  assert.match(src, /unpark\(\) \{[^}]*loadWhereItGoes\(`\$\{url\}\/\?embed=1`\)/);
+  const ready = between("if (e.data.type === 'revamp:ready')", "if (e.data.type === 'revamp:bbox')");
+  assert.ok(ready.indexOf("nudgeFrame()") > ready.indexOf("place()"), "size wiggle after the mode is re-sent");
+});

@@ -1,3 +1,4 @@
+import { untrustedEmbed } from "./embed-trust.js";
 // A tiny, deliberately privacy-safe trail for a player page that failed before
 // its normal bug-report UI could render. Hermes keeps the last few records.
 
@@ -44,7 +45,7 @@ function report(kind, detail) {
   if (seen.has(key) || now - lastSent < 1000 || seen.size >= 20) return;
   seen.add(key); lastSent = now;
   const record = diagnosticRecord(kind, { ...detail, placement: placement() });
-  if (window.parent !== window) window.parent.postMessage({ type: "revamp:diagnostic", record }, "*");
+  if (window.parent !== window && !untrustedEmbed()) window.parent.postMessage({ type: "revamp:diagnostic", record }, "*");
 }
 
 if (typeof window !== "undefined") {

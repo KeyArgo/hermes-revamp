@@ -36,8 +36,6 @@ def test_local_media_is_written_in_bounded_chunks(monkeypatch):
             return False
 
     file = File()
-    monkeypatch.setattr(server.os.path, "getsize", lambda _path: 200_000)
-    monkeypatch.setattr("builtins.open", lambda *_args, **_kwargs: file)
     handler = object.__new__(server.Handler)
     handler.headers = {}
     handler.command = "GET"
@@ -45,7 +43,7 @@ def test_local_media_is_written_in_bounded_chunks(monkeypatch):
     handler.send_response = lambda *_args: None
     handler.send_header = lambda *_args: None
     handler.end_headers = lambda: None
-    handler.send_file("large.mp3")
+    handler._send_open_file(file, "large.mp3", 200_000)
 
     assert file.read_sizes
     assert all(0 < size <= 64 * 1024 for size in file.read_sizes)
@@ -241,7 +239,8 @@ def test_health_identifies_revamp_and_a_newer_server_can_take_over(tmp_path, mon
     try:
         health = server._probe_health(port)
         assert health and health["app"] == "revamp"
-        assert {"version", "build", "pid", "started_at"} <= set(health)
+        assert {"version", "build"} <= set(health)
+        assert not {"pid", "started_at"} & set(health)  # process details need the token
         assert server.ensure_server(port, owner="service", version="1.0.0", build="new") == port
         deadline = time.time() + 3
         while time.time() < deadline and server._probe_health(port).get("build") != "new":

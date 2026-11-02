@@ -29,10 +29,11 @@ test("an error thrown every frame is passed on once", async () => {
     addEventListener: (k, f) => { listeners[k] = f; },
   };
   globalThis.document = { body: null };
+  globalThis.location = { ancestorOrigins: ["file://"] }; // framed by Hermes (a trusted parent)
   await import("../web/diagnostics.js?loop");
   for (let i = 0; i < 100; i++) listeners.error({ message: "boom in raf" });
   assert.equal(sent.length, 1);
-  delete globalThis.window; delete globalThis.document;
+  delete globalThis.window; delete globalThis.document; delete globalThis.location;
 });
 
 test("the player's own script locations stay readable", () => {

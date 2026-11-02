@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .config import data_dir
 
 LRCLIB_URL = "https://lrclib.net/api/get"
+LYRICS_MAX_BYTES = 1024 * 1024
 UA = "Revamp (Hermes plugin; https://github.com/KeyArgo/hermes-revamp)"
 TIMEOUT = 8
 CACHE_NAME = "lyrics-cache.json"
@@ -101,7 +102,11 @@ def _fetch(params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            return json.loads(resp.read().decode("utf-8", errors="replace"))
+            # Lyrics are a few KB: cap the answer so a hostile one can't fill memory.
+            body = resp.read(LYRICS_MAX_BYTES + 1)
+            if len(body) > LYRICS_MAX_BYTES:
+                raise LyricsError("lyrics answer too large")  # an error, never cached as a miss
+            return json.loads(body.decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return None

@@ -1021,6 +1021,22 @@ function createEngine(ctx, url, bridgeKey = '') {
 
   let parked = false
 
+  // A page switch reloads the frame anyway, so load it in the place it is going: taken out
+  // and put back in plainly, not carried by moveBefore. A page that loaded in the off-screen
+  // dock and was then moved stayed blank (white) in the Frame until something resized it.
+  function loadWhereItGoes(src) {
+    frame.remove()
+    frame.src = src
+    place()
+  }
+  // After a (re)load, wiggle the frame's size once: the one thing that reliably makes
+  // Chromium start drawing a cross-origin frame that came up blank (what Full screen did).
+  function nudgeFrame() {
+    const w = frame.style.width
+    frame.style.width = `calc(${w || '100%'} - 1px)`
+    requestAnimationFrame(() => requestAnimationFrame(() => { frame.style.width = w }))
+  }
+
   function place() {
     // Keep the library route useful without creating a second player. Its own
     // page uses token-authenticated commands; this plugin continues polling the
@@ -1153,6 +1169,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       if (e.data.bridge === true) { sawRevamp = true; for (const f of readyWaiters.splice(0)) f(true) }
       if (e.data.control) return
       place() // re-send the current mode after a (re)load
+      nudgeFrame()
       send({ type: 'revamp:wave', on: true })
     }
     if (e.data.type === 'revamp:bbox') {
@@ -1242,8 +1259,8 @@ function createEngine(ctx, url, bridgeKey = '') {
     // Stop this player (the desktop window took over) / start it again.
     // Parked: the desktop window plays. The page here runs in control mode (no audio) so
     // the mini player can still reach the server when the Hermes gateway is stale.
-    park() { if (parked) return; parked = true; dropPending(); sawRevamp = false; frame.src = `${url}/?control=1`; place() },
-    unpark() { if (!parked) return; parked = false; sawRevamp = false; frame.src = `${url}/?embed=1`; place() },
+    park() { if (parked) return; parked = true; dropPending(); sawRevamp = false; loadWhereItGoes(`${url}/?control=1`) },
+    unpark() { if (!parked) return; parked = false; sawRevamp = false; loadWhereItGoes(`${url}/?embed=1`) },
     // Reconnect: reload the player page (the server keeps the queue and position).
     // The library page's control frame reloads too: a server update otherwise left
     // it showing the old web app until Hermes itself restarted.

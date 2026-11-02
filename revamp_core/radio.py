@@ -54,6 +54,7 @@ CONNECT_TIMEOUT = 3.5  # just over Windows' 3 s SYN resend, so one lost SYN stil
 RB_RETRY_PAUSE = 0.25
 RB_ROUNDS = 3
 RB_ATTEMPT_CAP = 4.0
+RB_MAX_BYTES = 8 * 1024 * 1024  # a 1000-station page is ~1 MB
 _rb_down_until = 0.0
 NOWPLAYING_TIMEOUT = 6.0
 SEARCH_CACHE_TTL = 3600.0
@@ -368,6 +369,15 @@ def _unreachable(exc: BaseException) -> bool:
         isinstance(reason, OSError) and getattr(reason, "errno", None) in _UNREACHABLE_ERRNOS)
 
 
+def read_capped(resp: Any, limit: int) -> bytes:
+    """Read at most *limit* bytes; a longer (or endlessly streaming) answer is an error,
+    not something to hold in memory."""
+    body = resp.read(limit + 1)
+    if len(body) > limit:
+        raise RadioError("answer too large")
+    return body
+
+
 def _rb_open(req: urllib.request.Request, timeout: float):
     """One Radio Browser request (tests replace this to fake the network)."""
     return urllib.request.build_opener(_FirstAddressHTTPSHandler()).open(req, timeout=timeout)
@@ -414,7 +424,7 @@ def _rb_json(path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[Any, O
             # One wedged name (silently dropping, or connected and mute) must not use up
             # the budget before the others are asked; 4 s still covers a resent SYN.
             with _rb_open(req, timeout=min(SEARCH_TIMEOUT, left, RB_ATTEMPT_CAP)) as resp:
-                body = resp.read()
+                body = read_capped(resp, RB_MAX_BYTES)
                 headers = getattr(resp, "headers", None) or {}
                 total_h = headers.get("x-rbtotal") or headers.get("x-rb-total")
             data = json.loads(body.decode("utf-8", errors="replace"))
@@ -867,8 +877,27 @@ def _save_favorites(items: List[Dict[str, Any]]) -> None:
         raise
 
 
+_FAV_FIELDS = ("id", "name", "url", "url_resolved", "homepage", "favicon", "tags", "codec", "description",
+               "bitrate", "country", "countrycode", "language", "source", "votes", "clickcount")
+MAX_FAVORITES = 1000
+
+
+def _clean_favorite(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Known fields only, each bounded: the favorites file can't be grown without limit."""
+    out: Dict[str, Any] = {}
+    for k in _FAV_FIELDS:
+        v = raw.get(k)
+        if isinstance(v, str):
+            out[k] = v[:2048]
+        elif isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = v
+        elif k == "tags" and isinstance(v, list):
+            out[k] = [str(t)[:64] for t in v[:20]]
+    return out
+
+
 def add_favorite(station: Dict[str, Any]) -> Dict[str, Any]:
-    st = dict(station or {})
+    st = _clean_favorite(dict(station or {}))
     st["source"] = st.get("source") or "custom"
     if not st.get("url") or not isinstance(st["url"], str):
         raise RadioError("station needs a url")
@@ -885,7 +914,7 @@ def add_favorite(station: Dict[str, Any]) -> Dict[str, Any]:
         # One entry per station: the same id OR the same stream URL is replaced by the newest.
         favs = [f for f in favs if f.get("id") != st["id"] and same_url(f.get("url")) != same_url(st["url"])]
         favs.append(st)
-        _save_favorites(favs)
+        _save_favorites(favs[-MAX_FAVORITES:])
     return st
 
 
@@ -1056,6 +1085,42 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
         return self.do_open(_PinnedHTTPSConnection, req, context=self._context)  # type: ignore[attr-defined]
 
 
+# Station logos: fetched by the server, never by the page directly. The page loading a
+# station-chosen URL could reach the LAN or loopback; this path checks the address (public
+# only), connects to what it checked (redirects re-checked), and returns raster images only.
+FAVICON_MAX_BYTES = 256 * 1024
+_FAVICON_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/x-icon",
+                  "image/vnd.microsoft.icon", "image/bmp"}
+_FAVICON_CACHE: Dict[str, tuple] = {}
+_FAVICON_LOCK = threading.Lock()
+FAVICON_TTL = 24 * 3600.0
+
+
+def fetch_favicon(url: str) -> Tuple[bytes, str]:
+    """Logo bytes and content type for a station favicon URL; RadioError if refused."""
+    if not isinstance(url, str) or len(url) > 2048:
+        raise RadioError("bad url")
+    now = time.time()
+    with _FAVICON_LOCK:
+        hit = _FAVICON_CACHE.get(url)
+        if hit and now - hit[0] < FAVICON_TTL:
+            return hit[1], hit[2]
+    try:
+        with _open(url, {"User-Agent": UA, "Accept": "image/*"}, NOWPLAYING_TIMEOUT) as resp:
+            headers = getattr(resp, "headers", None) or {}
+            ctype = str(headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            body = read_capped(resp, FAVICON_MAX_BYTES)
+    except RadioError:
+        raise
+    except Exception as exc:
+        raise RadioError(f"logo unavailable: {exc}") from exc
+    if ctype not in _FAVICON_TYPES:  # no SVG (script) and no HTML pretending to be a logo
+        raise RadioError("not a raster image")
+    with _FAVICON_LOCK:
+        _cache_put(_FAVICON_CACHE, url, (now, body, ctype))
+    return body, ctype
+
+
 def safe_stream_url(url: str) -> bool:
     """Whether *url* resolves only to public HTTP(S) stream endpoints."""
     try:
@@ -1069,6 +1134,9 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
     """Validate every target before urllib follows an HTTP redirect."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        # https -> http is allowed on purpose: big stream hosts (revma, radiojar, ...) send
+        # https links to plain-http edges, and this request carries no credentials. The
+        # target is still checked to be public, and the page gets it nosniff + sandboxed.
         _validate_stream_url(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 

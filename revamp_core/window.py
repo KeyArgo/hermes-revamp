@@ -36,6 +36,15 @@ _lock = threading.Lock()
 _last_resize_error = ""
 _proc: Optional[subprocess.Popen] = None
 _closing: Optional[subprocess.Popen] = None  # closed by us: the handoff is already written
+# The pop-out's DevTools channel. On Linux/macOS it is a private pipe pair inherited only by
+# the browser (--remote-debugging-pipe): no port that another local account could connect
+# to and drive the token-bearing page with. Windows keeps a loopback port (fd passing
+# works differently there). {"proc", "w", "r", "lock", "id", "buf"} or None.
+_cdp_pipe: Optional[Dict[str, Any]] = None
+# Hands the two pipe ends to the browser as fds 3 and 4 (where Chrome expects them) and
+# execs it; avoids preexec_fn, which is unsafe in this threaded server.
+_PIPE_SHIM = 'r=$1; w=$2; shift 2; exec "$@" 3<&"$r" 4>&"$w"'
+USE_CDP_PIPE = os.name == "posix" and os.path.exists("/bin/sh")
 HANDOFF_TTL = 120.0
 LEASE = "float-window.json"  # survives a server restart, so an orphaned window can be found
 # One entry per window identity, each matching ONLY the pop-out:
@@ -213,9 +222,65 @@ def reap_orphan() -> bool:
     return True
 
 
+def _close_fd(fd: int) -> None:
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def _set_cdp_pipe(pipe: Optional[Dict[str, Any]]) -> None:
+    global _cdp_pipe
+    old, _cdp_pipe = _cdp_pipe, pipe
+    if old is not None and old is not pipe:
+        _close_fd(old["w"])
+        _close_fd(old["r"])
+
+
+def _pipe_calls(pipe: Dict[str, Any], calls: List[Tuple[str, Dict[str, Any]]],
+                timeout: float = 2.0) -> List[Dict[str, Any]]:
+    """DevTools commands over the private pipe (NUL-separated JSON messages)."""
+    import select
+    results: List[Dict[str, Any]] = []
+    with pipe["lock"]:
+        for method, params in calls:
+            pipe["id"] += 1
+            mid = pipe["id"]
+            os.write(pipe["w"], json.dumps({"id": mid, "method": method, "params": params}).encode() + b"\0")
+            deadline = time.monotonic() + timeout
+            while True:
+                while b"\0" in pipe["buf"]:
+                    raw, pipe["buf"] = pipe["buf"].split(b"\0", 1)
+                    msg = json.loads(raw.decode("utf-8", errors="replace"))
+                    if msg.get("id") != mid:
+                        continue  # an event, or an answer to an older call
+                    if msg.get("error"):
+                        raise WindowError(str(msg["error"]))
+                    results.append(msg.get("result") or {})
+                    break
+                else:
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        raise OSError("debugger pipe timed out")
+                    ready, _, _ = select.select([pipe["r"]], [], [], left)
+                    if not ready:
+                        continue
+                    chunk = os.read(pipe["r"], 65536)
+                    if not chunk:
+                        raise OSError("debugger pipe closed")
+                    pipe["buf"] += chunk
+                    if len(pipe["buf"]) > 8 * 1024 * 1024:
+                        raise OSError("debugger pipe flooded")
+                    continue
+                break
+    return results
+
+
 def _watch(proc: subprocess.Popen) -> None:
     proc.wait()
     global _proc
+    if _cdp_pipe is not None and _cdp_pipe.get("proc") is proc:
+        _set_cdp_pipe(None)
     with _lock:
         ours = _closing is proc
         current = _proc is proc  # a newer window may already have replaced this one
@@ -243,20 +308,36 @@ def open_window(port: int, position: float = 0.0, playing: bool = False) -> Dict
         args: List[str] = [
             browser, f"--app=http://127.0.0.1:{int(port)}/?mode=winamp&float=1",
             f"--user-data-dir={profile}", f"--window-size={WINDOW_SIZE[0]},{WINDOW_SIZE[1]}",
-            # Localhost only, in this window's private profile. The page uses it to
-            # shrink the window to the player (resizeTo is ignored on many app windows).
-            "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1",
             "--no-first-run", "--no-default-browser-check",
             "--autoplay-policy=no-user-gesture-required", "--disable-features=Translate",
         ]
         if sys.platform.startswith("linux"):
             args.append("--class=REVamp")
         args.extend(float_gpu_args())
+        # The page asks the server to shrink the window to the player (resizeTo is ignored on
+        # many app windows), which the server does over DevTools: a private pipe where possible.
+        pipe_ends: Tuple[int, ...] = ()
+        if USE_CDP_PIPE:
+            to_chrome_r, to_chrome_w = os.pipe()      # we write, Chrome reads (its fd 3)
+            from_chrome_r, from_chrome_w = os.pipe()  # Chrome writes (its fd 4), we read
+            pipe_ends = (to_chrome_r, from_chrome_w)
+            args.insert(1, "--remote-debugging-pipe")
+            args = ["/bin/sh", "-c", _PIPE_SHIM, "sh", str(to_chrome_r), str(from_chrome_w)] + args
+        else:
+            args[1:1] = ["--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"]
         try:
             proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL, start_new_session=True)
+                                    stderr=subprocess.DEVNULL, start_new_session=True,
+                                    pass_fds=pipe_ends)
         except OSError as exc:
+            for fd in pipe_ends + ((to_chrome_w, from_chrome_r) if pipe_ends else ()):
+                _close_fd(fd)
             raise WindowError(f"could not start {browser}: {exc}") from exc
+        if pipe_ends:
+            for fd in pipe_ends:  # the browser's ends: ours are the other two
+                _close_fd(fd)
+            _set_cdp_pipe({"proc": proc, "w": to_chrome_w, "r": from_chrome_r,
+                           "lock": threading.Lock(), "id": 0, "buf": b""})
         _proc = proc  # claimed now, so a second open in the next 1.5 s sees it
     # A browser that forwards to an instance already using this profile exits at once.
     try:
@@ -352,29 +433,39 @@ def _debug_port() -> Optional[int]:
 
 
 def _apply_outer_size(width: int, height: int) -> bool:
-    """Set the app window's outer bounds through its localhost DevTools port."""
-    port = _debug_port()
-    if port is None:
-        return False
+    """Set the app window's outer bounds through DevTools (its private pipe, or on Windows
+    its localhost port)."""
+    pipe = _cdp_pipe
+    if pipe is not None and pipe.get("proc") is _proc and _proc is not None:
+        def cdp(calls):  # type: ignore[no-untyped-def]
+            return _pipe_calls(pipe, calls)
+    else:
+        port = _debug_port()
+        if port is None:
+            return False
+        ws_box: List[str] = []
+
+        def cdp(calls):  # type: ignore[no-untyped-def]
+            if not ws_box:
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                with opener.open(f"http://127.0.0.1:{port}/json/version", timeout=1.5) as resp:
+                    ws_box.append(str(json.loads(resp.read().decode("utf-8")).get("webSocketDebuggerUrl") or ""))
+            return _cdp_calls(ws_box[0], calls)
     try:
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(f"http://127.0.0.1:{port}/json/version", timeout=1.5) as resp:
-            version = json.loads(resp.read().decode("utf-8"))
-        ws_url = str(version.get("webSocketDebuggerUrl") or "")
-        targets = _cdp_calls(ws_url, [("Target.getTargets", {})])[0]
+        targets = cdp([("Target.getTargets", {})])[0]
         infos = targets.get("targetInfos") or []
         page = next((t for t in infos if t.get("type") == "page" and "float=1" in str(t.get("url") or "")), None)
         if page is None:
             page = next((t for t in infos if t.get("type") == "page"), None)
         if not page or not page.get("targetId"):
             return False
-        win = _cdp_calls(ws_url, [("Browser.getWindowForTarget", {"targetId": page["targetId"]})])[0]
+        win = cdp([("Browser.getWindowForTarget", {"targetId": page["targetId"]})])[0]
         bounds: Dict[str, Any] = {"width": int(width), "height": int(height), "windowState": "normal"}
         current = win.get("bounds") if isinstance(win.get("bounds"), dict) else {}
         for edge in ("left", "top"):
             if isinstance(current.get(edge), (int, float)) and not isinstance(current.get(edge), bool):
                 bounds[edge] = int(current[edge])
-        _cdp_calls(ws_url, [("Browser.setWindowBounds", {"windowId": win["windowId"], "bounds": bounds})])
+        cdp([("Browser.setWindowBounds", {"windowId": win["windowId"], "bounds": bounds})])
         return True
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, WindowError) as exc:
         global _last_resize_error
@@ -412,7 +503,11 @@ def _cdp_calls(ws_url: str, calls: List[Tuple[str, Dict[str, Any]]]) -> List[Dic
         results: List[Dict[str, Any]] = []
         for i, (method, params) in enumerate(calls, start=1):
             _ws_send(sock, json.dumps({"id": i, "method": method, "params": params}))
+            # Events keep arriving while we wait; they must not keep us waiting forever.
+            answer_by = time.monotonic() + _WS_ANSWER_WAIT
             while True:
+                if time.monotonic() > answer_by:
+                    raise OSError("debugger did not answer")
                 text, buf = _ws_recv(sock, buf)
                 msg = json.loads(text)
                 if msg.get("id") != i:
@@ -446,9 +541,14 @@ def _ws_send(sock: socket.socket, text: str) -> None:
     sock.sendall(bytes(header) + mask + masked)
 
 
+_WS_MAX = 8 * 1024 * 1024
+_WS_ANSWER_WAIT = 5.0
+
+
 def _ws_recv(sock: socket.socket, buf: bytes) -> Tuple[str, bytes]:
     """Read one full text message. Returns leftover bytes for the next read."""
     chunks: List[bytes] = []
+    total = 0
     while True:
         frame, opcode, fin, buf = _ws_frame(sock, buf)
         if opcode == 0x9:  # ping
@@ -457,6 +557,9 @@ def _ws_recv(sock: socket.socket, buf: bytes) -> Tuple[str, bytes]:
         if opcode == 0x8:
             raise OSError("debugger closed the websocket")
         if opcode in (0x1, 0x0):
+            total += len(frame)
+            if total > _WS_MAX:  # many small continuation frames count as one message
+                raise OSError("debugger message too large")
             chunks.append(frame)
             if fin:
                 return b"".join(chunks).decode("utf-8"), buf
@@ -497,6 +600,8 @@ def _ws_frame(sock: socket.socket, buf: bytes) -> Tuple[bytes, int, bool, bytes]
     elif ln == 127:
         raw, buf = take(8, buf)
         ln = struct.unpack("!Q", raw)[0]
+    if ln > _WS_MAX:  # the browser's answers are small: never trust a huge length
+        raise OSError("debugger frame too large")
     mask = b""
     if b1 & 0x80:
         mask, buf = take(4, buf)

@@ -548,6 +548,9 @@ table.list.events th:nth-child(2) { width: 24px; }
 table.list.events th:last-child { width: auto; }
 
 /* Winamp mode (Hermes "pop out"): only the classic windows, on a transparent page. */
+/* Until Hermes says which view it wants (see early-mode.js): nothing, not the full shell. */
+html.awaiting-mode, html.awaiting-mode body { background: transparent !important; }
+html.awaiting-mode body { visibility: hidden; }
 body.mode-winamp, html:has(body.mode-winamp) { background: transparent !important; }
 body.mode-winamp .sidebar, body.mode-winamp .panel, body.mode-winamp .panel-scrim,
 body.mode-winamp .ticker, body.mode-winamp .tabbar { display: none !important; }

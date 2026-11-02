@@ -242,8 +242,9 @@ def test_read_cover_paths(tmp_path, monkeypatch):
     song.write_bytes(b"x")
     monkeypatch.setattr(tags, "_HAVE_MUTAGEN", False)
     assert tags.read_cover(str(song)) is None
-    (tmp_path / "cover.jpg").write_bytes(b"JPEG")
-    assert tags.read_cover(str(song)) == b"JPEG"
+    JPEG = b"\xff\xd8\xffJPEG"
+    (tmp_path / "cover.jpg").write_bytes(JPEG)
+    assert tags.read_cover(str(song)) == JPEG
     _install_mutagen(monkeypatch, files={str(song): RawFile(pictures=[Pic(b"EMB")])})
     assert tags.read_cover(str(song)) == b"EMB"       # embedded wins
     _install_mutagen(monkeypatch, files={
@@ -254,9 +255,9 @@ def test_read_cover_paths(tmp_path, monkeypatch):
     assert tags.read_cover(str(song)) == b"RAW"
     _install_mutagen(monkeypatch, files={
         str(song): RawFile(pictures=[], tags=BadTags())})
-    assert tags.read_cover(str(song)) == b"JPEG"      # falls back to the file
+    assert tags.read_cover(str(song)) == JPEG         # falls back to the file
     _install_mutagen(monkeypatch, raises=True)
-    assert tags.read_cover(str(song)) == b"JPEG"
+    assert tags.read_cover(str(song)) == JPEG
     (tmp_path / "cover.jpg").unlink()
     assert tags.read_cover(str(song)) is None
 

@@ -5,6 +5,7 @@ tmp dirs.
 
 from __future__ import annotations
 
+
 import json
 import types
 import urllib.error
@@ -15,11 +16,19 @@ from revamp_core import client as client_mod
 from revamp_core.client import RevampClient, RevampUnavailable
 
 
+@pytest.fixture(autouse=True)
+def _listener_verified(monkeypatch):
+    # These tests exercise request mechanics against a faked urlopen; the "is this really
+    # REVamp" proof (revamp_core/proof.py) has its own tests in test_security_hardening.py.
+    from revamp_core import proof
+    monkeypatch.setattr(proof, "verify_listener", lambda *a, **k: True)
+
+
 class FakeResp:
     def __init__(self, body: bytes):
         self.body = body
 
-    def read(self):
+    def read(self, n=-1):
         return self.body
 
     def __enter__(self):
@@ -41,7 +50,7 @@ def capture(monkeypatch):
         if exc:
             raise exc
         return FakeResp(body)
-    monkeypatch.setattr(client_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(client_mod, "_open", fake_urlopen)
     return box
 
 

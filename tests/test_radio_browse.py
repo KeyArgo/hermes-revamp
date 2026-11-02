@@ -152,7 +152,7 @@ def test_rj_json_tolerates_garbage_total_header(monkeypatch):
     class Resp:
         headers = {"x-rbtotal": "nonsense"}
 
-        def read(self):
+        def read(self, n=-1):
             return b"[]"
 
         def __enter__(self):
@@ -171,7 +171,7 @@ def test_rb_json_walks_the_mirrors_and_reads_x_rbtotal(monkeypatch):
     class Resp:
         headers = {"x-rbtotal": "42"}
 
-        def read(self):
+        def read(self, n=-1):
             return b'[{"url": "https://x/s"}]'
 
         def __enter__(self):
@@ -246,7 +246,7 @@ def test_popular_route_stays_a_plain_list(server, monkeypatch):
 class _OkResp:
     headers = {"x-rbtotal": "7"}
 
-    def read(self):
+    def read(self, n=-1):
         return b'[{"url": "https://x/s"}]'
 
     def __enter__(self):

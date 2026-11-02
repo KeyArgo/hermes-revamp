@@ -102,7 +102,7 @@ def test_request_status_mapping(api_no_server, monkeypatch):
         def __init__(self, body, status=200):
             self.body, self.status = body, status
 
-        def read(self):
+        def read(self, n=-1):
             return self.body
 
         def __enter__(self):
@@ -115,7 +115,7 @@ def test_request_status_mapping(api_no_server, monkeypatch):
         seen["hdr"] = req.get_header("X-revamp-token")
         seen["data"] = req.data
         return R(b'{"app":"revamp"}')
-    monkeypatch.setattr(api_no_server.urllib.request, "urlopen", ok)
+    monkeypatch.setattr(api_no_server, "_local_open", ok)
     assert api_no_server._request("GET", "/api/health") == (200, {"app": "revamp"})
     assert seen["hdr"] is None
     api_no_server._request("POST", "/api/command", body={"command": "play"})
@@ -123,28 +123,28 @@ def test_request_status_mapping(api_no_server, monkeypatch):
 
     def empty(req, timeout=None):
         return R(b"", status=204)
-    monkeypatch.setattr(api_no_server.urllib.request, "urlopen", empty)
+    monkeypatch.setattr(api_no_server, "_local_open", empty)
     assert api_no_server._request("GET", "/x") == (204, {})
 
     def http_json(req, timeout=None):
         raise urllib.error.HTTPError("u", 400, "bad", {}, io.BytesIO(b'{"error":"no"}'))
-    monkeypatch.setattr(api_no_server.urllib.request, "urlopen", http_json)
+    monkeypatch.setattr(api_no_server, "_local_open", http_json)
     assert api_no_server._request("GET", "/x") == (400, {"error": "no"})  # 87-90
 
     def http_broken(req, timeout=None):                                    # 91-92
         class Dead:
-            def read(self):
+            def read(self, n=-1):
                 raise OSError("closed")
 
             def close(self):
                 pass
         raise urllib.error.HTTPError("u", 500, "boom", {}, Dead())
-    monkeypatch.setattr(api_no_server.urllib.request, "urlopen", http_broken)
+    monkeypatch.setattr(api_no_server, "_local_open", http_broken)
     assert api_no_server._request("GET", "/x") == (500, {})
 
     def dead(req, timeout=None):
         raise OSError("connection refused")
-    monkeypatch.setattr(api_no_server.urllib.request, "urlopen", dead)
+    monkeypatch.setattr(api_no_server, "_local_open", dead)
     assert api_no_server._request("GET", "/x") == (0, {})                 # 93-94
 
 

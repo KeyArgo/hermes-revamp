@@ -14,6 +14,8 @@ import threading
 from collections import OrderedDict
 from typing import Any, Dict, List
 
+from . import tags
+
 FFPROBE_TIMEOUT = 20.0
 MAX_CACHE = 512
 
@@ -88,7 +90,10 @@ def chapters_for(path: str) -> List[Dict[str, Any]]:
         if not ffprobe:
             chapters = []
         else:
-            cmd = [ffprobe, "-v", "quiet", "-print_format", "json",
+            # Local file only: a crafted container (HLS, concat...) must not make ffprobe
+            # open other files or the network.
+            cmd = [ffprobe, "-v", "quiet", "-protocol_whitelist", "file",
+                   "-format_whitelist", tags.FFPROBE_FORMATS, "-print_format", "json",
                    "-show_chapters", real]
             try:
                 proc = subprocess.run(cmd, capture_output=True,

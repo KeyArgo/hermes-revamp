@@ -15,15 +15,18 @@ import logging
 import math
 import os
 import socket
+import stat
+import sys
 import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import re
 
+from . import proof
 from . import backup, chapters, items, library, lyrics, museum, playback, playlists, radio, sources, store, window
 import base64
 from .config import (data_dir, library_dirs, library_dirs_custom, library_folders,
@@ -31,7 +34,7 @@ from .config import (data_dir, library_dirs, library_dirs_custom, library_folder
 
 logger = logging.getLogger("revamp.server")
 
-VERSION = "1.0.0-alpha.7"
+VERSION = "1.0.0-alpha.8"
 APP_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = APP_ROOT / "web"
 
@@ -51,30 +54,98 @@ def token_file() -> Path:
     return data_dir() / "token"
 
 
+_TOKEN_IN_URL = re.compile(r"([?&]t=)[^&#\s\"]*")
+
+
+def redact_url(text: str) -> str:
+    """Hide a ?t=<token> query value (media, art and event URLs carry it) before logging."""
+    return _TOKEN_IN_URL.sub(r"\1[redacted]", text)
+
+
 def bridge_key(token: str) -> str:
     """Key for the page's postMessage bridge: proves a request comes from the Hermes plugin."""
     import hmac, hashlib
     return hmac.new(token.encode("utf-8"), b"revamp-bridge", hashlib.sha256).hexdigest() if token else ""
 
 
+def _opened_path(fd: int) -> Optional[str]:
+    """The real path of an open file, where the OS can say (Linux, macOS)."""
+    try:
+        if os.path.isdir("/proc/self/fd"):
+            return os.readlink(f"/proc/self/fd/{fd}")
+        import fcntl
+        if hasattr(fcntl, "F_GETPATH"):
+            raw = fcntl.fcntl(fd, fcntl.F_GETPATH, b"\0" * 1024)
+            return raw.split(b"\0", 1)[0].decode("utf-8", "surrogateescape") or None
+    except (OSError, ImportError, ValueError):
+        pass
+    return None
+
+
+_TOKEN_LOCK = threading.Lock()
+_warned_token_mode = False
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+def _read_token(p: Path) -> str:
+    try:
+        fd = os.open(str(p), os.O_RDONLY | _NOFOLLOW)
+    except OSError:
+        return ""
+    with os.fdopen(fd, "r", encoding="utf-8") as fh:
+        if os.name == "posix" and os.fstat(fd).st_mode & 0o077:
+            try:
+                os.fchmod(fd, 0o600)  # an older install or a hand copy left it readable by others
+            except OSError:  # not our file, or a filesystem without modes: still use it
+                global _warned_token_mode
+                if not _warned_token_mode:
+                    _warned_token_mode = True
+                    logger.warning("revamp: could not make the token file private")
+        return fh.read().strip()
+
+
 def get_token() -> str:
     p = token_file()
-    try:
-        tok = p.read_text(encoding="utf-8").strip()
+    with _TOKEN_LOCK:
+        try:
+            tok = _read_token(p)
+        except OSError:
+            tok = ""
         if tok:
             return tok
-    except OSError:
-        pass
-    import secrets
-    tok = secrets.token_hex(16)
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(tok)
-    except OSError:
-        pass
-    return tok
+        import secrets
+        tok = secrets.token_hex(16)
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            # Written whole to a private temp file, then linked into place, which fails if
+            # the name exists: two first starts can't half-write or overwrite each other.
+            tmp = p.with_name(f".token.{os.getpid()}.{secrets.token_hex(4)}")
+            fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(tok)
+            try:
+                os.link(str(tmp), str(p))
+            except FileExistsError:
+                theirs = _read_token(p)  # another start won: use theirs
+                if theirs:
+                    tok = theirs
+                else:  # an empty leftover from an older version
+                    os.replace(str(tmp), str(p))
+            except OSError:  # no hard links on this filesystem
+                if not _read_token(p):
+                    os.replace(str(tmp), str(p))
+            finally:
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        try:
+            # Whatever ended up in the file is the token (another start may have won).
+            return _read_token(p) or tok
+        except OSError:
+            return tok
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +208,62 @@ def _jsonify(obj: Any) -> bytes:
     return json.dumps(obj, ensure_ascii=False).encode("utf-8")
 
 
+PEER_OUTSIDE = -2
+
+
+def _hex_ip4(ip: str) -> str:
+    """An IPv4 address the way /proc/net/tcp writes it (little-endian hex)."""
+    return "%08X" % int.from_bytes(socket.inet_aton(ip), "little")
+
+
+def peer_uid(client: Tuple[str, int], server_port: int, server_ip: str = "127.0.0.1") -> Optional[int]:
+    """Linux: the account that owns the other end of a loopback connection, from the
+    kernel's socket table (the client's socket is local addr = its port, remote = ours)."""
+    try:
+        cport = int(client[1])
+        cip, sip = _hex_ip4(str(client[0])), _hex_ip4(server_ip)
+    except (TypeError, ValueError, IndexError, OSError):
+        return None
+    # Full address:port pairs, not ports alone.
+    want_local, want_remote = f"{cip}:{cport:04X}", f"{sip}:{int(server_port):04X}"
+    ours = False
+    try:
+        with open("/proc/net/tcp", encoding="ascii", errors="replace") as fh:
+            next(fh, None)
+            for line in fh:
+                parts = line.split()
+                if len(parts) <= 7:
+                    continue
+                if parts[1] == want_local and parts[2] == want_remote:
+                    return int(parts[7])
+                if parts[1] == want_remote and parts[2] == want_local:
+                    ours = True  # our end of the connection
+    except (OSError, ValueError):
+        return None
+    # Our end is in this kernel's table but the client's isn't: the client runs outside this
+    # Linux (WSL talking to Windows), where no other account of this Linux can be.
+    return PEER_OUTSIDE if ours else None
+
+
+# Only on Linux can the server cheaply tell which local account is connecting. There it
+# refuses every other account (root excepted: it can read the token file anyway), so on a
+# shared computer nobody else can load the token-bearing page or call the API.
+SAME_USER_ONLY = sys.platform.startswith("linux") and hasattr(os, "getuid")
+_warned_no_table = False
+
+
+def _socket_table_readable() -> bool:
+    try:
+        with open("/proc/net/tcp", "rb") as fh:
+            return bool(fh.readline())
+    except OSError:
+        return False
+
+
+_SKIN_FILES = (".wsz", ".zip", ".png")  # all the page ever loads from a skin folder
+AGENT_EVENT_MAX_BYTES = 16 * 1024
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Revamp/" + VERSION
     protocol_version = "HTTP/1.1"
@@ -147,8 +274,26 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- plumbing -----------------------------------------------------------
 
+    def handle(self) -> None:
+        if SAME_USER_ONLY:
+            global _warned_no_table
+            uid = peer_uid(self.client_address, self.server.server_address[1], self.server.server_address[0])
+            if uid is None and not _socket_table_readable():
+                # A container or sandbox that hides the socket table: this check can't run
+                # there at all, and the token still guards every API call. Say so once.
+                if not _warned_no_table:
+                    _warned_no_table = True
+                    logger.warning("revamp: /proc/net/tcp is unreadable; can't check which account connects")
+                return super().handle()
+            if uid is None or uid not in (os.getuid(), 0, PEER_OUTSIDE):  # not found: fail closed
+                logger.warning("revamp: refused a loopback connection (account %s)", "unknown" if uid is None else uid)
+                self.close_connection = True
+                return
+        super().handle()
+
     def log_message(self, fmt: str, *args: Any) -> None:  # silence stdout
-        logger.debug("revamp http: " + fmt, *args)
+        # The request line carries ?t=<token> for media/SSE URLs: never let it into a log.
+        logger.debug("revamp http: " + fmt, *(redact_url(a) if isinstance(a, str) else a for a in args))
 
     def _send_cors(self) -> None:
         # Hermes sandboxes both player iframes without allow-same-origin, so the
@@ -169,6 +314,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.send_response(code)
             self.send_header("Content-Type", ctype)
+            self.send_header("X-Content-Type-Options", "nosniff")  # served as declared, never sniffed
             self.send_header("Content-Length", str(len(body)))
             if acao:
                 self._send_cors()
@@ -196,6 +342,10 @@ class Handler(BaseHTTPRequestHandler):
         want_b = want.encode("utf-8")
         if hdr is not None and hmac.compare_digest(hdr.strip().encode("utf-8", "surrogateescape"), want_b):
             return True
+        # The URL form (?t=) exists for <audio>/<img>/EventSource, which can't send headers.
+        # It only ever reads: a URL that leaks (a copied link, a log) can't change anything.
+        if self.command not in ("GET", "HEAD"):
+            return False
         qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
         return hmac.compare_digest(str((qs.get("t") or [""])[0]).encode("utf-8", "surrogateescape"), want_b)
 
@@ -279,7 +429,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception:
-            logger.exception("revamp: handler error %s %s", method, self.path)
+            logger.exception("revamp: handler error %s %s", method, redact_url(self.path))
             try:
                 self._err(500, "internal error")
             except Exception:
@@ -290,7 +440,16 @@ class Handler(BaseHTTPRequestHandler):
         qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
 
         if path == "/api/health" and method in ("GET", "HEAD"):
-            return self._send_json(_health_payload(self.server))
+            payload = _health_payload(self.server)
+            if not self._token_ok():
+                # Any page (even a sandboxed one, Origin: null) can read this; it learns
+                # only that REVamp runs here, not its process details.
+                payload.pop("pid", None)
+                payload.pop("started_at", None)
+            nonce = (qs.get("nonce") or [""])[0]
+            if proof.valid_nonce(nonce):  # a client checking this is really REVamp (see proof.py)
+                payload["proof"] = proof.health_proof(get_token(), nonce, self.server.server_address[1])
+            return self._send_json(payload)
 
         if path.startswith("/api/"):
             if not self._token_ok():
@@ -395,9 +554,13 @@ class Handler(BaseHTTPRequestHandler):
             if out is None:
                 return self._err(404, "no such playlist")
             fname, body, ctype = out
+            # A playlist name goes into a header: keep it to safe characters (no quotes,
+            # CR/LF or path separators), with the full name in the RFC 5987 form.
+            safe = re.sub(r"[^A-Za-z0-9 ._-]", "_", str(fname))[:120] or "playlist"
+            full = urllib.parse.quote(str(fname)[:200], safe="")
             return self._send(
                 200, body.encode("utf-8"), "text/plain; charset=utf-8",
-                extra={"Content-Disposition": f'attachment; filename="{fname}"'})
+                extra={"Content-Disposition": f"attachment; filename=\"{safe}\"; filename*=UTF-8''{full}"})
         if path.startswith("/api/playlists/"):
             pl = playlists.get_playlist(path[len("/api/playlists/"):])
             if pl is None:
@@ -454,6 +617,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, str(exc))
         if path == "/api/radio/stream":
             return self._stream_proxy((qs.get("url") or [""])[0])
+        if path == "/api/radio/favicon":
+            try:
+                data, ctype = radio.fetch_favicon((qs.get("url") or [""])[0])
+            except radio.RadioError:
+                return self._err(404, "no logo")
+            return self._send(200, data, ctype, extra={
+                "Content-Security-Policy": "sandbox",
+                "Cache-Control": "private, max-age=86400"})
         if path == "/api/window":
             return self._send_json(window.status())
         if path == "/api/skins/museum":
@@ -619,6 +790,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/command":
             return self._api_command(body)
         if path == "/api/agent_event":
+            # Kept small: every event is written to state.json and shown in the ticker.
+            if len(json.dumps(body, default=str)) > AGENT_EVENT_MAX_BYTES:
+                return self._err(413, "agent event too large")
             ev = dict(body)
             ev["ts"] = time.time()
             ev = store.add_agent_event(ev)
@@ -791,12 +965,44 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- helpers sources stream with -------------------------------------------
 
-    def send_file(self, path: str) -> None:
-        """Serve a local file with Range support (206 / 416 as browsers expect)."""
+    def send_file(self, path: str, check: Optional[Callable[[str], bool]] = None) -> None:
+        """Serve a local file with Range support (206 / 416 as browsers expect).
+
+        *check* vets the path after it is opened, and the opened file must still be the
+        one at *path*: a file swapped for a link between a check and the open is never
+        served."""
         try:
-            size = os.path.getsize(path)
+            # Non-blocking so a path swapped for a FIFO cannot hang this thread.
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
         except OSError:
             return self._err(404, "file vanished")
+        with os.fdopen(fd, "rb") as fh:
+            try:
+                st = os.fstat(fd)
+                ok = stat.S_ISREG(st.st_mode)
+                if ok and check is not None:
+                    opened = _opened_path(fd)
+                    if opened:
+                        ok = check(opened)  # judge the file actually opened, not the name
+                    else:
+                        # No way to name the open file here: it must be the file at *path*
+                        # both before and after the check.
+                        ident = (st.st_dev, st.st_ino)
+                        before = os.stat(path)
+                        ok = check(path)
+                        after = os.stat(path)
+                        ok = ok and (before.st_dev, before.st_ino) == ident == (after.st_dev, after.st_ino)
+            except OSError:
+                ok = False
+            if not ok:
+                return self._err(404, "not an audio file")
+            if hasattr(os, "set_blocking"):
+                # Non-blocking was only for the open: a read on a network share (Samba,
+                # FUSE) that has to wait must not look like the end of the file.
+                os.set_blocking(fd, True)
+            return self._send_open_file(fh, path, st.st_size)
+
+    def _send_open_file(self, fh: Any, path: str, size: int) -> None:
         ctype = _content_type(path)
         rng = self.headers.get("Range")
         headers = {"Accept-Ranges": "bytes"}
@@ -805,37 +1011,37 @@ class Handler(BaseHTTPRequestHandler):
             """Write a bounded slice without ever materialising it in memory."""
             headers_sent = False
             try:
-                with open(path, "rb") as fh:
-                    fh.seek(start)
-                    self.send_response(code)
-                    self.send_header("Content-Type", ctype)
-                    self.send_header("Content-Length", str(length))
-                    self._send_cors()
-                    for key, value in extra.items():
-                        self.send_header(key, value)
-                    self.end_headers()
-                    headers_sent = True
-                    if self.command == "HEAD":
-                        return
-                    # A paused <audio> stops reading for as long as it likes and resumes
-                    # on the same connection: no send deadline for local media.
-                    conn = getattr(self, "connection", None)
-                    if conn is not None:
-                        conn.settimeout(None)
-                    left = length
-                    while left:
-                        chunk = fh.read(min(64 * 1024, left))
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-                        left -= len(chunk)
-                    if left:
-                        # The file shrank: the client still waits for the promised bytes,
-                        # so the connection cannot carry another response.
-                        self.close_connection = True
-                    elif conn is not None:
-                        # Keep-alive: the next request read gets its deadline back.
-                        conn.settimeout(self.timeout)
+                fh.seek(start)
+                self.send_response(code)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(length))
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self._send_cors()
+                for key, value in extra.items():
+                    self.send_header(key, value)
+                self.end_headers()
+                headers_sent = True
+                if self.command == "HEAD":
+                    return
+                # A paused <audio> stops reading for as long as it likes and resumes
+                # on the same connection: no send deadline for local media.
+                conn = getattr(self, "connection", None)
+                if conn is not None:
+                    conn.settimeout(None)
+                left = length
+                while left:
+                    chunk = fh.read(min(64 * 1024, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+                if left:
+                    # The file shrank: the client still waits for the promised bytes,
+                    # so the connection cannot carry another response.
+                    self.close_connection = True
+                elif conn is not None:
+                    # Keep-alive: the next request read gets its deadline back.
+                    conn.settimeout(self.timeout)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 if headers_sent:
                     self.close_connection = True
@@ -882,8 +1088,28 @@ class Handler(BaseHTTPRequestHandler):
         req = urllib.request.Request(url, headers=dict(headers or {}))
         if self.headers.get("Range"):
             req.add_header("Range", self.headers["Range"])
+        first = urllib.parse.urlsplit(url)
+
+        class SameHost(urllib.request.HTTPRedirectHandler):
+            # A source's own headers (often its login token) go only to the same scheme and
+            # host. A redirect elsewhere (a CDN, a presigned storage URL) is followed with
+            # nothing but the Range.
+            def redirect_request(self, req, fp, code, msg, hdrs, newurl):  # type: ignore[no-untyped-def]
+                nxt = urllib.parse.urlsplit(newurl)
+                if (nxt.scheme, nxt.netloc) == (first.scheme, first.netloc):
+                    return super().redirect_request(req, fp, code, msg, hdrs, newurl)
+                if nxt.scheme not in ("http", "https"):
+                    return None
+                bare = urllib.request.Request(newurl, method="GET" if req.get_method() != "HEAD" else "HEAD")
+                rng = req.get_header("Range")
+                if rng:
+                    bare.add_header("Range", rng)
+                return bare
+
         try:
-            upstream = urllib.request.urlopen(req, timeout=timeout)
+            # No environment proxy either: it would see the source's credentials.
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), SameHost())
+            upstream = opener.open(req, timeout=timeout)
         except urllib.error.HTTPError as exc:
             code = exc.code if exc.code in (401, 403, 404, 416) else 502
             return self._err(code, f"upstream said {exc.code}")
@@ -926,13 +1152,17 @@ class Handler(BaseHTTPRequestHandler):
         track = library.get_track(tid)
         if not track:
             return self._err(404, "unknown track id")
-        return self.send_file(track["path"])
+        # Checked again at open time: a file swapped for a link to a non-audio file since
+        # the scan must not be served.
+        return self.send_file(track["path"], check=library.is_audio_target)
 
     def _art(self, tid: str) -> None:
         from . import tags as tags_mod
         track = library.get_track(tid)
         if not track:
             return self._err(404, "unknown track id")
+        if not library.is_audio_target(track["path"]):
+            return self._err(404, "not an audio file")
         data = tags_mod.read_cover(track["path"])
         if not data:
             return self._err(404, "no art")
@@ -962,6 +1192,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             self.close_connection = True
             self.end_headers()
+            if self.command == "HEAD":
+                return
             # A paused or vanished player stops reading; without a send timeout
             # this thread and its upstream connection would block forever.
             self.connection.settimeout(self.STREAM_WRITE_TIMEOUT)
@@ -984,6 +1216,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Cache-Control", "no-store")
             self._send_cors()
             self.end_headers()
@@ -1026,13 +1259,14 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/skins/builtin/"):
             return self._serve_dir(WEB_DIR / "skins", path[len("/skins/builtin/"):])
         if path.startswith("/skins/user/"):
-            return self._serve_dir(data_dir() / "skins", path[len("/skins/user/"):])
+            return self._serve_dir(data_dir() / "skins", path[len("/skins/user/"):], only=_SKIN_FILES)
         if path.startswith("/skins/museum/"):
             return self._serve_dir(data_dir() / "skins" / "museum",
-                                   path[len("/skins/museum/"):])
+                                   path[len("/skins/museum/"):], only=_SKIN_FILES)
         return self._err(404, "not found")
 
-    def _serve_dir(self, base: Path, rel: str, allow_token: bool = False) -> None:
+    def _serve_dir(self, base: Path, rel: str, allow_token: bool = False,
+                   only: Optional[Tuple[str, ...]] = None) -> None:
         rel = urllib.parse.unquote(rel).lstrip("/")
         root = base.resolve()
         try:
@@ -1046,6 +1280,10 @@ class Handler(BaseHTTPRequestHandler):
         if target.is_dir():
             target = target / "index.html"
         if not target.is_file():
+            return self._err(404, "not found")
+        # Skin folders hold downloaded/dropped files: only skins and previews are served from
+        # them, never something (.html, .svg) that would run as script on this origin.
+        if only is not None and target.suffix.lower() not in only:
             return self._err(404, "not found")
         try:
             body = target.read_bytes()
@@ -1305,15 +1543,13 @@ def _health_payload(srv: Any) -> dict:
             "owner": getattr(srv, "revamp_owner", "plugin")}
 
 
-def _probe_health(port: int, token: Optional[str] = None, timeout: float = 2.0) -> Optional[dict]:
+def _probe_health(port: int, timeout: float = 2.0) -> Optional[dict]:
     """The /api/health payload of a Revamp on *port*, or None."""
     import urllib.request
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{int(port)}/api/health")
         req.add_header("Accept", "application/json")
-        if token:
-            req.add_header("X-Revamp-Token", token)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with proof.local_opener().open(req, timeout=timeout) as resp:
             payload = json.loads(resp.read(4096).decode("utf-8-sig"))
             return payload if isinstance(payload, dict) and payload.get("app") == "revamp" else None
     except Exception:
@@ -1406,13 +1642,16 @@ def _version_key(value: Any) -> Tuple[int, ...]:
 
 
 def _request_upgrade_shutdown(port: int, token: str) -> bool:
+    # Only a listener that proves it knows the token is asked (and so sent it).
+    if not proof.verify_listener(f"http://127.0.0.1:{int(port)}", token):
+        return False
     import urllib.request
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{int(port)}/api/shutdown-for-upgrade",
                                      data=b"{}", method="POST")
         req.add_header("Content-Type", "application/json; charset=utf-8")
         req.add_header("X-Revamp-Token", token)
-        with urllib.request.urlopen(req, timeout=2.0) as resp:
+        with proof.local_opener().open(req, timeout=2.0) as resp:
             return resp.status == 200
     except Exception:
         return False

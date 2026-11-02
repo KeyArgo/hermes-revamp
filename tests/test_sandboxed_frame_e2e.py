@@ -125,3 +125,91 @@ def test_player_page_throws_no_uncaught_errors(tmp_path, query):
         if ch: ch.terminate(); ch.wait()
         srv.terminate(); srv.wait()
         shutil.rmtree(prof, True)
+
+
+@pytest.mark.skipif(not CHROME, reason="needs Chrome")
+def test_hermes_frame_shows_nothing_until_hermes_picks_the_view(tmp_path):
+    # Regression (user, 11-02): opening Hermes showed the full library and menus in the Frame
+    # first, then it collapsed to the classic windows once Hermes sent "winamp" mode.
+    data = str(tmp_path / "data"); os.makedirs(data)
+    port = _free_port()
+    srv = subprocess.Popen([sys.executable, "-m", "revamp_core.server", "--port", str(port), "--data", data],
+                           cwd=str(ROOT), env={**os.environ, "REVAMP_HOME": data, "REVAMP_PORT": str(port)},
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    host_dir = tmp_path / "host"; host_dir.mkdir()
+    # Like Hermes: answer the page's "ready" with the view, but only when the test says so.
+    (host_dir / "index.html").write_text(
+        f'<!doctype html><iframe id=f sandbox="{SANDBOX}" style="width:900px;height:700px" '
+        f'src="http://127.0.0.1:{port}/?embed=1"></iframe>'
+        "<script>window.ready=false;addEventListener('message',e=>{if(e.data&&e.data.type==='revamp:ready')ready=true});"
+        "window.sendMode=()=>f.contentWindow.postMessage({type:'revamp:mode',mode:'winamp',placement:'docked'},'*')</script>")
+    handler = lambda *a, **k: http.server.SimpleHTTPRequestHandler(*a, directory=str(host_dir), **k)
+    host = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    host.RequestHandlerClass.log_message = lambda *a: None
+    threading.Thread(target=host.serve_forever, daemon=True).start()
+    prof = tempfile.mkdtemp(dir=str(tmp_path))
+    ch = None
+    try:
+        for _ in range(60):
+            try: urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=2); break
+            except Exception: time.sleep(0.3)
+        ch = subprocess.Popen([CHROME, "--headless=new", "--mute-audio", "--no-first-run", f"--user-data-dir={prof}",
+                               "--remote-debugging-port=0", "about:blank"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(50):
+            if os.path.exists(prof + "/DevToolsActivePort"): break
+            time.sleep(0.2)
+        dport = open(prof + "/DevToolsActivePort").read().split()[0]
+        t = json.load(urllib.request.urlopen(urllib.request.Request(
+            f"http://127.0.0.1:{dport}/json/new?about:blank", method="PUT")))
+        ws = websocket.create_connection(t["webSocketDebuggerUrl"], suppress_origin=True)
+        n = [0]
+
+        def call(method, params=None):
+            n[0] += 1
+            ws.send(json.dumps({"id": n[0], "method": method, "params": params or {}}))
+            while True:
+                r = json.loads(ws.recv())
+                if r.get("id") == n[0]: return r.get("result", {})
+
+        def top(expr):
+            return call("Runtime.evaluate", {"expression": expr, "returnByValue": True})["result"].get("value")
+
+        fws = [None]
+
+        def frame_view():
+            # The sandboxed player frame is its own process (an "iframe" target): talk to it.
+            if fws[0] is None:
+                tl = json.load(urllib.request.urlopen(f"http://127.0.0.1:{dport}/json/list"))
+                f = next((x for x in tl if x.get("type") == "iframe" and "embed=1" in x.get("url", "")), None)
+                if not f or not f.get("webSocketDebuggerUrl"): return None
+                fws[0] = websocket.create_connection(f["webSocketDebuggerUrl"], suppress_origin=True)
+            fws[0].send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {"returnByValue": True, "expression":
+                        "document.body ? [getComputedStyle(document.body).visibility, document.body.classList.contains('mode-winamp')] : null"}}))
+            while True:
+                r = json.loads(fws[0].recv())
+                if r.get("id") == 1: return r.get("result", {}).get("result", {}).get("value")
+
+        call("Page.enable")
+        call("Page.navigate", {"url": f"http://127.0.0.1:{host.server_address[1]}/"})
+        seen = []
+        for _ in range(200):
+            v = frame_view()
+            if v: seen.append(v[0])
+            if top("window.ready"): break
+            time.sleep(0.05)
+        assert top("window.ready"), "player never said ready"
+        v = frame_view()
+        assert seen and set(seen) == {"hidden"}, f"the full player showed while booting: {seen}"
+        assert v and v[0] == "hidden", v  # ready, but Hermes hasn't picked the view yet
+        top("sendMode()")
+        for _ in range(40):
+            v = frame_view()
+            if v and v[0] == "visible": break
+            time.sleep(0.05)
+        assert v == ["visible", True], v  # shown, and already as the classic windows
+        ws.close(); fws[0] and fws[0].close()
+    finally:
+        if ch: ch.terminate(); ch.wait()
+        srv.terminate(); srv.wait(); host.shutdown()
+        shutil.rmtree(prof, True)

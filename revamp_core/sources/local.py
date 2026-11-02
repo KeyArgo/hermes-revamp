@@ -74,4 +74,6 @@ class LocalSource(Source):
         t = library.get_track(tid) if tid else None
         if not t:
             raise SourceError(404, "unknown track id")
-        request.send_file(t["path"])
+        # Checked again at open time, like /api/media: a file swapped for a link to a
+        # non-audio file since the scan is never served.
+        request.send_file(t["path"], check=library.is_audio_target)

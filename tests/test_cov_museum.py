@@ -15,6 +15,14 @@ import sys
 from revamp_core import museum
 from revamp_core.museum import MuseumError
 
+
+@pytest.fixture(autouse=True)
+def _skin_checksums_not_under_test(monkeypatch):
+    # These tests use made-up skin ids for their fake downloads; the checksum check itself
+    # is tested in test_security_hardening.py.
+    monkeypatch.setattr(museum, "_checksum_ok", lambda md5, data: True)
+
+
 MD5 = "abcdef0123456789abcdef0123456789"
 
 

@@ -52,6 +52,22 @@ function fromLegacy(raw) {
 export const isCanonical = (x) => !!x && typeof x === "object" && typeof x.id === "string" && !!x.id && !!x.playback && typeof x.playback === "object";
 
 /** Any queue item -> a clean canonical item, or null. */
+// The only local routes an item may point at (an allowlist: "/\\host" starts with "/" yet
+// the browser reads it as another host). Backslashes and control characters are refused.
+const PLAYBACK_ROUTES = ["/api/media/", "/api/radio/stream?url=", "/api/sources/"];
+const ART_ROUTES = ["/api/art/", "/api/sources/", "/api/radio/favicon?url="];
+const BAD_URL_CHARS = /[\\\u0000-\u001f\u007f]/;
+// No dot segments or encoded dots/slashes either ("/api/sources/../backups/export").
+const DOT_SEGMENT = /(^|\/)(\.|%2e){1,2}(\/|$)/i;  // literal or %2e-encoded "." / ".." segment
+export const localRoute = (url, routes) => typeof url === "string" && !BAD_URL_CHARS.test(url)
+  && routes.some((r) => url.startsWith(r)) && !DOT_SEGMENT.test(url.split("?")[0]);
+function safeArt(art) {
+  if (typeof art !== "string" || !art.trim()) return null;
+  const a = art.trim();
+  if (/^https?:\/\//i.test(a) && !BAD_URL_CHARS.test(a)) return "/api/radio/favicon?url=" + encodeURIComponent(a);
+  return localRoute(a, ART_ROUTES) ? a : null;
+}
+
 export function normalizeItem(raw) {
   if (!raw || typeof raw !== "object") return null;
   const item = isCanonical(raw) ? { ...raw } : fromLegacy(raw);
@@ -59,11 +75,26 @@ export function normalizeItem(raw) {
   const pb = { ...(item.playback || {}) };
   pb.backend = typeof pb.backend === "string" && pb.backend ? pb.backend : "webamp";
   if (pb.backend === "webamp" && !(typeof pb.url === "string" && pb.url)) return null;
+  if (pb.url != null && typeof pb.url !== "string") return null;
+  // Backends can be added by extensions, so any backend is kept, but a URL on any of them
+  // gets the same checks: an unknown backend must not carry an address past them.
+  if (pb.url) {
+    const url = pb.url.trim();
+    // An outside address goes through the stream proxy (checked: public only, pinned), never
+    // straight to the audio element: a shared playlist must not reach the LAN or loopback.
+    if (/^https?:\/\//i.test(url) && !BAD_URL_CHARS.test(url)) {
+      if (!pb.stream) pb.stream = url;
+      pb.url = radioStreamUrl(url);
+    } else if (!localRoute(url, PLAYBACK_ROUTES)) {
+      return null; // file:, data:, javascript:, //host, /\\host ... are never playback URLs
+    }
+  }
   item.playback = pb;
   item.id = String(item.id);
   if (!(typeof item.source === "string" && item.source)) item.source = item.id.includes(":") ? item.id.split(":")[0] : "url";
   if (!(typeof item.kind === "string" && item.kind) || item.kind === "track") item.kind = "music";
   for (const k of TEXT) item[k] = typeof item[k] === "string" && item[k] ? item[k] : null;
+  item.art = safeArt(item.art); // never an arbitrary address for an <img>
   item.duration = num(item.duration);
   item.capabilities = Array.isArray(item.capabilities) ? item.capabilities.filter((c) => typeof c === "string") : defaultCapabilities(item.kind);
   if (item.capabilities.includes("resume")) item.resumeKey = typeof item.resumeKey === "string" && item.resumeKey ? item.resumeKey : item.id;
