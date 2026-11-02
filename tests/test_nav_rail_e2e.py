@@ -34,13 +34,14 @@ class Page:
     """One headless Chrome tab driven over the CDP websocket."""
 
     def __init__(self, chrome_port: int, width: int, height: int, url: str, shot: Path):
+        self.profile = self._profile()
         self.proc = subprocess.Popen(
             [
                 CHROME, "--headless=new", "--no-sandbox", "--mute-audio",
                 "--autoplay-policy=no-user-gesture-required", "--use-gl=angle",
                 "--use-angle=swiftshader-webgl", "--enable-unsafe-swiftshader",
                 f"--remote-debugging-port={chrome_port}", "--remote-allow-origins=*",
-                f"--user-data-dir={self._profile()}",
+                f"--user-data-dir={self.profile}",
                 "about:blank",
             ],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -129,6 +130,11 @@ class Page:
             self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.proc.kill()
+            self.proc.wait(timeout=5)
+        # Each run made a ~100-250 MB Chrome profile in /tmp and never removed it: 440 of
+        # them (4 GB) filled the temp quota on the dev box.
+        import shutil
+        shutil.rmtree(self.profile, ignore_errors=True)
 
 
 @pytest.fixture(scope="module")

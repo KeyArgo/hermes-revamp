@@ -147,7 +147,7 @@ def test_dead_network_falls_back_fast_and_then_instantly(monkeypatch):
         calls.append(timeout)
         raise OSError("unreachable")
 
-    monkeypatch.setattr(radio.urllib.request, "urlopen", dead)
+    monkeypatch.setattr(radio, "_rb_open", dead)
     monkeypatch.setattr(radio, "RADIO_BROWSER_SERVERS", ["http://a", "http://b", "http://c"])
     out = radio.popular()
     assert out and all(t <= radio.RB_TOTAL_BUDGET for t in calls)

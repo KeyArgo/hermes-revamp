@@ -329,7 +329,7 @@ export async function render(root, api) {
   // Endless list of stations from a page fetcher. The caller must have cleared
   // listEl (newList()) first — chrome (headers) added by the caller survives.
   // fetchPage(offset) must resolve to {stations, more}.
-  function endless(fetchPage, { emptyMsg = "No stations found.", offline = null } = {}) {
+  function endless(fetchPage, { emptyMsg = "No stations found.", offline = null, again = null } = {}) {
     const gen = listGen;
     let items = [];
     let rawOffset = 0;
@@ -338,7 +338,31 @@ export async function render(root, api) {
     let loading = false;
     let total = null;
     let spinnerEl = null;
+    let retried = false;
     setNotice(null);
+
+    // One failed page is not the end of the list: Radio Browser drops connections now
+    // and then. Offer a retry (and try once more on our own) instead of stopping for good.
+    // auto: retry once on our own. Only for a page mid-list: a first-page retry builds a
+    // whole new list, which would retry again, every few seconds while Radio Browser is down.
+    function retryRow(message, onRetry, auto = true) {
+      listEl.querySelectorAll(".radio-sentinel, .radio-retry").forEach((n) => n.remove());
+      const row = document.createElement("div");
+      row.className = "empty radio-retry";
+      const text = document.createElement("span");
+      text.textContent = message;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn sm";
+      btn.textContent = "Try again";
+      const go = () => { if (gen !== listGen || !row.isConnected) return; row.remove(); onRetry(); };
+      btn.addEventListener("click", go);
+      row.append(text, " ", btn);
+      listEl.appendChild(row);
+      // After the server's short "Radio Browser is down" pause (RB_DOWN_COOLDOWN, 5 s),
+      // or the retry would only hit that pause.
+      if (auto && !retried) { retried = true; setTimeout(go, 6000); }
+    }
 
     const getList = () => items;
     const hideSpinner = () => { spinnerEl?.remove(); spinnerEl = null; };
@@ -362,17 +386,22 @@ export async function render(root, api) {
         loading = false;
         if (gen !== listGen) return;
         hideSpinner();
-        if (!items.length) {
-          const shown = offline ? await offline() : false;
-          if (!shown) errEmpty(listEl, `Radio Browser trouble: ${e.message || e}`);
-          else paint();
+        if (items.length) {
+          retryRow("Couldn't load more stations.", loadNext);
+          return;
         }
+        const shown = offline ? await offline() : false;
+        if (gen !== listGen) return;
+        if (!shown) errEmpty(listEl, `Radio Browser trouble: ${e.message || e}`);
+        else paint();
+        if (again) retryRow("Radio Browser didn't answer.", again, false);
         done = true;
         return;
       }
       loading = false;
       if (gen !== listGen) return;
       hideSpinner();
+      retried = false; // a page loaded: the next failure gets its own automatic retry
       const found = page.stations || [];
       for (const st of found) {
         const row = stationRow(st, getList);
@@ -659,6 +688,7 @@ export async function render(root, api) {
         statusEl.textContent = `${rows.length} presets`;
         return true;
       },
+      again: loadPopular,
     });
   }
 
@@ -796,6 +826,7 @@ export async function render(root, api) {
     }, {
       emptyMsg: `No stations for “${activeFilter.name}”.`,
       offline: renderBrowseOffline,
+      again: renderFilteredList,
     });
   }
 
@@ -834,6 +865,20 @@ export async function render(root, api) {
     const name = q.startsWith("#") ? "" : q;
     const tag = q.startsWith("#") ? q.slice(1) : "";
     sortButtons(() => doSearch(q));
+    // People type a genre ("jazz") expecting genre results, but a plain search matches
+    // station names only. Offer the genre one click away.
+    if (name && name.length <= 40) {
+      const head = document.createElement("div");
+      head.className = "btn-row radio-filter-head";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn sm";
+      btn.textContent = `Genre: ${name.toLowerCase()} →`;
+      btn.title = "Stations tagged with this genre";
+      btn.addEventListener("click", () => { searchInput.value = `#${name.toLowerCase()}`; doSearch(`#${name.toLowerCase()}`); });
+      head.appendChild(btn);
+      listEl.appendChild(head);
+    }
     endless(async (offset) => {
       const p = new URLSearchParams({ limit: String(PAGE), sort: browseSort });
       if (name) p.set("q", name);
@@ -843,6 +888,7 @@ export async function render(root, api) {
     }, {
       emptyMsg: `No stations found for “${q}”.`,
       offline: renderBrowseOffline,
+      again: () => doSearch(q),
     });
   }
 

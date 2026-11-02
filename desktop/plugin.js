@@ -621,6 +621,12 @@ function setPlayerLocation(loc, fromBus = false) {
     // Even when already docked the pane may be hidden: showing it again is the point.
     try { host.revealPane?.(scopedPaneId($dockedPlayerSide.get())) } catch { /* older hosts: no revealPane */ }
   }
+  // The desktop window still holds the player: picking a place in Hermes means "bring it
+  // back here". Without this, every place button did nothing until that window was closed.
+  // One open/close at a time: a double-click must not start a second close, or a close
+  // race the open still in flight.
+  if (!fromBus && deskBusy) { pendingBringBack = true; return } // applied when it finishes
+  if (!fromBus && $desktop.get()) { void bringBackFromDesktop(); return }
   if (!fromBus) engine?.place()
   else if (changed || engine) engine?.place()
 }
@@ -796,10 +802,21 @@ async function refreshLive() {
 }
 let deskSeq = 0
 let deskBusy = false // an open/close is in flight: polls must not decide meanwhile
+// A place picked while an open/close was in flight. A pop-out that is still opening
+// would otherwise take the player away right after the person asked for it here.
+let pendingBringBack = false
+function settlePendingPlace() {
+  if (!pendingBringBack) return
+  pendingBringBack = false
+  if ($desktop.get()) void bringBackFromDesktop()
+  else engine?.place()
+}
 
 // Shift+Ctrl+click on Pop out (or the palette): the player moves to its own
 // desktop window and this Hermes player parks. Closing that window brings it back.
 async function openOnDesktop() {
+  if (deskBusy) return // a double-click, or an open while a close is still running
+  pendingBringBack = false // only a pick made during THIS open may undo it
   const s = $live.get()
   deskBusy = true
   try {
@@ -809,14 +826,27 @@ async function openOnDesktop() {
     })
     $desktop.set(true)
   } catch (err) {
-    host.notify({ kind: 'error', message: `REVamp: ${err?.message || 'could not open the desktop window'}` })
+    // A timed-out request may still have opened the window: ask, so a place picked
+    // meanwhile is settled against what is really there (and the player parks now,
+    // not on a later poll that would undo that pick).
+    // The window can take a moment to appear after a timed-out request: look a few times.
+    let win = null
+    for (let i = 0; i < 3 && win?.open !== true; i++) {
+      if (i) await new Promise(r => setTimeout(r, 1000))
+      win = await rest('/window', { timeoutMs: 4000 }).catch(() => null)
+    }
+    if (win?.open === true) $desktop.set(true)
+    else host.notify({ kind: 'error', message: `REVamp: ${err?.message || 'could not open the desktop window'}` })
   } finally {
     deskSeq++ // polls begun during the open are stale
     deskBusy = false
   }
+  settlePendingPlace()
 }
 
 async function bringBackFromDesktop() {
+  // Every way in (place buttons, the shortcut, a pending pick): one open/close at a time.
+  if (deskBusy) { pendingBringBack = true; return }
   deskBusy = true
   try {
     await rest('/window/close', { method: 'POST', timeoutMs: 10000 })
@@ -827,7 +857,9 @@ async function bringBackFromDesktop() {
   } finally {
     deskSeq++ // polls begun during the close are stale
     deskBusy = false
+    queueMicrotask(settlePendingPlace)
   }
+  pendingBringBack = false // the person is told to close it by hand: no silent second try
   host.notify({ kind: 'error', message: 'REVamp: could not close the desktop window. Close it by hand and REVamp comes back here.' })
 }
 

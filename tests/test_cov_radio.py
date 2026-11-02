@@ -89,7 +89,7 @@ def test_search_cache_params_and_errors(nets, monkeypatch):
         seen["url"] = req.full_url
         seen["ua"] = req.get_header("User-agent")
         return Resp(json.dumps([_raw(), {"url": ""}]).encode("utf-8"))
-    monkeypatch.setattr(radio.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(radio, "_rb_open", fake_urlopen)
 
     out = radio.search_radiobrowser("jazz", "cool", 5)                 # 257+260
     assert [s["name"] for s in out] == ["Unnamed"]                     # url-less dropped
@@ -103,20 +103,20 @@ def test_search_cache_params_and_errors(nets, monkeypatch):
     def spy(req, timeout=None):
         calls["n"] += 1
         return real(req, timeout)
-    monkeypatch.setattr(radio.urllib.request, "urlopen", spy)
+    monkeypatch.setattr(radio, "_rb_open", spy)
     again = radio.search_radiobrowser("jazz", "cool", 5)               # 254 cache hit
     assert again == out and calls["n"] == 0
     assert again is not out and again[0] is not out[0]                 # copies
 
     def boom(req, timeout=None):
         raise OSError("dns")
-    monkeypatch.setattr(radio.urllib.request, "urlopen", boom)
+    monkeypatch.setattr(radio, "_rb_open", boom)
     with pytest.raises(RadioError, match="unreachable"):               # 266-267
         radio.search_radiobrowser("other", "", 3)
 
 
 def test_search_non_list_body(nets, monkeypatch):
-    monkeypatch.setattr(radio.urllib.request, "urlopen",
+    monkeypatch.setattr(radio, "_rb_open",
                         lambda req, timeout=None: Resp(b'{"oops": 1}'))
     assert radio.search_radiobrowser("x", "", 3) == []
 

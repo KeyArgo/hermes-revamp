@@ -97,7 +97,7 @@ def test_distinct_station_urls_without_radio_browser_uuid_keep_distinct_ids(monk
         def __exit__(self, *_args):
             return False
 
-    monkeypatch.setattr(radio.urllib.request, "urlopen", lambda *_a, **_kw: Response())
+    monkeypatch.setattr(radio, "_rb_open", lambda *_a, **_kw: Response())
     stations = radio.search_radiobrowser("missing-uuid", limit=2)
     assert len({station["id"] for station in stations}) == 2
 

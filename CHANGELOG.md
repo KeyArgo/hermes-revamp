@@ -2,6 +2,13 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.6 - 2026-11-02 (pre-release)
+
+- Radio works again with today's Radio Browser: it retries dropped connections, connects over IPv4 first (with a fair chance for IPv6), and a failed page offers "Try again" instead of ending the list. Searching a word like "jazz" offers that genre.
+- Popped out to the desktop, the player can be put back from Hermes: Frame, "Dock it here" and the mini player's "put in frame" close the desktop window and bring the player back.
+- Moving the player no longer plays a moment from the start of the song: it reaches its place silently, then the sound comes back. Pausing, skipping or seeking during a move is respected, and an audiobook keeps its place.
+- Playlists keep their own names on macOS and Windows.
+
 ## 1.0.0-alpha.5 - 2026-10-31 (pre-release)
 
 - Reliability and security release: seven bug hunts fixed about 71 bugs, each with a regression test.

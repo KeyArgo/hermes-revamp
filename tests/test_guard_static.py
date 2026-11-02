@@ -77,3 +77,14 @@ def test_tests_never_run_against_the_real_home():
     home = Path(os.environ["HOME"])
     assert "home-sandbox" in home.parts, f"HOME is not sandboxed: {home}"
     assert Path.home() == home
+
+
+def test_browser_test_helpers_delete_their_chrome_profiles():
+    # Leaked profiles (100-250 MB each) once filled /tmp. Every e2e file that creates a
+    # Chrome --user-data-dir must also remove it.
+    import re
+    for f in sorted((ROOT / "tests").glob("test_*e2e.py")):
+        text = f.read_text(encoding="utf-8")
+        if "--user-data-dir" not in text or "from test_nav_rail_e2e import" in text:
+            continue
+        assert "rmtree" in text, f"{f.name} creates a Chrome profile and never deletes it"

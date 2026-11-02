@@ -7,6 +7,7 @@ All network calls are stdlib ``urllib`` with hard timeouts; failures map to
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import http.client
 import ipaddress
@@ -17,6 +18,7 @@ import socket
 import threading
 import unicodedata
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,24 +27,33 @@ from .config import data_dir
 
 UA = "Revamp/0.1"
 RADIO_BROWSER_SEARCH = "https://all.api.radio-browser.info/json/stations/search"
-# A few official mirrors: all.api is a DNS round-robin that regularly wedges on
-# a dead node, so a dead node must not take the whole radio section with it.
+# Official names, tried in turn and then again. In late 2026 nl1/fi1/at1 stopped
+# resolving and every name left (SRV lists only de1) is one server that resets a
+# share of connections, so a fixed list tried once each failed often.
 RADIO_BROWSER_SERVERS = [
-    "https://all.api.radio-browser.info",
+    "https://de1.api.radio-browser.info",
     "https://de2.api.radio-browser.info",
-    "https://nl1.api.radio-browser.info",
+    "https://all.api.radio-browser.info",
 ]
 # Comma-separated override (tests/screenshots simulate an outage with a
 # deliberately unroutable host, no monkeypatching needed).
 _ovr = os.environ.get("REVAMP_RADIO_BROWSER_SERVERS", "").strip()
 if _ovr:
     RADIO_BROWSER_SERVERS = [s.strip().rstrip("/") for s in _ovr.split(",") if s.strip()]
+# A name listed twice made the retry rotation spin forever once that name was dropped.
+RADIO_BROWSER_SERVERS = list(dict.fromkeys(RADIO_BROWSER_SERVERS))
 SEARCH_TIMEOUT = 8.0
 # All mirrors together get this long, so a dead network still answers (with presets)
 # inside the Hermes dashboard proxy's 10 s timeout; after a full failure, skip
 # Radio Browser for a minute instead of waiting on every request.
-RB_TOTAL_BUDGET = 6.0
-RB_DOWN_COOLDOWN = 60.0
+RB_TOTAL_BUDGET = 7.0
+RB_DOWN_COOLDOWN = 5.0  # radio.js retries a failed page after 6 s: keep this below that
+# Per address: an IPv6 route that silently drops packets (common on Windows with
+# a half-working v6 setup) must not spend the whole budget before IPv4 is tried.
+CONNECT_TIMEOUT = 3.5  # just over Windows' 3 s SYN resend, so one lost SYN still connects
+RB_RETRY_PAUSE = 0.25
+RB_ROUNDS = 3
+RB_ATTEMPT_CAP = 4.0
 _rb_down_until = 0.0
 NOWPLAYING_TIMEOUT = 6.0
 SEARCH_CACHE_TTL = 3600.0
@@ -317,6 +328,12 @@ def hermes_lineup() -> List[Dict[str, Any]]:
     return [dict(s) for s in HERMES_LINEUP]
 
 
+# Windows reports the WSA codes, not the C library ones.
+_UNREACHABLE_ERRNOS = {getattr(errno, n) for n in (
+    "ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "EADDRNOTAVAIL",
+    "WSAENETUNREACH", "WSAEHOSTUNREACH", "WSAECONNREFUSED", "WSAEADDRNOTAVAIL") if hasattr(errno, n)}
+
+
 def _cache_put(cache: Dict[str, Any], key: str, value: tuple) -> None:
     """Insert, keeping at most MAX_CACHE_ENTRIES (oldest out). Expired entries were only
     skipped on read, so every distinct search used to stay for the life of the process."""
@@ -341,6 +358,21 @@ def _reset_caches() -> None:
 # Radio Browser client
 # ---------------------------------------------------------------------------
 
+def _unreachable(exc: BaseException) -> bool:
+    """A failure another try will not fix: the name does not resolve, or the host
+    refuses or cannot be routed to (as opposed to a dropped or slow connection)."""
+    reason = getattr(exc, "reason", exc)
+    if isinstance(reason, socket.gaierror):
+        return True
+    return isinstance(reason, (ConnectionRefusedError,)) or (
+        isinstance(reason, OSError) and getattr(reason, "errno", None) in _UNREACHABLE_ERRNOS)
+
+
+def _rb_open(req: urllib.request.Request, timeout: float):
+    """One Radio Browser request (tests replace this to fake the network)."""
+    return urllib.request.build_opener(_FirstAddressHTTPSHandler()).open(req, timeout=timeout)
+
+
 def _rb_json(path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[Any, Optional[int]]:
     """GET a Radio Browser JSON endpoint, trying each mirror in turn.
 
@@ -356,14 +388,32 @@ def _rb_json(path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[Any, O
         raise RadioError("radio-browser unreachable (recently failed)")
     deadline = now + RB_TOTAL_BUDGET
     last_err = "no servers configured"
-    for base in RADIO_BROWSER_SERVERS:
+    # Round-robin over the names, up to RB_ROUNDS times each: a dropped or reset
+    # connection is usually fine on the next try, and one bad moment must not blank
+    # the radio. A name that does not resolve or refuses outright is skipped from
+    # then on, so a machine that is simply offline still fails at once.
+    dead: set = set()
+    refused = 0
+    nxt = 0  # rotation over the full list, skipping dead names: each live name gets its turn
+    for attempt in range(RB_ROUNDS * len(RADIO_BROWSER_SERVERS)):
+        if all(b in dead for b in RADIO_BROWSER_SERVERS):
+            break
+        while RADIO_BROWSER_SERVERS[nxt % len(RADIO_BROWSER_SERVERS)] in dead:
+            nxt += 1
+        base = RADIO_BROWSER_SERVERS[nxt % len(RADIO_BROWSER_SERVERS)]
+        nxt += 1
+        if attempt >= len(RADIO_BROWSER_SERVERS):
+            time.sleep(RB_RETRY_PAUSE)
         left = deadline - time.monotonic()
         if left <= 0.5:
-            last_err = "time budget used up"
+            if attempt == 0:
+                last_err = "time budget used up"
             break
         req = urllib.request.Request(f"{base}/json/{path}{query}", headers={"User-Agent": UA})
         try:
-            with urllib.request.urlopen(req, timeout=min(SEARCH_TIMEOUT, left)) as resp:
+            # One wedged name (silently dropping, or connected and mute) must not use up
+            # the budget before the others are asked; 4 s still covers a resent SYN.
+            with _rb_open(req, timeout=min(SEARCH_TIMEOUT, left, RB_ATTEMPT_CAP)) as resp:
                 body = resp.read()
                 headers = getattr(resp, "headers", None) or {}
                 total_h = headers.get("x-rbtotal") or headers.get("x-rb-total")
@@ -373,8 +423,21 @@ def _rb_json(path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[Any, O
             except ValueError:
                 total = None
             return data, total
-        except Exception as exc:  # mirror down/dead — try the next one
+        except urllib.error.HTTPError as exc:
             last_err = str(exc)
+            if 400 <= exc.code < 500 and exc.code != 429:
+                # Another try at this name gets the same answer, but a half-broken name
+                # (a proxy's 403/404 page) must not stop the others from answering.
+                dead.add(base)
+                refused += 1
+        except Exception as exc:  # dropped, reset, timed out, name gone
+            last_err = str(exc)
+            if _unreachable(exc):
+                dead.add(base)
+    if refused and refused == len(dead) and all(b in dead for b in RADIO_BROWSER_SERVERS):
+        # Every name refused this request: it is our request that is wrong. That says
+        # nothing about the servers, so no cooldown for everyone else.
+        raise RadioError(f"radio-browser refused the request: {last_err}")
     _rb_down_until = time.monotonic() + RB_DOWN_COOLDOWN
     raise RadioError(f"radio-browser unreachable: {last_err}")
 
@@ -902,20 +965,73 @@ def _pinned_socket(host: str, port: int, timeout: Any, source_address: Any = Non
         answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except (OSError, ValueError) as exc:
         raise RadioError("stream host could not be resolved") from exc
+    return _connect_first(_public_answers(answers), timeout, source_address)
+
+
+def _connect_first(answers: Any, timeout: Any, source_address: Any = None) -> socket.socket:
+    """Connect to the first address that answers, IPv4 first, each with a short
+    connect timeout. Python otherwise tries IPv6 first and waits the full timeout
+    on a dead IPv6 route, which on Windows meant no radio at all."""
+    answers = sorted(answers, key=lambda a: a[0] != socket.AF_INET)
+    full = socket.getdefaulttimeout() if timeout is socket._GLOBAL_DEFAULT_TIMEOUT else timeout  # type: ignore[attr-defined]
+    # The timeout covers connecting as a whole, not each address: a dead first address
+    # plus a slow second one must not run past the caller's budget (the Hermes proxy
+    # gives up at 10 s).
+    deadline = None if full is None else time.monotonic() + full
     err: Optional[OSError] = None
-    for family, socktype, proto, _canon, addr in _public_answers(answers):
+    retryable: Optional[OSError] = None  # a timeout or reset: worth another try later
+    for i, (family, socktype, proto, _canon, addr) in enumerate(answers):
+        left = None if deadline is None else deadline - time.monotonic()
+        if left is not None and left <= 0:
+            raise retryable or err or socket.timeout("timed out")
         sock = socket.socket(family, socktype, proto)
+        # Cut an attempt short only when another address is waiting: a host with one
+        # address keeps the whole timeout (Windows resends a lost SYN only after 3 s).
+        last = i == len(answers) - 1
         try:
-            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:  # type: ignore[attr-defined]
-                sock.settimeout(timeout)
+            if last:
+                sock.settimeout(left)
+            else:
+                # Leave the next address (often the other family) a fair share: a dead IPv4
+                # must not starve a working IPv6 on IPv6-only/NAT64 networks.
+                sock.settimeout(CONNECT_TIMEOUT if left is None else min(CONNECT_TIMEOUT, left / 2))
             if source_address:
                 sock.bind(source_address)
             sock.connect(addr)
+            sock.settimeout(full)
             return sock
         except OSError as exc:
             sock.close()
             err = exc
-    raise err or OSError("stream host could not be reached")
+            if not _unreachable(exc):
+                retryable = exc
+    # A dropped SYN on IPv4 followed by "no route" on IPv6 is a dropped SYN: report the
+    # retryable failure, or the caller would give up on a server that is really there.
+    raise retryable or err or OSError("host could not be reached")
+
+
+class _FirstAddressHTTPSConnection(http.client.HTTPSConnection):
+    """Radio Browser over HTTPS, connecting with _connect_first (no address checks:
+    these are fixed public hosts, and a configured proxy is used as before)."""
+
+    def connect(self) -> None:
+        if getattr(self, "_tunnel_host", None):
+            return super().connect()
+        # One budget for connect, TLS and the reply: a slow connect followed by a stall
+        # must not run past the Hermes proxy's 10 s.
+        t0 = time.monotonic()
+        answers = socket.getaddrinfo(self.host, self.port, type=socket.SOCK_STREAM)
+        sock = _connect_first(answers, self.timeout, self.source_address)
+        if isinstance(self.timeout, (int, float)):
+            sock.settimeout(max(0.5, self.timeout - (time.monotonic() - t0)))
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)  # type: ignore[attr-defined]
+        if isinstance(self.timeout, (int, float)):
+            self.sock.settimeout(max(0.5, self.timeout - (time.monotonic() - t0)))
+
+
+class _FirstAddressHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):  # type: ignore[no-untyped-def]
+        return self.do_open(_FirstAddressHTTPSConnection, req, context=self._context)  # type: ignore[attr-defined]
 
 
 class _PinnedHTTPConnection(http.client.HTTPConnection):

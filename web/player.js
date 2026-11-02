@@ -181,17 +181,145 @@ export async function initPlayer(ctx) {
   // Moving between Hermes and the desktop window: carry on where the other player was.
   // Claimed atomically on the server, so only one starting player can act on it.
   const handoffFor = new URLSearchParams(location.search).has("float") ? "float" : "hermes";
-  let handoffSeek = false; // the handoff's place is fresher than a book's saved one: skip that resume
-  apiPost("/api/handoff/claim", { for: handoffFor }).then(({ handoff } = {}) => {
+  let silentVol = null; // the person's volume while a handed-over track reaches its place silently
+  // One rule for a handed-over place. `place` = { track, pos } is the spot that track still
+  // has to reach. Whenever that track plays, reachPlace() gets there with the sound off, then
+  // forgets it. A pause (from any button) only interrupts that: the next play tries again.
+  // Another track playing, or a seek the person makes, forgets it. While it is set the player
+  // reports that spot, and neither a book's save nor its own (older) resume touches the track.
+  let place = null;
+  let reaching = false;
+  let startPending = false; // claimed as playing, not started yet (the ~300 ms before play())
+  const curTrack = () => storeState()?.playlist?.currentTrack ?? null;
+  // Bumped by every play, pause, stop, toggle and seek from REVamp's controls or commands.
+  // Anything the person does before the handoff answer arrives wins: the handoff is dropped.
+  let actSeq = 0;
+  let handoffGen = 0; // bumped when a handoff is accepted: an older book resume still loading is stale
+  function placeHere() {
+    if (!place) return null;
+    // Another track selected (playing or not, by any control): the place is that old track's
+    // and must not be applied if the person starts it fresh later.
+    if (place.track != null && place.track !== curTrack()) { place = null; return null; }
+    if (place.track !== curTrack()) return null;
+    // Moved well away from the place while it waited (a seek while paused, say): the
+    // person's position wins, and it must be reported and saved as theirs.
+    const at = media().timeElapsed || 0;
+    if (!reaching && at > 3 && Math.abs(at - place.pos) > 2) { place = null; return null; }
+    return place;
+  }
+  // Start (or resume) a track that has a place to reach: muted BEFORE it starts, so not even
+  // the first moment of 0:00 is heard; reachPlace() takes it from there and restores the
+  // volume. If it didn't start playing after all, the volume comes straight back.
+  // A transport action during the ~300 ms before a claimed handoff starts takes that start
+  // over: the track still plays (it was reported as playing), just as the person directed.
+  function takeOverStart() {
+    const was = startPending;
+    startPending = false;
+    return was;
+  }
+  let silentSeq = 0; // each silent stretch's own number: an older restore timer must not end a newer one
+  // How long a muted start may wait for PLAYING before the volume comes back: as long as a reach
+  // waits for slow media, or a slow start would be heard before reachPlace() took over.
+  const SILENT_START_WAIT_MS = 15000;
+  // The silence is only for reaching a place: once none is pending and no reach runs (the
+  // place was dropped, another track plays), the person's volume comes straight back.
+  function endSilence() {
+    if (reaching || silentVol == null || placeHere()) return;
+    silentSeq++;
+    const target = silentVol;
+    silentVol = null;
+    if (rawVolume() === 0) try { webamp.setVolume(target); } catch { /* guard */ }
+  }
+  function startTowardPlace(start) {
+    // place.track null: nothing was selected at claim time and play() is about to pick it.
+    if (place && (place.track == null || placeHere())) {
+      if (silentVol == null) silentVol = currentVolume();
+      try { webamp.setVolume(0); } catch { /* guard */ }
+    }
+    try { start(); } catch { /* guard */ }
+    if (place && place.track == null) place.track = curTrack(); // play() just picked it
+    void reachPlace();
+    if (!reaching && silentVol != null) {
+      // Not reaching: either it isn't playing (yet), or there was no place after all. A track
+      // that is still getting going stays muted, and its PLAYING change starts the reach.
+      const mine = ++silentSeq;
+      const restore = () => {
+        if (mine !== silentSeq || reaching || silentVol == null) return;
+        const target = silentVol;
+        silentVol = null;
+        if (rawVolume() === 0) try { webamp.setVolume(target); } catch { /* guard */ }
+      };
+      if (media().status === "PLAYING" || !placeHere()) restore();
+      else setTimeout(restore, SILENT_START_WAIT_MS);
+    }
+  }
+  async function reachPlace() {
+    if (reaching || !place || media().status !== "PLAYING") return;
+    if (place.track == null) place.track = curTrack(); // nothing was selected at claim: play() picked it
+    if (place.track !== curTrack()) { place = null; endSilence(); return; } // another track is playing
+    const p = place;
+    const going = () => place === p && curTrack() === p.track && media().status === "PLAYING";
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    reaching = true;
+    silentSeq++; // a reach owns the silent stretch now: older restore timers stand down
+    const vol = currentVolume();
+    silentVol = vol; // the duck, sleep and saves see the person's volume meanwhile
+    try { webamp.setVolume(0); } catch { /* guard */ }
+    try {
+      // Up to 15 s for slow media to start (Webamp always starts a track at 0:00).
+      for (let i = 0; i < 150 && going() && !(media().timeElapsed > 0); i++) await wait(100);
+      // (Every wait is followed by a fresh check: a seek or skip during it must win.)
+      if (!going()) return; // paused, stopped or skipped: a pause keeps the place for next time
+      const at0 = media().timeElapsed || 0;
+      // Well into the track and nowhere near the place: the person seeked. Theirs wins.
+      if (at0 > 3 && Math.abs(at0 - p.pos) > 2) { place = null; return; }
+      webamp.seekToTime(p.pos);
+      // A seek before the audio is ready can be lost: repeat it while still near the start.
+      for (let i = 1; i <= 40 && going(); i++) {
+        await wait(50);
+        if (!going()) break; // a seek or skip happened during the wait
+        const at = media().timeElapsed || 0;
+        if (Math.abs(at - p.pos) <= 2 || at > 3) { place = null; break; } // there, or moved by the person
+        if (i % 10 === 0) webamp.seekToTime(p.pos);
+      }
+      if (going()) place = null; // never got there: let it play from where it is
+    } catch {
+      place = null; // a seek that throws won't work next time either: no retry loop
+    } finally {
+      reaching = false;
+      // Paused and played again while this attempt was winding down: that play's own attempt
+      // was turned away (reaching). The next one takes the silent stretch over right here,
+      // so the sound never comes back on in between.
+      if (place && media().status === "PLAYING") void reachPlace();
+      if (!reaching) {
+        // A fade meanwhile (duck, sleep) or a volume command moved the level to restore.
+        const target = silentVol ?? vol;
+        silentVol = null;
+        if (rawVolume() === 0) try { webamp.setVolume(target); } catch { /* guard */ }
+      }
+    }
+  }
+  const claimSeq = actSeq;
+  const trackAtClaim = curTrack(); // a different track by the answer (any source, Webamp's own too): drop it
+  // A book's own resume waits for this answer before it seeks: answered first, it would move
+  // the track to the older saved spot, and the handed-over place would then look like a seek.
+  const claimDone = apiPost("/api/handoff/claim", { for: handoffFor }).then(({ handoff } = {}) => {
     if (!handoff?.playing || !queueItems.length) return;
-    handoffSeek = true;
-    setTimeout(() => { handoffSeek = false; }, 5000); // only the start it hands over
+    if (actSeq !== claimSeq) return; // the person already played, paused, seeked or picked: theirs wins
+    if (trackAtClaim != null && curTrack() !== trackAtClaim) return;
     const isStream = queueItems[saved.current_index || 0]?.kind === "stream";
+    const claimTrack = curTrack();
+    // Even a place near 0:00 is kept: it tells a book's own (older) resume to stand down.
+    if (!isStream) place = { track: claimTrack, pos: Math.max(0, Number(handoff.position) || 0) };
+    handoffGen++;
+    startPending = true;
     setTimeout(() => {
-      try {
-        webamp.play();
-        if (!isStream && handoff.position > 1) setTimeout(() => { try { webamp.seekToTime(handoff.position); } catch { /* guard */ } }, 500);
-      } catch { /* guard */ }
+      if (!startPending) return; // paused or stopped meanwhile: keep the place, don't start
+      startPending = false;
+      // Skipped to another track meanwhile: that place isn't this track's.
+      if (claimTrack != null && curTrack() !== claimTrack) { place = null; return; }
+      // Already started by something else: playing it again would restart it at 0:00.
+      startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); });
     }, 300);
   }).catch(() => {});
 
@@ -274,6 +402,9 @@ export async function initPlayer(ctx) {
     webamp,
     get items() { return webampItems(); },
     async loadTracks(tracks, { mode = "replace", play = true } = {}) {
+      // A new queue or track (or another backend, Focus): no old place, and no pending start
+      // left to fire alongside it; a list loaded to play plays itself.
+      if (play || mode === "replace") { actSeq++; place = null; startPending = false; endSilence(); }
       const all = normalizeItems(tracks);
       // A list for another backend (focus...) goes to that backend; Webamp keeps its queue.
       const other = all[0] && all[0].playback.backend !== "webamp" ? all[0].playback.backend : null;
@@ -327,23 +458,51 @@ export async function initPlayer(ctx) {
     registerBackend(id, executor) { backends.set(id, executor); },
     get activeBackend() { return activeBackend; },
     async playIndex(i) {
+      actSeq++;
+      takeOverStart(); // it plays the song itself: no second start from a pending handoff
+      place = null; // a song picked (even the same one, restarting it): no old place
+      endSilence();
       try { setTrackIndex(webamp, i); webamp.play(); } catch { /* guard */ }
     },
     async playItemsAt(index, list) { // play a specific item from a result set
       await this.loadTracks(list, { mode: "replace", play: false });
       this.playIndex(index);
     },
-    stop() { try { webamp.stop(); } catch { /* guard */ } },
+    stop() { startPending = false; actSeq++; place = null; endSilence(); try { webamp.stop(); } catch { /* guard */ } },
     // Webamp's pause() toggles: pausing something already paused would start it again.
-    pause() { try { if (media().status === "PLAYING") webamp.pause(); } catch { /* guard */ } },
-    play() { try { webamp.play(); } catch { /* guard */ } },
+    pause() { startPending = false; actSeq++; try { if (media().status === "PLAYING") webamp.pause(); } catch { /* guard */ } },
+    // A play while a handoff waits to start counts as that start (not a second one).
+    play() { startPending = false; actSeq++; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); },
     toggle() {
       const st = media().status;
-      try { st === "PLAYING" ? webamp.pause() : webamp.play(); } catch { /* guard */ }
+      // A handoff not started yet counts as playing (it is reported so): toggling it is a pause.
+      actSeq++;
+      // ...unless something (Webamp's own play button) already started it: then it's a pause.
+      if (startPending && st !== "PLAYING") { startPending = false; return; }
+      startPending = false;
+      if (st === "PLAYING") { try { webamp.pause(); } catch { /* guard */ } return; }
+      startTowardPlace(() => webamp.play());
     },
-    next() { try { webamp.nextTrack(); } catch { /* guard */ } },
-    prev() { try { webamp.previousTrack(); } catch { /* guard */ } },
-    seek(sec) { try { webamp.seekToTime(sec); } catch { /* guard */ } },
+    next() {
+      actSeq++; place = null;
+      const started = takeOverStart();
+      try { webamp.nextTrack(); if (started && media().status !== "PLAYING") webamp.play(); } catch { /* guard */ }
+      endSilence();
+    },
+    prev() {
+      actSeq++; place = null;
+      const started = takeOverStart();
+      try { webamp.previousTrack(); if (started && media().status !== "PLAYING") webamp.play(); } catch { /* guard */ }
+      endSilence();
+    },
+    seek(sec) {
+      place = null; actSeq++; // the person's place now
+      // Starting it now as well: a seek this early can be lost, so their spot becomes the place
+      // to reach (silently, with retries) instead of a single seek at full volume.
+      if (takeOverStart()) { place = { track: curTrack(), pos: Math.max(0, Number(sec) || 0) }; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); return; }
+      endSilence();
+      try { webamp.seekToTime(sec); } catch { /* guard */ }
+    },
     // ±seconds within the current track or book; a live stream has nowhere to seek.
     // Playback speed (0.5-3x, pitch kept): set on Webamp's audio elements. Load resets an
     // element's rate to its default, so both are set, and new tracks keep the speed.
@@ -382,10 +541,16 @@ export async function initPlayer(ctx) {
       if (!info.item || info.item.kind === "stream" || !Number.isFinite(Number(delta))) return;
       let to = Math.max(0, (info.position || 0) + Number(delta));
       if (info.duration > 0) to = Math.min(to, Math.max(0, info.duration - 1));
+      place = null; // relative to the reported position (a pending place counts); theirs from now
+      actSeq++;
+      if (takeOverStart()) { place = { track: curTrack(), pos: to }; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); updateNowPlayingSoon(); return; }
+      endSilence();
       try { webamp.seekToTime(to); } catch { /* guard */ }
       updateNowPlayingSoon();
     },
-    setVolume(v) { try { webamp.setVolume(clamp(v)); } catch { /* guard */ } stagePersist({ volume: clamp(v) }); },
+    // Through setOutputVolume: during a handoff's silent start a command sets the level to
+    // restore, so the track's first moments still don't play before the seek lands.
+    setVolume(v) { setOutputVolume(clamp(v)); stagePersist({ volume: clamp(v) }); },
     setShuffle(on) {
       const cur = !!safe(() => webamp.isShuffleEnabled());
       if (cur !== !!on) try { webamp.toggleShuffle(); } catch { /* guard */ }
@@ -531,10 +696,12 @@ export async function initPlayer(ctx) {
     const m = media();
     return {
       item, index: idx, webampTrack: t,
-      status: m.status || "STOPPED",
-      position: m.timeElapsed ?? 0,
+      // A claimed handoff that hasn't started yet is playing as far as the next one goes.
+      status: startPending && m.status !== "PLAYING" ? "PLAYING" : (m.status || "STOPPED"),
+      // Until a handed-over place is reached, it is the real position (see `place`).
+      position: placeHere() ? placeHere().pos : (m.timeElapsed ?? 0),
       duration: m.length ?? item?.duration ?? null,
-      volume: m.volume, balance: m.balance,
+      volume: currentVolume(), balance: m.balance, // the person's level, not a silent start's 0
     };
   }
 
@@ -578,6 +745,9 @@ export async function initPlayer(ctx) {
     const info = currentInfo();
     const key = resumeKeyOf(info.item);
     if (!key || resumingId === key || !(info.position > 0)) return;
+    // While a handed-over place is pending, info.position already reports it, so saving is
+    // right (a pause then keeps it). Only a silent stretch without a place could read 0:01.
+    if (silentVol != null && !placeHere()) return;
     const pos = Math.floor(info.position);
     const finished = info.duration > 0 && pos >= info.duration - 30; // done: start over next time
     const value = finished ? 0 : pos;
@@ -597,10 +767,13 @@ export async function initPlayer(ctx) {
     const key = `${storeState()?.playlist?.currentTrack}|${rk}`;
     if (key === resumedKey) return;
     resumedKey = key;
-    if (handoffSeek) { handoffSeek = false; return; }
+    if (placeHere()) return; // a handed-over place is fresher than the book's saved one
+    const gen = handoffGen;
+    const acted = actSeq; // the person seeks/skips meanwhile: theirs wins over the book's save
     resumingId = rk;
     try {
       const res = await apiGet("/api/resume?key=" + encodeURIComponent(rk));
+      await claimDone.catch(() => {});
       const pos = Number(res?.position) || 0;
       if (pos <= 30) return;
       // Seek once the audio has actually started, or the seek is lost.
@@ -609,6 +782,8 @@ export async function initPlayer(ctx) {
       const dur = now.duration || 0;
       if (resumeKeyOf(now.item) !== rk) return;
       if ((dur && pos >= dur - 30) || Math.abs((media().timeElapsed || 0) - pos) < 5) return;
+      // A handoff arrived while this was loading (pending or already reached): it is newer.
+      if (placeHere() || gen !== handoffGen || acted !== actSeq) return;
       webamp.seekToTime(pos);
       toast(`Resumed at ${fmt(pos)}`, { kind: "ok" });
     } catch { /* play from the start */ } finally {
@@ -678,7 +853,9 @@ export async function initPlayer(ctx) {
       shuffle: !!safe(() => webamp.isShuffleEnabled()),
       repeat: !!safe(() => webamp.isRepeatEnabled()),
     };
-    if (!duck.active && Number.isFinite(st?.media?.volume)) patch.volume = clamp(st.media.volume);
+    // Not during a dip, and not during a handoff's silent start: its 0 is temporary, and a
+    // saved 0 would start the next player silent.
+    if (!duck.active && silentVol == null && Number.isFinite(st?.media?.volume)) patch.volume = clamp(st.media.volume);
     if (sliders) {
       patch.eq = {
         on: !!equalizer.on,
@@ -723,7 +900,7 @@ export async function initPlayer(ctx) {
       setTimeout(beat, 50);
       // After this store update, not inside it: mid-update Webamp can still list the old
       // queue. (Items map by entry id now, but the deferral keeps reads off Webamp's dispatch.)
-      setTimeout(() => { saveBookPlace(true); maybeResume(); }, 0); // paused/stopped: keep the exact place
+      setTimeout(() => { placeHere(); void reachPlace(); endSilence(); saveBookPlace(true); maybeResume(); }, 0); // paused/stopped: keep the exact place
     });
   } catch { /* store shape changed: the 2 s heartbeat still runs */ }
 
@@ -1282,7 +1459,16 @@ export async function initPlayer(ctx) {
     duck.sessionId = null;
     if (saved.settings.duck_toast !== false) toast("Music back to normal volume", { kind: "ok" });
   }
-  function currentVolume() { const v = media().volume; return typeof v === "number" ? v : safe(() => webamp.getVolume?.()) ?? 75; }
+  function rawVolume() { const v = media().volume; return typeof v === "number" ? v : safe(() => webamp.getVolume?.()) ?? 75; }
+  // While a handoff starts silent the real volume is 0: report the person's volume instead,
+  // unless something has set a new one meanwhile.
+  function currentVolume() { const raw = rawVolume(); return silentVol != null && raw === 0 ? silentVol : raw; }
+  // Fades (duck, sleep) set the level through here. During a handoff's silent start the
+  // output must stay at 0, so a fade changes the level that start will restore instead.
+  function setOutputVolume(v) {
+    if (silentVol != null && rawVolume() === 0) { silentVol = v; return; }
+    try { webamp.setVolume(v); } catch { /* guard */ }
+  }
   function cancelVolumeAnimation() { volumeAnimation += 1; }
   function animateVolume(from, to, ms, persist = true) {
     const animation = ++volumeAnimation;
@@ -1291,7 +1477,7 @@ export async function initPlayer(ctx) {
       if (animation != volumeAnimation) return;
       const k = Math.min(1, (t - t0) / ms);
       const v = Math.round(from + (to - from) * k);
-      try { webamp.setVolume(v); } catch { /* guard */ }
+      setOutputVolume(v);
       if (k < 1) setTimeout(() => step(performance.now()), 16);
       else if (persist) stagePersist({ volume: to });
     };
@@ -1495,7 +1681,7 @@ export async function initPlayer(ctx) {
         try { focus?.command({ action: "volume", percent: Math.round(sleepFrom * (left / fade)) }); } catch { /* guard */ }
       } else if (!duck.active) {
         // Ducking owns the temporary output level; do not fight its short fade.
-        try { webamp.setVolume(Math.round(sleepFrom * (left / fade))); } catch { /* guard */ }
+        setOutputVolume(Math.round(sleepFrom * (left / fade)));
       }
     }
   }
@@ -1504,7 +1690,7 @@ export async function initPlayer(ctx) {
     sleepTimer = null;
     sleep = null;
     if (duck.active && sleepFrom != null) duck.savedVol = sleepFrom; // the un-dip restores the pre-fade level
-    else if (sleepFrom != null) try { webamp.setVolume(sleepFrom); } catch { /* guard */ }
+    else if (sleepFrom != null) setOutputVolume(sleepFrom);
     sleepFrom = null;
     paintNpExtras();
     setTimeout(beat, 50);

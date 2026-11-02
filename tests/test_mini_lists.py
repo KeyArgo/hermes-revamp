@@ -43,7 +43,7 @@ def test_radio_search_passes_offset_to_radio_browser(monkeypatch):
         seen.append(req.full_url if hasattr(req, "full_url") else str(req))
         return RadioResponse([])
 
-    monkeypatch.setattr(radio.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(radio, "_rb_open", fake_urlopen)
     q = "offset-test-station"
     assert radio.search_radiobrowser(q=q, offset=40) == []
     assert seen, "Radio Browser was never called"

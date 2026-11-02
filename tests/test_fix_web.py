@@ -45,7 +45,7 @@ def test_approval_ducking_cancels_stale_fades_and_keeps_a_user_volume_change():
     assert "if (!duck.active)" in sleep_tick
     stop_start = text.index("function stopSleep()")
     stop_sleep = text[stop_start:text.index("api.setSleep", stop_start)]
-    assert "else if (sleepFrom != null) try { webamp.setVolume(sleepFrom)" in stop_sleep
+    assert "else if (sleepFrom != null) setOutputVolume(sleepFrom)" in stop_sleep
 
 
 def test_a_volume_change_during_the_sleep_fade_is_kept():
