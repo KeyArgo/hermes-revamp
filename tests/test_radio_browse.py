@@ -441,6 +441,11 @@ def test_tls_and_reply_share_the_connect_budget(monkeypatch):
         return Sock()
 
     class Ctx:
+        # Read by http.client on some Python versions (3.11 checks verify_mode).
+        verify_mode = __import__("ssl").CERT_REQUIRED
+        check_hostname = True
+        post_handshake_auth = None
+
         def wrap_socket(self, sock, server_hostname=None):
             clock[0] += 1.0
             return Sock()

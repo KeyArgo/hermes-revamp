@@ -14,7 +14,10 @@ import urllib.parse
 import pytest
 
 pytest.importorskip("websocket")
-from test_nav_rail_e2e import Page, free_port  # noqa: E402  (same headless, muted Chrome)
+from test_nav_rail_e2e import CHROME, Page, free_port  # noqa: E402  (same headless, muted Chrome)
+
+if not __import__("shutil").which(CHROME):
+    pytest.skip(f"{CHROME} not installed (browser e2e runs in the Linux e2e job)", allow_module_level=True)
 
 from revamp_core import radio  # noqa: E402
 
