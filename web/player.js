@@ -1231,6 +1231,16 @@ export async function initPlayer(ctx) {
   api.fullscreenVisualizer = () => {
     const win = document.querySelector("#milkdrop-window, .gen-window");
     if (!win) return false;
+    // With a GPU, Webamp's own full screen: MilkDrop then draws at the screen's size. Making
+    // the window element full screen ourselves only stretched its ~256 px picture about 7x,
+    // which is what made full-screen MilkDrop look so blocky in the pop-out.
+    if (!softwareGL) {
+      const on = safe(() => webamp.store.getState().milkdrop.display === "FULLSCREEN", false);
+      if (!on && document.fullscreenElement) { document.exitFullscreen?.(); return true; } // an old-style one
+      dispatchStore({ type: "SET_MILKDROP_FULLSCREEN", enabled: !on });
+      return true;
+    }
+    // Software WebGL: every pixel costs CPU, so keep the cheap stretched picture there.
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
       return true;

@@ -47,3 +47,16 @@ def test_approval_ducking_only_targets_actionable_desktop_prompts():
     assert 'unduck(null, approvalSession(ev))' in player
     assert 'setApprovalWaiting(actionable, actionable ? duckReason(ev) : "")' in player
     assert 'export function setApprovalWaiting(on, reason = "")' in app
+
+
+def test_fullscreen_milkdrop_draws_at_screen_size_on_a_gpu():
+    # User report 11-02 ("I see shit graphics" in the pop-out): REVamp made MilkDrop's window
+    # element full screen itself, so Webamp kept drawing its ~256x314 picture and the browser
+    # stretched it ~7x. Webamp's own full screen (SET_MILKDROP_FULLSCREEN) draws at screen size.
+    # Under software WebGL the cheap stretched picture stays (every pixel costs CPU there).
+    text = (Path(__file__).resolve().parents[1] / "web" / "player.js").read_text(encoding="utf-8")
+    fs = text[text.index("api.fullscreenVisualizer = () => {"):text.index('document.addEventListener("dblclick"')]
+    gpu = fs[fs.index("if (!softwareGL) {"):fs.index("// Software WebGL")]
+    assert 'dispatchStore({ type: "SET_MILKDROP_FULLSCREEN", enabled: !on });' in gpu
+    assert "requestFullscreen" not in gpu
+    assert "win.requestFullscreen" in fs[fs.index("// Software WebGL"):]

@@ -2,6 +2,10 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.7 - 2026-11-02 (pre-release)
+
+- Full-screen MilkDrop is sharp again: with a graphics card it now draws at your screen's resolution instead of stretching a small picture about 7x. Machines without a graphics card keep the lighter stretched picture, so nothing gets slower there.
+
 ## 1.0.0-alpha.6 - 2026-11-02 (pre-release)
 
 - Radio works again with today's Radio Browser: it retries dropped connections, connects over IPv4 first (with a fair chance for IPv6), and a failed page offers "Try again" instead of ending the list. Searching a word like "jazz" offers that genre.
