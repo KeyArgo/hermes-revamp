@@ -484,7 +484,9 @@ body.approval-wait .approval-banner { display: inline-flex; }
   .shell { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; padding: 8px; gap: 8px; }
   .brand, .nav button .label, .np-meta, .np-sleep, .np-sleep-left,
   .np-extras, .np-book, .np-art, .nowplaying-card { display: none; }
-  .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; gap: 6px; overflow: visible; }
+  /* min-height:auto, not the base 0: when the page is taller than the window (queue open) the
+     grid squeezes rows down to their minimum, and 0 let the bar collapse under its buttons. */
+  .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; gap: 6px; overflow: visible; min-height: auto; }
   .nav { flex-direction: row; flex: 1; justify-content: space-around; gap: 2px; }
   .nav button { justify-content: center; padding: 8px 4px; flex: 1; min-width: 0; }
   .nav .icon { width: auto; }
@@ -502,7 +504,7 @@ body.embed .shell { grid-template-columns: 1fr; grid-template-rows: auto auto au
 body.embed .brand, body.embed .nav button .label, body.embed .np-meta,
 body.embed .np-sleep, body.embed .np-sleep-left,
 body.embed .np-extras, body.embed .np-book, body.embed .np-art, body.embed .nowplaying-card { display: none; }
-body.embed .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; gap: 6px; overflow: visible; }
+body.embed .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; gap: 6px; overflow: visible; min-height: auto; }
 body.embed .nav { flex-direction: row; flex: 1; justify-content: space-around; gap: 2px; }
 body.embed .nav button { justify-content: center; padding: 8px 4px; flex: 1; min-width: 0; }
 body.embed .nav .icon { width: auto; }
