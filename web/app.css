@@ -475,66 +475,46 @@ body.approval-wait .approval-banner { display: inline-flex; }
   .np-extras, .np-book, .np-art { display: none; }
   .nowplaying-card { padding: 0; border: 0; background: none; }
 }
-/* Narrow (and the Hermes Desktop pane, ?embed=1): one column — the classic
-   windows on top, the active view below. The nav never hides: it becomes the
-   same 56px icon rail the 900–1099px band uses, so every view stays reachable. */
+/* Narrow (and the Hermes Desktop pane, ?embed=1): one column. The nav never hides: it
+   becomes a row of icons across the top, then the classic windows, then the active view
+   below. A row never competes with the stage for height (a vertical rail used to be taller
+   than the stage in pop-out mode and got overlapped by the panel), and it leaves the
+   stage the full width. */
 @media (max-width: 899px) {
-  .shell { grid-template-columns: 100px 1fr; grid-template-rows: auto; overflow-y: auto; padding: 8px; gap: 8px; }
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; padding: 8px; gap: 8px; }
   .brand, .nav button .label, .np-meta, .np-sleep, .np-sleep-left,
-  .np-extras, .np-book, .np-art { display: none; }
-  .nowplaying-card { justify-content: center; padding: 0; border: 0; background: none; }
-  /* The rail must size its grid row. As a scroll container (overflow-y:auto) it counts
-     as 0px tall, so a short stage (e.g. the pop-out banner) squeezed the row and clipped
-     the icons. Let it grow to its content instead. */
-  .sidebar { padding: 8px 6px; gap: 6px; overflow: visible; height: max-content; }
-  /* Two columns of icons: 8 buttons in 4 rows stay shorter than the stage beside them, so
-     the panel below can never overlap the rail even when the stage is just a banner. */
-  .nav { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
-  .nav button { justify-content: center; padding: 8px 0; }
+  .np-extras, .np-book, .np-art, .nowplaying-card { display: none; }
+  .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; gap: 6px; overflow: visible; }
+  .nav { flex-direction: row; flex: 1; justify-content: space-around; gap: 2px; }
+  .nav button { justify-content: center; padding: 8px 4px; flex: 1; min-width: 0; }
   .nav .icon { width: auto; }
-  /* Explicit rows: rail+stage share row 1; the panel NEVER lands in the rail column. */
-  .stage-wrap { grid-row: 1; grid-column: 2; }
-  .panel { grid-row: 2; grid-column: 1 / -1; }
   /* No fixed stage height: the classic stack (main+EQ+playlist = 464px+) must never
      clip. height:max-content on the wrap feeds the real stack height into the auto
-     grid row (min-height:0 alone makes the row collapse to the rail's height);
-     the shell scrolls (overflow-y). */
+     grid row (min-height:0 alone makes the row collapse); the shell scrolls (overflow-y). */
   .stage { flex: none; height: auto; padding: 8px; }
-  .stage-wrap { grid-row: 1; grid-column: 2; height: max-content; min-height: 0; }
-  .panel { min-height: 420px; }
-  .panel { min-height: 420px; }
+  .stage-wrap { grid-column: 1; grid-row: 2; height: max-content; min-height: 0; }
+  .panel { grid-column: 1; grid-row: 3; min-height: 420px; }
   .tabbar { display: none !important; }
   #app { grid-template-rows: auto 1fr auto; }
   .ticker { margin: 0 8px 6px; }
 }
-body.embed .shell { grid-template-columns: 100px 1fr; grid-template-rows: auto; overflow-y: auto; padding: 8px; gap: 8px; }
+body.embed .shell { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; padding: 8px; gap: 8px; }
 body.embed .brand, body.embed .nav button .label, body.embed .np-meta,
 body.embed .np-sleep, body.embed .np-sleep-left,
-body.embed .np-extras, body.embed .np-book, body.embed .np-art { display: none; }
-body.embed .nowplaying-card { justify-content: center; padding: 0; border: 0; background: none; }
-body.embed .sidebar { padding: 8px 6px; gap: 6px; overflow: visible; height: max-content; }
-body.embed .nav { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
-body.embed .nav button { justify-content: center; padding: 8px 0; }
+body.embed .np-extras, body.embed .np-book, body.embed .np-art, body.embed .nowplaying-card { display: none; }
+body.embed .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; gap: 6px; overflow: visible; }
+body.embed .nav { flex-direction: row; flex: 1; justify-content: space-around; gap: 2px; }
+body.embed .nav button { justify-content: center; padding: 8px 4px; flex: 1; min-width: 0; }
 body.embed .nav .icon { width: auto; }
-body.embed .stage-wrap { grid-row: 1; grid-column: 2; }
-body.embed .panel { grid-row: 2; grid-column: 1 / -1; }
 body.embed .stage { flex: none; height: auto; padding: 8px; }
-body.embed .stage-wrap { height: max-content; min-height: 0; }
-body.embed .panel { min-height: 420px; }
+body.embed .stage-wrap { grid-column: 1; grid-row: 2; height: max-content; min-height: 0; }
+body.embed .panel { grid-column: 1; grid-row: 3; min-height: 420px; }
 body.embed .tabbar { display: none !important; }
 body.embed #app { grid-template-rows: auto 1fr auto; }
-/* Narrow Hermes Desktop pane: the 56px rail would leave the stage narrower than the
-   275px classic stack (which then crops on the left). Lay the rail out as a row above
-   the stage, and let --revamp-fit (set by app.js) scale whatever still does not fit. */
+/* Very narrow Hermes Desktop pane: tighter gutters; --revamp-fit (set by app.js) scales
+   whatever still does not fit the 275px classic stack. */
 @media (max-width: 419px) {
-  body.embed .shell { grid-template-columns: 1fr; padding: 6px; gap: 6px; }
-  body.embed .shell { grid-template-rows: auto auto auto; }
-  body.embed .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; min-height: 48px; overflow: visible; }
-  body.embed .nav { display: flex; flex-direction: row; flex: 1; justify-content: space-around; gap: 2px; }
-  body.embed .nav button { padding: 8px 4px; flex: 1; min-width: 0; }
-  body.embed .nowplaying-card { display: none; }
-  body.embed .stage-wrap { grid-column: 1; grid-row: 2; }
-  body.embed .panel { grid-row: 3; }
+  body.embed .shell { padding: 6px; gap: 6px; }
   body.embed .stage { padding: 4px; }
 }
 body.embed #webamp-host { zoom: var(--revamp-fit, 1); }
