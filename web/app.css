@@ -483,7 +483,10 @@ body.approval-wait .approval-banner { display: inline-flex; }
   .brand, .nav button .label, .np-meta, .np-sleep, .np-sleep-left,
   .np-extras, .np-book, .np-art { display: none; }
   .nowplaying-card { justify-content: center; padding: 0; border: 0; background: none; }
-  .sidebar { padding: 8px 6px; gap: 6px; }
+  /* The rail must size its grid row. As a scroll container (overflow-y:auto) it counts
+     as 0px tall, so a short stage (e.g. the pop-out banner) squeezed the row and clipped
+     the icons. Let it grow to its content instead. */
+  .sidebar { padding: 8px 6px; gap: 6px; overflow: visible; height: max-content; }
   .nav { align-items: stretch; }
   .nav button { justify-content: center; padding: 8px 0; }
   .nav .icon { width: auto; }
@@ -507,7 +510,7 @@ body.embed .brand, body.embed .nav button .label, body.embed .np-meta,
 body.embed .np-sleep, body.embed .np-sleep-left,
 body.embed .np-extras, body.embed .np-book, body.embed .np-art { display: none; }
 body.embed .nowplaying-card { justify-content: center; padding: 0; border: 0; background: none; }
-body.embed .sidebar { padding: 8px 6px; gap: 6px; }
+body.embed .sidebar { padding: 8px 6px; gap: 6px; overflow: visible; height: max-content; }
 body.embed .nav button { justify-content: center; padding: 8px 0; }
 body.embed .nav .icon { width: auto; }
 body.embed .stage-wrap { grid-row: 1; grid-column: 2; }
