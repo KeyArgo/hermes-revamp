@@ -6,7 +6,7 @@ author: Argo
 description: >
   REVamp is a Winamp-style music, audiobook and radio player for Hermes, with
   the MilkDrop visualizer, classic skins, playlists, lyrics, and four agent
-  tools so the agent can DJ. Unofficial; not affiliated with Nous Research.
+  tools so the agent can DJ.
   Disclosure: when Hermes loads it, it runs a token-protected loopback server
   for Hermes's lifetime; scans ~/Music by default (change or add folders in
   settings); reads Hermes config; makes private 10-minute backups; and keeps a

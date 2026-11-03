@@ -11,9 +11,9 @@ REVamp is a retro-inspired, local-first music and audiobook player for Hermes Ag
 
 > **1.0 alpha.** REVamp works day to day, but expect rough edges. Please report bugs in Issues.
 
-![REVamp full player](assets/screenshots/full-player.png)
+![REVamp docked in Hermes Desktop with MilkDrop](assets/screenshots/hermes-home.png)
 
-*The full player opened in a browser at its local address (`revampctl url`). Inside Hermes Desktop the same player shows as a tab.*
+*REVamp docked in the Frame beside a Hermes chat, with MilkDrop running.*
 
 REVamp keeps your library close while adding playlists, radio, lyrics, a MilkDrop visualizer, classic skins, and agent-aware playback controls.
 
@@ -77,6 +77,32 @@ REVamp reads tags and durations itself. It may also run `ffprobe` for audiobook 
 State lives in `$REVAMP_HOME`, otherwise `$HERMES_HOME/revamp`, otherwise `~/.hermes/revamp`; it includes the library index, playlists, likes, settings, server token, lyric cache, installed skins, and pop-out browser profile. REVamp has no accounts, telemetry, usage analytics, or stored passwords.
 
 ## Screenshots
+
+### In Hermes Desktop
+
+![REVamp in its own desktop window](assets/screenshots/hermes-desktop-window.png)
+
+Popped out to its own desktop window, with MilkDrop, while the REVamp page in Hermes keeps the library and controls.
+
+![REVamp in the Frame with the Sakura shrine look](assets/screenshots/hermes-frame-sakura.png)
+
+The Frame beside Hermes with the Sakura shrine look and a playlist open.
+
+![The mini player and its place menu](assets/screenshots/hermes-mini-player.png)
+
+The mini player: radio genres, and every place the player can go (mini, Frame, pop into Hermes, desktop window, full screen).
+
+### Looks
+
+| Lantern night | Moonlit girl |
+|:---:|:---:|
+| ![Lantern night look](assets/screenshots/scene-lanterns.png) | ![Moonlit girl look](assets/screenshots/scene-rooftop.png) |
+| **Sakura shrine** | **Neon city** |
+| ![Sakura shrine look](assets/screenshots/scene-sakura.png) | ![Neon city look](assets/screenshots/scene-neon.png) |
+
+One tap in **Theme** sets the colours, the scene and an animation together; each part can also be changed on its own.
+
+### The player page
 
 ![Classic player with MilkDrop](assets/screenshots/full-player.png)
 

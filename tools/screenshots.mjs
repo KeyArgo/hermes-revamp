@@ -85,10 +85,25 @@ try {
   await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p, 620, 620, "?embed=1"); await playing(page, p, token, music); await sleep(1000); await snap(page, "mini-player.png"); await close(page);
   }
   if (capture("modes", "milkdrop")) {
-  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpenFloating: true } }); page = await pageFor(p, 900, 620, "?mode=winamp"); await page.cdp("Emulation.setDefaultBackgroundColorOverride", { color: { r: 8, g: 12, b: 18, a: 1 } }); await playing(page, p, token, music); await evalJs(page, "window.revampPlayerApi?.setVisualizerPlacement('floating')"); await sleep(3500); await snap(page, "winamp-milkdrop.png"); await close(page);
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpenFloating: true } }); page = await pageFor(p, 900, 620, "?mode=winamp"); await page.cdp("Emulation.setDefaultBackgroundColorOverride", { color: { r: 8, g: 12, b: 18, a: 1 } }); await playing(page, p, token, music); await evalJs(page, "window.revampPlayerApi?.setVisualizerPlacement('floating')"); await sleep(8000); await snap(page, "winamp-milkdrop.png"); await close(page);
   }
   if (capture("modes", "settings")) {
   page = await pageFor(p); await playing(page, p, token, music); await view(page, "agent", "Chime and dip for approvals"); await snap(page, "settings.png"); await close(page);
   }
   rmSync(join(output, "nous-dark.png"), { force: true }); console.log(`Saved screenshots in ${output}`);
+  if (capture("scenes")) {
+  // The four built-in scene Looks (web/theme.js LOOKS), each set the way the Theme picker sets it.
+  const looks = { lanterns: { theme: "aurora", grad: "aurora", scene: "lanterns", fx: "embers", fxLevel: 1, look: "lantern" },
+    rooftop: { theme: "violet", grad: "grape", scene: "rooftop", fx: "stars", fxLevel: 2, look: "moonlit" },
+    sakura: { theme: "sunset", grad: "sunset", scene: "shrine", fx: "sakura", fxLevel: 2, look: "sakura" },
+    neon: { theme: "violet", grad: "grape", scene: "neon", fx: "rain", fxLevel: 2, look: "neon" } };
+  for (const [name, look] of Object.entries(looks)) {
+    await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } });
+    page = await pageFor(p);
+    await evalJs(page, `localStorage.setItem("revamp.theme.v1", ${JSON.stringify(JSON.stringify(look))})`);
+    await page.cdp("Page.reload");
+    await waitFor(async () => (await page.cdp("Runtime.evaluate", { expression: "Boolean(document.querySelector('#webamp-host')?.offsetWidth)" })).result.value, "REVamp page");
+    await playing(page, p, token, music); await sleep(3000); await snap(page, `scene-${name}.png`); await close(page);
+  }
+  }
 } finally { if (server && !server.killed) server.kill("SIGTERM"); rmSync(temp, { recursive: true, force: true }); }
