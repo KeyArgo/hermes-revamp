@@ -1567,6 +1567,7 @@ def test_a_server_we_never_saw_voids_our_old_proof(monkeypatch, tmp_path):
 def test_the_lease_folder_does_not_depend_on_xdg_runtime_dir(monkeypatch, tmp_path):
     # A systemd unit and the Hermes gateway can differ in XDG_RUNTIME_DIR: both must see one lease.
     monkeypatch.delenv("REVAMP_LEASE_DIR", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))  # the Windows home of the lease folder
     monkeypatch.setattr(server.Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "a"))
     first = server._lease_path(8114)

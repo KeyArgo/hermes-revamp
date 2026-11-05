@@ -1855,11 +1855,15 @@ def _retry_after_lease(port: int, **kwargs: Any) -> None:
             return
         _lease_retrying = True
 
+    gen = _watch_gen
+
     def run() -> None:
         global _lease_retrying, _started
         try:
             while True:
                 time.sleep(WATCH_INTERVAL)
+                if gen != _watch_gen:  # retired, like a watcher (a test's retry kept running into the next)
+                    return
                 if _probe_health(port) is not None:
                     # Answering again: if it is our own install, the usual watching takes over;
                     # another library's server is waited out here, never handed to a watcher.

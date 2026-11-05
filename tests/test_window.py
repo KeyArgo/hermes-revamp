@@ -210,4 +210,5 @@ def test_finds_chrome_in_macos_applications(monkeypatch, tmp_path):
     chrome.parent.mkdir(parents=True)
     chrome.write_text("")
     monkeypatch.setattr(window.os.path, "expanduser", lambda p: str(apps) if p == "~/Applications" else p)
-    assert window.find_browser() == str(chrome)
+    # In the list, not necessarily first: a Mac CI machine also has the real /Applications one.
+    assert str(chrome) in window._installed_browsers() and window.find_browser() == window._installed_browsers()[0]

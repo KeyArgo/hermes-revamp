@@ -108,7 +108,7 @@ def server_live(server, monkeypatch):
     for n in (1, 2, 3):
         (folder / f"Saga - {n:03d}.mp3").write_bytes(b"\x00" * 64)
     library.scan_sync([str(server.lib)])
-    parts = sorted((t for t in library.all_tracks() if "/Books/Saga/" in t["path"]), key=lambda t: t["path"])
+    parts = sorted((t for t in library.all_tracks() if "/Books/Saga/" in t["path"].replace("\\", "/")), key=lambda t: t["path"])
     ids = [t["id"] for t in parts]
     client = Client(server.base, server.token)
     for t in parts:

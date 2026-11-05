@@ -53,6 +53,7 @@ def test_find_browser(monkeypatch, tmp_path):
     assert window.find_browser() is None                            # 41 both miss
 
     monkeypatch.setenv("REVAMP_FLOAT_BROWSER", "")                  # 42-46 loop
+    monkeypatch.setattr(window, "_installed_browsers", lambda: [])  # a CI machine has real Chrome
     names = set()
     monkeypatch.setattr(window.shutil, "which",
                         lambda n: "/usr/bin/x" if n == "chromium" else None)

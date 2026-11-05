@@ -7,6 +7,8 @@ import os
 import shutil
 import sys
 
+import pytest
+
 from revamp_core import server
 
 
@@ -102,6 +104,7 @@ def test_the_bind_loser_decides_again_instead_of_showing_the_winners_library(mon
     assert "cannot bind" not in caplog.text
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows can't rename or delete the working folder")
 def test_the_restart_re_enters_the_install_folder_by_name(tmp_path):
     # Claude a10r16 (medium): Hermes swaps the plugin folder on update. A process whose working
     # folder follows the old inode sits in a folder that is renamed away and then deleted, so

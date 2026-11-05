@@ -1,6 +1,9 @@
 """Round 21 follow-ups outside the book path."""
+import os
 import subprocess
 from pathlib import Path
+
+import pytest
 
 from revamp_core import proof
 
@@ -60,6 +63,7 @@ def test_the_identity_check_also_treats_a_non_ascii_proof_as_not_ours(monkeypatc
     assert proof.listener_identity("http://127.0.0.1:9", "token") is False
 
 
+@pytest.mark.skipif(os.name == "nt", reason="the gate is a bash script, run on Linux")
 def test_the_version_check_passes_on_this_tree():
     # With "&&" the page check finally counts, and it looked for "alpha.10" where the page says
     # "1.0 alpha 10": the stricter gate failed on a correct tree (round 22 gate).

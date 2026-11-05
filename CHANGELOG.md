@@ -2,7 +2,7 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
-## 1.0.0-alpha.10 - 2026-11-03 (pre-release)
+## 1.0.0-alpha.10 - 2026-11-05 (pre-release)
 
 - The nav icons sit in a row across the top in narrow layouts and inside Hermes, so the panel below can no longer cover them (thanks to Pukujan). The agent strip at the bottom stays a thin bar.
 - Pop out to desktop finds Chrome, Edge, Brave or Chromium where Windows and macOS install them. Before, it said "no Chrome or Chromium found" on those systems.
