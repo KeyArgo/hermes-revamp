@@ -38,6 +38,24 @@ TRACKS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _private_runtime_dir(tmp_path_factory, monkeypatch):
+    """Port leases (server._lease_path) go to a per-run folder, never the real runtime dir."""
+    d = tmp_path_factory.mktemp("xdg-runtime")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(d))
+    monkeypatch.setenv("REVAMP_LEASE_DIR", str(d))
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _retire_background_threads():
+    """A watcher or lease retry a test started must not act during the next test (CI runs the
+    whole tree in one process: a leftover retry called ensure_server in later tests)."""
+    yield
+    srv._watch_gen += 1
+    srv._lease_retrying = False
+
+
 def _make_track(lib: Path, name: str, title: str, artist: str, album: str, ext: str) -> Path:
     out = lib / name
     cmd = [FFMPEG, "-loglevel", "error", "-y",

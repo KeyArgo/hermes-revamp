@@ -12,8 +12,11 @@ def test_release_gate_runs_every_required_check_from_disk_backed_tmpdir():
     for required in ("pytest", "node tests", "browser e2e", "Hermes manifest", "private-info scan", "version consistency"):
         assert required in src
     assert 'hermes plugins validate "$export_dir"' in src
-    for pattern in ("private_home", "private_mount", "private_net_a", "private_net_b", "private_names"):
-        assert pattern in src
+    # The patterns themselves live outside the repo, so the gate never publishes what it hunts.
+    assert "REVAMP_PRIVATE_PATTERNS" in src and ".config/revamp/private-patterns" in src
+    assert "no private patterns file" in src, "a missing patterns file fails the gate"
+    for leaked in ("callisto", "/home" "/dev", "/mnt" "/homes"):
+        assert leaked not in src
 
 
 def test_install_verifier_compares_health_version_build_and_listener_count():

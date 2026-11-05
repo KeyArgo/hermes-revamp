@@ -54,6 +54,8 @@ function fakePlayer({ volume = 60, loseFirstSeek = false, neverLoads = false, tr
   };
   const run = new Function("webamp", "media", "rawVolume", "storeState",
     `let silentVol = null; let place = null; let reaching = false; let silentSeq = 0;
+     const seekIntent = () => ({ version: undefined });
+     const seekInternally = t => webamp.seekToTime(t);
      const SILENT_START_WAIT_MS = 2000; // shortened here: the real wait is checked below
      ${line(/  const curTrack = [^\n]*\n/)}
      ${fnSource("placeHere")}
@@ -230,10 +232,10 @@ test("the player reports the place and 'playing' until the handoff has started a
 test("while a place is pending a book saves that place (not 0:01), and its own resume stands down", () => {
   assert.match(fnSource("saveBookPlace"), /if \(silentVol != null && !placeHere\(\)\) return;/);
   const mr = fnSource("maybeResume");
-  assert.ok(mr.indexOf("if (placeHere()) return;") > mr.indexOf("resumedKey = key;"));
+  assert.ok(mr.indexOf("if (placeHere()) {") > mr.indexOf("resumedKey = key;"));
   // ...and again right before its seek: a handoff can arrive while the resume request loads.
-  const seek = mr.indexOf("webamp.seekToTime(pos);");
-  assert.ok(mr.lastIndexOf("if (placeHere() || gen !== handoffGen || acted !== actSeq) return;", seek) > mr.indexOf("await apiGet("));
+  const seek = mr.indexOf("applySeek(pos, rk, gen, acted);");
+  assert.ok(mr.lastIndexOf("if (placeHere() || gen !== handoffGen || acted !== actSeq - transportSeq) return;", seek) > mr.indexOf("await apiGet("));
   assert.ok(mr.indexOf("const gen = handoffGen;") < mr.indexOf("await apiGet("));
   assert.match(claimBlock(), /handoffGen\+\+;/);
 });
@@ -328,7 +330,7 @@ test("any track change, queue change or relative seek before the answer drops th
   assert.match(methodSource("    async playIndex(i) {"), /actSeq\+\+;/);
   assert.match(methodSource('    async loadTracks(tracks, { mode = "replace", play = true } = {}) {'), /if \(play \|\| mode === "replace"\) \{ actSeq\+\+; place = null; startPending = false; endSilence\(\); \}/);
   const sb = methodSource("    seekBy(delta) {");
-  assert.ok(sb.indexOf("place = null;") < sb.indexOf("webamp.seekToTime(to)") && sb.includes("actSeq++;"));
+  assert.ok(sb.indexOf("place = null;") < sb.indexOf("seekInternally(to)") && sb.includes("actSeq++;"));
 });
 
 test("picking a song (even the same one), next or previous forgets a pending place", () => {
@@ -380,7 +382,7 @@ test("a book's own resume waits for the handoff answer before it seeks", () => {
   assert.match(src, /const claimDone = apiPost\("\/api\/handoff\/claim"/);
   const mr = fnSource("maybeResume");
   const wait = mr.indexOf("await claimDone.catch(() => {});");
-  assert.ok(wait > mr.indexOf("await apiGet(") && wait < mr.indexOf("webamp.seekToTime(pos);"));
+  assert.ok(wait > mr.indexOf("await apiGet(") && wait < mr.indexOf("applySeek(pos, rk, gen, acted);"));
   assert.ok(mr.indexOf("const gen = handoffGen;") < mr.indexOf("await apiGet("), "gen must be taken before the wait");
 });
 

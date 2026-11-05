@@ -40,7 +40,7 @@ test("control page is a full shell that never starts Webamp audio", () => {
   const boot = between(app, "async function boot()", "boot().catch");
   const control = between(boot, "if (CONTROL) {", "applyLayoutClasses();\n  if (matchMedia");
   assert.match(control, /buildNav\(\)/);
-  assert.match(control, /setView\("library"\)/);
+  assert.match(control, /showStartView\(\)/);
   assert.doesNotMatch(control, /initPlayer\(/);
   assert.match(plugin, /controlFrame\.src = `\$\{url\}\/\?embed=1&control=1`/);
 });

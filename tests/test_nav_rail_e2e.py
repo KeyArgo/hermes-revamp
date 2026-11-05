@@ -239,6 +239,16 @@ def assert_round2_geometry(page: Page):
         assert main["top"] >= stage["top"] - 1, {"main": main, "stage": stage}
 
 
+def assert_nav_bar(page: Page):
+    """Narrow and Hermes layouts: the nav is one compact row of icons above the player, so the
+    panel can never overlap it (PR #2: the old 56px side rail was overlapped in pop-out mode)."""
+    r = layout_rects(page)
+    bar, stage, panel = r["sidebar"], r["stage"], r["panel"]
+    assert bar["height"] <= 72, {"bar": bar}
+    assert bar["bottom"] <= stage["top"] + 1, {"bar": bar, "stage": stage}
+    assert bar["bottom"] <= panel["top"] + 1, {"bar": bar, "panel": panel}
+
+
 @pytest.mark.parametrize("width", [240, 400, 700, 1000])
 @pytest.mark.parametrize("control", [False, True])
 def test_nav_visible_and_clickable_at_every_supported_width(server, tmp_path, width, control):
@@ -279,7 +289,7 @@ def test_round2_narrow_widths(server, tmp_path, width):
     try:
         state = nav_state(page)
         assert state["sidebarHidden"] is False
-        assert state["sidebarWidth"] == 56, state
+        assert_nav_bar(page)
         assert all(b["visible"] for b in state["navButtons"]), state
         page.eval("document.querySelector('#nav button[data-view=books]').click()")
         page.wait("document.getElementById('panel-title')?.textContent === 'Books'")
@@ -301,7 +311,7 @@ def test_embed_mode_keeps_nav_rail(server, tmp_path):
         state = nav_state(page)
         assert page.eval("document.body.classList.contains('embed')") is True
         assert state["sidebarHidden"] is False
-        assert state["sidebarWidth"] == 56, state
+        assert_nav_bar(page)
         assert all(b["visible"] for b in state["navButtons"]), state
         # the desktop tabbar row is retired; the sidebar rail is the single nav
         assert state["tabbarHidden"] is True

@@ -1,2 +1,12 @@
 # Vendored bundles ship byte-for-byte (tests check their SHA-256): no CRLF conversion on Windows.
 web/vendor/** -text
+# Source stays LF on Windows checkouts too: the node tests match multi-line source patterns.
+*.js text eol=lf
+*.mjs text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.json text eol=lf

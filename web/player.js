@@ -103,7 +103,33 @@ export async function initPlayer(ctx) {
     ? location.origin + skins.find((s) => s.id === saved.skin).url : undefined;
 
   // ---- webamp options
+  let actSeq = 0, transportSeq = 0, internalSeekDepth = 0;
+  // The queue's current entry: needed by the seek middleware below, which can fire during
+  // Webamp's own start-up, so it is defined before the player is constructed.
+  const curTrack = () => storeState()?.playlist?.currentTrack ?? null;
+  const seekVersions = new Map();
+  let zeroSeekTrack = null; // seek permission belongs to this visit, not the track forever
+  let releaseHold = null;   // set once the resume code below exists; a seek can fire before that
+  const seekIntent = (track = curTrack()) => ({ track, version: seekVersions.get(track) || 0 });
+  const noteSeek = (target) => {
+    const track = curTrack();
+    // Webamp's own action carries a percentage, ours carry seconds: both are 0 at the start.
+    zeroSeekTrack = Number.isFinite(target) && target === 0 ? track : null;
+    seekVersions.set(track, (seekVersions.get(track) || 0) + 1);
+    releaseHold?.();
+  };
+  const seekInternally = (seconds) => {
+    internalSeekDepth++;
+    try { webamp.seekToTime(seconds); } finally { internalSeekDepth--; }
+  };
   const options = {
+    // Webamp 2.3.1 emits this action for the native seek bar and seek keys.
+    // Our own synchronous dispatches are scoped so they don't cancel themselves.
+    __customMiddlewares: [() => (next) => (action) => {
+      if (action?.type === "PLAY_TRACK") zeroSeekTrack = null;
+      if (action?.type === "SEEK_TO_PERCENT_COMPLETE" && !internalSeekDepth) { actSeq++; noteSeek(action.percent); }
+      return next(action);
+    }],
     initialTracks: initialTracks.length ? initialTracks : undefined,
     availableSkins: skinOptions.length ? skinOptions : undefined,
     // initialSkin is applied after render instead: booting Webamp 2.3.1 with a
@@ -190,10 +216,8 @@ export async function initPlayer(ctx) {
   let place = null;
   let reaching = false;
   let startPending = false; // claimed as playing, not started yet (the ~300 ms before play())
-  const curTrack = () => storeState()?.playlist?.currentTrack ?? null;
   // Bumped by every play, pause, stop, toggle and seek from REVamp's controls or commands.
   // Anything the person does before the handoff answer arrives wins: the handoff is dropped.
-  let actSeq = 0;
   let handoffGen = 0; // bumped when a handoff is accepted: an older book resume still loading is stale
   function placeHere() {
     if (!place) return null;
@@ -201,6 +225,7 @@ export async function initPlayer(ctx) {
     // and must not be applied if the person starts it fresh later.
     if (place.track != null && place.track !== curTrack()) { place = null; return null; }
     if (place.track !== curTrack()) return null;
+    if (seekIntent(place.track).version !== place.seekVersion) { place = null; return null; }
     // Moved well away from the place while it waited (a seek while paused, say): the
     // person's position wins, and it must be reported and saved as theirs.
     const at = media().timeElapsed || 0;
@@ -258,7 +283,10 @@ export async function initPlayer(ctx) {
     if (place.track == null) place.track = curTrack(); // nothing was selected at claim: play() picked it
     if (place.track !== curTrack()) { place = null; endSilence(); return; } // another track is playing
     const p = place;
-    const going = () => place === p && curTrack() === p.track && media().status === "PLAYING";
+    const going = () => {
+      if (place === p && seekIntent(p.track).version !== p.seekVersion) place = null;
+      return place === p && curTrack() === p.track && media().status === "PLAYING";
+    };
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     reaching = true;
     silentSeq++; // a reach owns the silent stretch now: older restore timers stand down
@@ -273,14 +301,14 @@ export async function initPlayer(ctx) {
       const at0 = media().timeElapsed || 0;
       // Well into the track and nowhere near the place: the person seeked. Theirs wins.
       if (at0 > 3 && Math.abs(at0 - p.pos) > 2) { place = null; return; }
-      webamp.seekToTime(p.pos);
+      seekInternally(p.pos);
       // A seek before the audio is ready can be lost: repeat it while still near the start.
       for (let i = 1; i <= 40 && going(); i++) {
         await wait(50);
         if (!going()) break; // a seek or skip happened during the wait
         const at = media().timeElapsed || 0;
         if (Math.abs(at - p.pos) <= 2 || at > 3) { place = null; break; } // there, or moved by the person
-        if (i % 10 === 0) webamp.seekToTime(p.pos);
+        if (i % 10 === 0) seekInternally(p.pos);
       }
       if (going()) place = null; // never got there: let it play from where it is
     } catch {
@@ -310,7 +338,7 @@ export async function initPlayer(ctx) {
     const isStream = queueItems[saved.current_index || 0]?.kind === "stream";
     const claimTrack = curTrack();
     // Even a place near 0:00 is kept: it tells a book's own (older) resume to stand down.
-    if (!isStream) place = { track: claimTrack, pos: Math.max(0, Number(handoff.position) || 0) };
+    if (!isStream) place = { track: claimTrack, pos: Math.max(0, Number(handoff.position) || 0), seekVersion: seekIntent(claimTrack).version };
     handoffGen++;
     startPending = true;
     setTimeout(() => {
@@ -398,6 +426,9 @@ export async function initPlayer(ctx) {
   });
 
   // ---- public-ish API used by views and commands
+  // Book continue: the file that last really played (see maybeResume). Declared before the api,
+  // which a queue restored at start-up may call before maybeResume's code has run.
+  let seenTrack = null, seenTid = null, prevTid = null, playedTid = null;
   const api = {
     webamp,
     get items() { return webampItems(); },
@@ -405,6 +436,7 @@ export async function initPlayer(ctx) {
       // A new queue or track (or another backend, Focus): no old place, and no pending start
       // left to fire alongside it; a list loaded to play plays itself.
       if (play || mode === "replace") { actSeq++; place = null; startPending = false; endSilence(); }
+      if (mode === "replace") playedTid = null; // a book started from the list goes on where you were
       const all = normalizeItems(tracks);
       // A list for another backend (focus...) goes to that backend; Webamp keeps its queue.
       const other = all[0] && all[0].playback.backend !== "webamp" ? all[0].playback.backend : null;
@@ -470,13 +502,14 @@ export async function initPlayer(ctx) {
     },
     stop() { startPending = false; actSeq++; place = null; endSilence(); try { webamp.stop(); } catch { /* guard */ } },
     // Webamp's pause() toggles: pausing something already paused would start it again.
-    pause() { startPending = false; actSeq++; try { if (media().status === "PLAYING") webamp.pause(); } catch { /* guard */ } },
+    pause() { startPending = false; actSeq++; transportSeq++; try { if (media().status === "PLAYING") webamp.pause(); } catch { /* guard */ } },
     // A play while a handoff waits to start counts as that start (not a second one).
-    play() { startPending = false; actSeq++; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); },
+    play() { startPending = false; actSeq++; transportSeq++; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); },
     toggle() {
       const st = media().status;
       // A handoff not started yet counts as playing (it is reported so): toggling it is a pause.
       actSeq++;
+      transportSeq++;
       // ...unless something (Webamp's own play button) already started it: then it's a pause.
       if (startPending && st !== "PLAYING") { startPending = false; return; }
       startPending = false;
@@ -496,12 +529,12 @@ export async function initPlayer(ctx) {
       endSilence();
     },
     seek(sec) {
-      place = null; actSeq++; // the person's place now
+      place = null; actSeq++; noteSeek(Number.isFinite(Number(sec)) && Number(sec) >= 0 ? Number(sec) : NaN); // the person's place now
       // Starting it now as well: a seek this early can be lost, so their spot becomes the place
       // to reach (silently, with retries) instead of a single seek at full volume.
-      if (takeOverStart()) { place = { track: curTrack(), pos: Math.max(0, Number(sec) || 0) }; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); return; }
+      if (takeOverStart()) { place = { track: curTrack(), pos: Math.max(0, Number(sec) || 0), seekVersion: seekIntent().version }; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); return; }
       endSilence();
-      try { webamp.seekToTime(sec); } catch { /* guard */ }
+      try { seekInternally(sec); } catch { /* guard */ }
     },
     // ±seconds within the current track or book; a live stream has nowhere to seek.
     // Playback speed (0.5-3x, pitch kept): set on Webamp's audio elements. Load resets an
@@ -542,10 +575,10 @@ export async function initPlayer(ctx) {
       let to = Math.max(0, (info.position || 0) + Number(delta));
       if (info.duration > 0) to = Math.min(to, Math.max(0, info.duration - 1));
       place = null; // relative to the reported position (a pending place counts); theirs from now
-      actSeq++;
-      if (takeOverStart()) { place = { track: curTrack(), pos: to }; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); updateNowPlayingSoon(); return; }
+      actSeq++; noteSeek(to);
+      if (takeOverStart()) { place = { track: curTrack(), pos: to, seekVersion: seekIntent().version }; startTowardPlace(() => { if (media().status !== "PLAYING") webamp.play(); }); updateNowPlayingSoon(); return; }
       endSilence();
-      try { webamp.seekToTime(to); } catch { /* guard */ }
+      try { seekInternally(to); } catch { /* guard */ }
       updateNowPlayingSoon();
     },
     // Through setOutputVolume: during a handoff's silent start a command sets the level to
@@ -744,50 +777,277 @@ export async function initPlayer(ctx) {
     if (activeBackend !== "webamp") return;
     const info = currentInfo();
     const key = resumeKeyOf(info.item);
-    if (!key || resumingId === key || !(info.position > 0)) return;
+    if (!key || resumingId === key || !(info.position >= 0)
+        || (info.position === 0 && (zeroSeekTrack == null || zeroSeekTrack !== curTrack()))) return;
     // While a handed-over place is pending, info.position already reports it, so saving is
     // right (a pause then keeps it). Only a silent stretch without a place could read 0:01.
     if (silentVol != null && !placeHere()) return;
-    const pos = Math.floor(info.position);
-    const finished = info.duration > 0 && pos >= info.duration - 30; // done: start over next time
-    const value = finished ? 0 : pos;
+    const pos = info.position === 0 ? 0 : Math.max(1, Math.floor(info.position));
+    // Near the end is kept, not erased: a book in several files needs it to know which part
+    // you were in (it goes on with the next part). Playing that file again still starts over:
+    // its own resume never seeks into the last 30 s.
+    const finished = info.duration > 0 && pos >= info.duration - 30;
     const now = Date.now();
-    if (bookSaved.id === key && bookSaved.pos === value) return;
+    if (bookSaved.id === key && bookSaved.pos === pos) { if (pos === 0) zeroSeekTrack = null; return; }
     if (!force && !finished && bookSaved.id === key && now - bookSaved.at < BOOK_SAVE_MS) return;
-    bookSaved = { id: key, at: now, pos: value };
-    const body = { key, position: finished ? null : pos };
+    if (pos === 0) zeroSeekTrack = null; // one authorization, not a license for later buffering zeros
+    bookSaved = { id: key, at: now, pos };
+    const body = { key, position: pos };
     // One at a time, so an older place never lands after a newer one.
     saveChain = saveChain.then(() => apiPost("/api/resume", body)).catch(() => {});
+  }
+  // The file played before this one: a book only goes on from part 1 when it is started from
+  // somewhere else, never on Previous, repeat or a pick of part 1 inside the same book.
+  // Where a continued book starts the file it moved to: exactly there (0 = its start), never
+  // at an older place saved inside that file.
+  let bookStart = null;
+  // A paused-early hold remembers the clock it held at: on Play it is compared with the live
+  // clock, so a seek the person made while paused wins and the hold's own clock does not read
+  // as one (grok a10r21).
+  let heldClock = null, heldSeekVersion = null;
+  // A seek during the hold is the person's new place: stop holding, save it now (they may close
+  // the player while paused) and leave it alone on Play (grok a10r21).
+  releaseHold = () => {
+    if (heldClock == null) return;
+    heldClock = null; heldSeekVersion = null; bookStart = null;
+    const rk = resumeKeyOf(currentInfo().item);
+    if (!rk) return;
+    resumedKey = `${curTrack()}|${rk}`;
+    if (resumingId === rk) resumingId = null;
+    setTimeout(() => saveBookPlace(true), 300);
+  };
+  // Webamp's own seek bar and buttons never bump actSeq, so a pending resume also checks that the
+  // audio is where its own clock says it should be. A jump or a pause meanwhile means the person
+  // acted, and their place wins (codex a10r16; a playhead that has not started yet is a slow disk,
+  // not a seek -- grok a10r18).
+  function movementWatch(start = null) {
+    const base = { at: 0, pos: 0 };  // when, and where, the audio really started
+    // Books play up to 3x, so audio time runs faster than the clock; a lookup that returns late
+    // must not look like a seek (claude a10r19).
+    const rate = () => Math.min(3, Math.max(0.5, Number(api.rate) || 1));
+    return function moved() {
+      const now = media().timeElapsed || 0;
+      if (now === 0) return false;   // buffering: nothing has played yet
+      if (!base.at) {
+        base.at = Date.now();
+        base.pos = now;
+        // Resuming a hold, the clock legitimately sits at the held place: a person's seek in
+        // the pause was settled by the held-clock check, so the first sample is not a seek.
+        return start == null ? now > 5 : false;
+      }
+      return Math.abs(now - (base.pos + ((Date.now() - base.at) / 1000) * rate())) > 5;
+    };
+  }
+  // A file can report PLAYING for many seconds before its first sample arrives. Wait as long as
+  // reachPlace does, and leave resumingId set when it never starts, so the opening seconds cannot
+  // overwrite the place (grok a10r18).
+  async function waitFirstAudio(seconds = 15) {
+    for (let i = 0; i < seconds * 10; i++) {
+      if ((media().timeElapsed || 0) > 0) return true;
+      if (currentInfo().status !== "PLAYING") return false;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return (media().timeElapsed || 0) > 0;
+  }
+  // A disc or a NAS can take longer than that wait. Giving up there used to leave resumingId set
+  // for ever: no seek *and* no saves, so an hour of listening returned to the old place (codex
+  // a10r19). Watch for the first sample instead, apply the same checks, then let go.
+  // A seek can be dropped while the element is still warming up, so confirm it landed and try
+  // again (reachPlace does the same). resumingId stays set until it lands, or a person acts, so
+  // the opening seconds cannot replace the saved place (grok a10r19).
+  function applySeek(pos, rk, gen, acted, tries = 3) {
+    let attempt = 0;
+    // A retry must never undo something the person did after the first attempt (codex a10r20).
+    const gone = () => resumeKeyOf(currentInfo().item) !== rk || gen !== handoffGen
+      || acted !== actSeq - transportSeq || placeHere();
+    const release = () => { if (resumingId === rk) resumingId = null; };
+    const once = () => {
+      if (gone()) { release(); return; }
+      try { seekInternally(pos); } catch { /* guard */ }
+      const t0 = Date.now();
+      const check = setInterval(() => {
+        if (gone()) { clearInterval(check); release(); return; }
+        const now = media().timeElapsed || 0;
+        if (Math.abs(now - pos) <= 5) {
+          clearInterval(check);
+          release();
+          toast(`Resumed at ${fmt(pos)}`, { kind: "ok" });
+          return;
+        }
+        // Only an observed seek action cancels retries. A delayed or imprecise
+        // media landing can itself jump the clock without any user action.
+        if (Date.now() - t0 <= 2000) return;
+        clearInterval(check);
+        attempt += 1;
+        if (attempt < tries) once();
+        else release();   // bounded failure: allow saving the position actually reached
+      }, 200);
+    };
+    once();
+  }
+  function seekWhenStarted(rk, target, gen, acted, moved, deadlineMs = 300000) {
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      const sameFile = resumeKeyOf(currentInfo().item) === rk;
+      const theirs = gen !== handoffGen || acted !== actSeq - transportSeq || placeHere();
+      const late = Date.now() - t0 > deadlineMs;
+      if (!sameFile || theirs || late) {
+        // Gone, taken over, or never started: let saving resume, the place was not applied.
+        clearInterval(timer);
+        if (resumingId === rk) resumingId = null;
+        return;
+      }
+      // Still buffering, or paused in the middle of it: keep waiting (a pause must not cost the
+      // place -- claude a10r19).
+      if ((media().timeElapsed || 0) <= 0 || currentInfo().status !== "PLAYING") return;
+      clearInterval(timer);
+      const pos = Number(target()) || 0;
+      const dur = currentInfo().duration || 0;
+      // Same rules as the immediate path: never seek into the last 30 s, and never over the
+      // person's own move (a native Webamp seek does not bump actSeq -- codex a10r20).
+      if (pos > 0 && !(dur && pos >= dur - 30) && !moved()) applySeek(pos, rk, gen, acted);
+      else if (resumingId === rk) resumingId = null;
+    }, 250);
   }
   async function maybeResume() {
     if (activeBackend !== "webamp") return;
     const info = currentInfo();
+    const curTrack = storeState()?.playlist?.currentTrack;
+    if (curTrack !== seenTrack) {
+      // "Before" is the file that last really played: a queue restored at start-up, never
+      // played, must not count as "already inside this book".
+      prevTid = playedTid; seenTrack = curTrack; seenTid = localTid(info.item);
+      resumedKey = null; // back on a file later (part 1 after a continue): it resumes its own place
+      heldClock = null; heldSeekVersion = null;  // the hold belonged to the track we left
+      if (bookStart && bookStart.tid !== seenTid) bookStart = null; // that part never started
+    }
     const rk = resumeKeyOf(info.item);
+    if (info.status === "PLAYING") playedTid = localTid(info.item);
     if (info.status !== "PLAYING" || !rk) return;
     const key = `${storeState()?.playlist?.currentTrack}|${rk}`;
     if (key === resumedKey) return;
     resumedKey = key;
-    if (placeHere()) return; // a handed-over place is fresher than the book's saved one
+    // A hold's clock, consumed once: this pass either resumes from it or yields to the person.
+    const held = heldClock, heldSeek = heldSeekVersion; heldClock = null; heldSeekVersion = null;
+    if (held != null) {
+      const clockNow = media().timeElapsed || 0;
+      if (seekIntent(curTrack).version !== heldSeek || (clockNow > 0 && Math.abs(clockNow - held) > 2)) {
+        // The person seeked while we were held: their place wins (grok a10r21).
+        if (resumingId === rk) resumingId = null;
+        return;
+      }
+    }
+    if (placeHere()) {
+      // A handoff claimed the track during the hold: the pending resume must not keep saves
+      // frozen for the rest of the track (grok a10r21).
+      if (held != null && resumingId === rk) resumingId = null;
+      return;
+    }
     const gen = handoffGen;
-    const acted = actSeq; // the person seeks/skips meanwhile: theirs wins over the book's save
+    const startSeekVersion = seekIntent(curTrack).version;
+    const acted = actSeq - transportSeq; // the person seeks/skips meanwhile: theirs wins over the book's save
+    const heldBase = held == null ? 0 : held; // a hold's clock is where the file really is
+    const moved = movementWatch(held); // did the person take over since this started?
+    // Sampled only once the work starts: every early return above would have leaked this timer
+    // on ordinary playback changes (codex a10r20).
+    const sampler = setInterval(() => moved(), 250);  // record the real start of audio
     resumingId = rk;
+    let keepResuming = false; // still waiting for the first sample: the old place must survive
+    // Paused in the opening seconds while this was loading: a pause is not a new place. Keep the
+    // saved one safe and look again on Play (codex a10r21: 0:01 replaced it, and Play never did).
+    const pausedEarly = () => storeState()?.playlist?.currentTrack === curTrack
+      && currentInfo().status === "PAUSED" && (media().timeElapsed || 0) < 15
+      && gen === handoffGen && !placeHere() && seekIntent(curTrack).version === startSeekVersion;
+    const holdForPlay = () => { keepResuming = true; resumedKey = null; heldClock = media().timeElapsed || 0; heldSeekVersion = startSeekVersion; };
     try {
+      // A book in several files, started from its first file: go on in the file the person was
+      // last in (that file then resumes its own place below, on its own start).
+      const tid = localTid(info.item);
+      if (tid && bookStart?.tid === tid) {
+        const startAt = bookStart.pos;
+        bookStart = null;
+        if (startAt > 0) {
+          if (!(await waitFirstAudio())) {
+            if (pausedEarly()) { bookStart = { tid, pos: startAt }; holdForPlay(); return; }
+            keepResuming = true;
+            seekWhenStarted(rk, () => startAt, gen, acted, moved);
+            return;
+          }
+          if (pausedEarly()) {
+            bookStart = { tid, pos: startAt };
+            holdForPlay();
+            return;
+          }
+          // Not over the person's own seek or pause meanwhile, nor over a newer handed-over place.
+          // (Webamp's own seek bar doesn't move actSeq: a file that ran on far past its start was
+          // moved by the person, so it is left where they put it.) Resuming a hold, the clock
+          // legitimately sits at the held place, so the window widens by it (grok a10r21).
+          if (localTid(currentInfo().item) === tid && gen === handoffGen && acted === actSeq - transportSeq
+              && !placeHere() && currentInfo().status === "PLAYING"
+              && (media().timeElapsed || 0) < heldBase + 10
+              && !moved()) {
+            keepResuming = true;
+            applySeek(startAt, rk, gen, acted);
+          }
+        }
+        return;
+      }
+      if (tid) {
+        const from = prevTid ? "&from=" + encodeURIComponent(prevTid) : "";
+        const book = await apiGet("/api/resume/book?id=" + encodeURIComponent(tid) + from).catch(() => null);
+        if (book?.restart) return; // finished the whole book: part 1 from its start, not an old place
+        if (pausedEarly()) { holdForPlay(); return; }
+        // Still the same file, still playing, not moved by the person (Webamp's own buttons and
+        // seek bar don't go through actSeq): only then may the book jump. Resuming a hold, the
+        // clock legitimately sits at the held place, so the window widens by it (grok a10r21).
+        // Anything else stops the
+        // whole pending resume here, so the per-file lookup below cannot pull playback back to an
+        // older place either (codex a10r16).
+        const still = storeState()?.playlist?.currentTrack === curTrack && currentInfo().status === "PLAYING"
+          && (media().timeElapsed || 0) < heldBase + 15;
+        if (!still || gen !== handoffGen || acted !== actSeq - transportSeq || placeHere()
+            || moved()) return;
+        if (book?.id && book.id !== tid) {
+          const idx = webampItems().findIndex((x) => localTid(x) === book.id);
+          if (idx >= 0) {
+            toast(book.position > 0 ? `Continuing at part ${book.part} of ${book.parts}, ${fmt(book.position)}`
+              : `Continuing at part ${book.part} of ${book.parts}`, { kind: "ok" });
+            // No 0:01 save for the part being reached before its own resume seeks (that call
+            // clears this; this one's finally leaves it, since it names another file).
+            resumingId = "local:track:" + book.id;
+            bookStart = { tid: book.id, pos: Number(book.position) || 0 };
+            api.playIndex(idx);
+            return;
+          }
+        }
+      }
       const res = await apiGet("/api/resume?key=" + encodeURIComponent(rk));
       await claimDone.catch(() => {});
       const pos = Number(res?.position) || 0;
       if (pos <= 30) return;
       // Seek once the audio has actually started, or the seek is lost.
-      for (let i = 0; i < 50 && !(media().timeElapsed > 0); i++) await new Promise((r) => setTimeout(r, 100));
+      if (!(await waitFirstAudio())) {
+        if (pausedEarly()) { holdForPlay(); return; }
+        keepResuming = true;
+        seekWhenStarted(rk, () => pos, gen, acted, moved);
+        return;
+      }
       const now = currentInfo();
       const dur = now.duration || 0;
       if (resumeKeyOf(now.item) !== rk) return;
       if ((dur && pos >= dur - 30) || Math.abs((media().timeElapsed || 0) - pos) < 5) return;
+      if (pausedEarly()) { holdForPlay(); return; }
       // A handoff arrived while this was loading (pending or already reached): it is newer.
-      if (placeHere() || gen !== handoffGen || acted !== actSeq) return;
-      webamp.seekToTime(pos);
-      toast(`Resumed at ${fmt(pos)}`, { kind: "ok" });
+      // So is the person's own move: a seek with Webamp's bar, or a pause (codex a10r16).
+      if (placeHere() || gen !== handoffGen || acted !== actSeq - transportSeq) return;
+      if (currentInfo().status !== "PLAYING" || moved()) return;
+      keepResuming = true;          // applySeek clears it once the seek has landed
+      applySeek(pos, rk, gen, acted);
+      return;
     } catch { /* play from the start */ } finally {
-      if (resumingId === rk) resumingId = null;
+      clearInterval(sampler);
+      // Kept only while a later start is still expected (seekWhenStarted clears it when it lands).
+      if (resumingId === rk && !keepResuming) resumingId = null;
     }
   }
   // Once <audio> or Webamp knows the real length, tell the library so the next
@@ -889,6 +1149,8 @@ export async function initPlayer(ctx) {
       const orderKey = (st?.playlist?.trackOrder || []).join(",");
       const current = st?.playlist?.currentTrack ?? null;
       if (orderKey !== lastOrderKey || current !== lastCurrent) {
+        // Invalidate prior-visit intent synchronously, before deferred saves or new seeks.
+        if (current !== lastCurrent) zeroSeekTrack = null;
         const orderChanged = orderKey !== lastOrderKey && lastOrderKey !== "";
         lastOrderKey = orderKey;
         lastCurrent = current;
@@ -915,19 +1177,32 @@ export async function initPlayer(ctx) {
   let milkdropSuspended = false;
   let resumeMilkdropOnVisible = false;
   const isMiniVisible = () => !!document.querySelector(".revamp-mini:not([hidden])");
-  const milkdropSetting = () => {
-    if (visualizerPlacement === "docked") return "milkdropOpenDocked";
-    if (visualizerPlacement === "floating") return "milkdropOpenFloating";
-    if (visualizerPlacement === "desktop") return "milkdropOpenDesktop";
-    return "milkdropOpen";
-  };
+  // One open/closed choice for MilkDrop that follows the player to every place. It used to be
+  // remembered per place and start closed in the desktop window and the floating overlay, so
+  // popping out "lost" MilkDrop, and closing it there once hid it in that place for good.
+  const milkdropSetting = () => "milkdropOn";
+  // The per-place choices of alpha.9 and earlier ("milkdropOpen" was the page's own) still count
+  // in their place until the first choice under the new shared key, so an upgrade does not flip
+  // anyone's MilkDrop open or closed.
+  const LEGACY_MILKDROP = { page: "milkdropOpen", docked: "milkdropOpenDocked", floating: "milkdropOpenFloating", desktop: "milkdropOpenDesktop" };
+  const has = (k) => Object.prototype.hasOwnProperty.call(saved.settings, k);
   const wantsMilkdropOpen = () => {
-    const key = milkdropSetting();
-    if (Object.prototype.hasOwnProperty.call(saved.settings, key)) return saved.settings[key] === true;
-    // Off by default in Hermes's floating overlay and the desktop window, and
-    // anywhere graphics are drawn by the CPU.
-    const optional = visualizerPlacement === "floating" || visualizerPlacement === "desktop";
-    return !optional && !(hasWebGL() && softwareGL);
+    if (has("milkdropOn")) return saved.settings.milkdropOn === true;
+    const legacy = LEGACY_MILKDROP[visualizerPlacement];
+    if (legacy && has(legacy)) return saved.settings[legacy] === true;
+    if (has("milkdropOpen")) return saved.settings.milkdropOpen === true; // the page's choice, elsewhere too
+    return !(hasWebGL() && softwareGL); // never chosen: off only where the CPU draws graphics
+  };
+  // REVamp itself opening or closing MilkDrop to match the saved choice (start-up, a new
+  // place, no WebGL here) is not the person choosing: it must not overwrite the saved choice,
+  // or one start on a machine without a graphics card turns MilkDrop off everywhere.
+  let autoMilkdrop = false;
+  const applyMilkdropChoice = (want) => {
+    // Hidden (mini, a hidden tab, the host says not shown): stays closed until shown again; a
+    // placement step that runs late must not reopen it out of sight.
+    if (milkdropSuspended && want) return;
+    autoMilkdrop = true;
+    try { api.toggleVisualizer(want); } finally { autoMilkdrop = false; }
   };
   function milkdropPosition() {
     const host = document.getElementById("webamp-host")?.getBoundingClientRect();
@@ -1007,8 +1282,15 @@ export async function initPlayer(ctx) {
     }
   }
 
+  // Full-screen MilkDrop, either kind (Webamp's own, or the element made full screen).
+  // Only while the browser really is full screen: Webamp marks its store FULLSCREEN before it
+  // asks, and a refused request (no user gesture) would otherwise freeze the window's layout.
+  api.visualizerFullscreen = () => Boolean(document.fullscreenElement);
   api.layoutDesktop = () => {
     if (visualizerPlacement !== "desktop") return false;
+    // Re-placing the windows (or resizing the OS window) while MilkDrop is full screen
+    // threw it back to the normal window: the "it only works on the second or third try".
+    if (api.visualizerFullscreen()) return false;
     ensureClassicOpen();
     placeClassicStack();
     placeMilkdrop();
@@ -1032,7 +1314,7 @@ export async function initPlayer(ctx) {
       const open = milkdropOpen();
       if (open === lastMilkdrop) return;
       lastMilkdrop = open;
-      if (!milkdropSuspended) api.setSavedSettings?.({ [milkdropSetting()]: open });
+      if (!milkdropSuspended && !autoMilkdrop) api.setSavedSettings?.({ [milkdropSetting()]: open });
       paintNpExtras();
       // Off Webamp's dispatch: pin the stack and ask the desktop window to refit.
       if (visualizerPlacement === "desktop") setTimeout(desktopLayoutChanged, 0);
@@ -1178,17 +1460,27 @@ export async function initPlayer(ctx) {
     return lastMilkdrop;
   };
   function suspendMilkdrop() {
-    if (milkdropSuspended || !milkdropOpen()) return;
+    if (milkdropSuspended) return;
+    // Marked hidden even when MilkDrop is already closed, so a placement change while hidden
+    // cannot open it; it only comes back on show if it was open before.
     milkdropSuspended = true;
-    resumeMilkdropOnVisible = true;
-    api.toggleVisualizer(false);
+    resumeMilkdropOnVisible = milkdropOpen();
+    // Closed directly: toggleVisualizer refuses every toggle in Mini (it is for the person), so
+    // MilkDrop kept drawing off-screen. Suspended is set, so this close is never saved.
+    if (resumeMilkdropOnVisible) {
+      try { webamp.store.dispatch({ type: "TOGGLE_WINDOW", windowId: "milkdrop" }); } catch { /* old bundle */ }
+      lastMilkdrop = milkdropOpen();
+      paintNpExtras();
+    }
   }
   function resumeMilkdrop() {
     if (!milkdropSuspended) return;
-    const resume = resumeMilkdropOnVisible;
     milkdropSuspended = false;
     resumeMilkdropOnVisible = false;
-    if (resume && hasWebGL()) api.toggleVisualizer(true);
+    // Shown again: follow the saved choice for the place it is in now, not what it was when it
+    // was hidden (the placement may have changed meanwhile). Automatic: never saved.
+    const want = hasWebGL() && wantsMilkdropOpen();
+    if (want !== milkdropOpen()) applyMilkdropChoice(want);
   }
   function syncMilkdropVisibility() {
     // Out of sight (mini player only, or a hidden tab) MilkDrop is closed, so it stops drawing;
@@ -1206,7 +1498,7 @@ export async function initPlayer(ctx) {
       placeClassicStack();
       placeMilkdrop();
       const wantOpen = hasWebGL() && wantsMilkdropOpen();
-      if (api.visualizerOpen() !== wantOpen) api.toggleVisualizer(wantOpen);
+      if (api.visualizerOpen() !== wantOpen) applyMilkdropChoice(wantOpen);
     };
     applyPlacement();
     requestAnimationFrame(applyPlacement);
@@ -1866,7 +2158,7 @@ export async function initPlayer(ctx) {
   Promise.resolve().then(() => {
     const wantOpen = hasWebGL() && wantsMilkdropOpen();
     placeMilkdrop();
-    if (api.visualizerOpen() !== wantOpen) api.toggleVisualizer(wantOpen);
+    if (api.visualizerOpen() !== wantOpen) applyMilkdropChoice(wantOpen);
     // Webamp centres the classic windows after the first paint. Pin them again
     // once that pass has run, or the desktop window is sized around the offset.
     if (visualizerPlacement === "desktop") {

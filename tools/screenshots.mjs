@@ -62,7 +62,7 @@ try {
   await post(p, token, "/api/agent_event", { kind: "tool_start", tool: "revamp_library", preview: "Queueing a focused work mix" }); await post(p, token, "/api/agent_event", { kind: "approval_request", tool: "shell", preview: "Waiting for approval" });
   let page;
   if (capture("player")) {
-  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: true, ticker: true, duck_on_approval: true } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(3500); await snap(page, "full-player.png"); await close(page);
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: true, ticker: true, duck_on_approval: true } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(3500); await snap(page, "full-player.png"); await close(page);
   await put(p, token, { playlist: music, current_index: 0, skin: "builtin:REVamp-Nous.wsz", settings: { milkdropOpen: false } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(1800); await snap(page, "nous.png"); await close(page);
   }
   if (capture("views", "books")) {
@@ -85,7 +85,7 @@ try {
   await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p, 620, 620, "?embed=1"); await playing(page, p, token, music); await sleep(1000); await snap(page, "mini-player.png"); await close(page);
   }
   if (capture("modes", "milkdrop")) {
-  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpenFloating: true } }); page = await pageFor(p, 900, 620, "?mode=winamp"); await page.cdp("Emulation.setDefaultBackgroundColorOverride", { color: { r: 8, g: 12, b: 18, a: 1 } }); await playing(page, p, token, music); await evalJs(page, "window.revampPlayerApi?.setVisualizerPlacement('floating')"); await sleep(8000); await snap(page, "winamp-milkdrop.png"); await close(page);
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: true } }); page = await pageFor(p, 900, 620, "?mode=winamp"); await page.cdp("Emulation.setDefaultBackgroundColorOverride", { color: { r: 8, g: 12, b: 18, a: 1 } }); await playing(page, p, token, music); await evalJs(page, "window.revampPlayerApi?.setVisualizerPlacement('floating')"); await sleep(8000); await snap(page, "winamp-milkdrop.png"); await close(page);
   }
   if (capture("modes", "settings")) {
   page = await pageFor(p); await playing(page, p, token, music); await view(page, "agent", "Chime and dip for approvals"); await snap(page, "settings.png"); await close(page);

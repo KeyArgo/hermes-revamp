@@ -17,10 +17,10 @@ def test_visualizer_command_accepted(server, cmd):
     assert st == 200 and res["ok"] is True, res
 
 
-def test_docked_milkdrop_has_its_own_preference_menu_and_plain_language_toggle():
+def test_milkdrop_open_choice_follows_the_player_and_keeps_the_plain_language_toggle():
     player = Path("web/player.js").read_text(encoding="utf-8")
     app = Path("web/app.js").read_text(encoding="utf-8")
-    assert 'visualizerPlacement === "docked") return "milkdropOpenDocked"' in player
+    assert 'const milkdropSetting = () => "milkdropOn"' in player  # the only key ever written
     assert "function installMilkdropMenuKeyboardAccess()" in app
     assert 'document.querySelector("#main-window #option")' in app
     assert 'e.key.toLowerCase() !== "m"' in app

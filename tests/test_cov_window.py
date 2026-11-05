@@ -53,6 +53,7 @@ def test_find_browser(monkeypatch, tmp_path):
     assert window.find_browser() is None                            # 41 both miss
 
     monkeypatch.setenv("REVAMP_FLOAT_BROWSER", "")                  # 42-46 loop
+    monkeypatch.setattr(window, "_installed_browsers", lambda: [])  # a CI machine has real Chrome
     names = set()
     monkeypatch.setattr(window.shutil, "which",
                         lambda n: "/usr/bin/x" if n == "chromium" else None)
@@ -198,7 +199,7 @@ class FakeProc:
 
 def test_open_window_no_browser(monkeypatch, win):
     monkeypatch.setattr(window, "find_browser", lambda: None)
-    with pytest.raises(WindowError, match="no Chrome"):
+    with pytest.raises(WindowError, match="none was found"):
         window.open_window(8114)
 
 

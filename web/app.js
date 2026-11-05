@@ -31,6 +31,29 @@ const TOKEN =
 const BRIDGE_KEY = document.querySelector('meta[name="revamp-bridge-key"]')?.content || "";
 
 // ---------------------------------------------------------------- api
+// The server refused our key: the REVamp behind this page was replaced (a new key after a
+// restart). Nothing that needs the key can work until the page loads again, but reloading by
+// itself would cut off the music that is playing here, so say it once, plainly, and let the
+// person reload when it suits them. Never a notification per failed click (incident 11-02).
+const KEY_REFUSED = "invalid or missing token"; // server.py _token_ok refusal, word for word
+let keyNoticeShown = false;
+function keyRejected() {
+  if (keyNoticeShown) return;
+  keyNoticeShown = true;
+  // Inside Hermes the bar below can sit outside the Frame's visible clip: tell the host too.
+  if (window.parent !== window) window.parent.postMessage({ type: "revamp:key-rejected" }, "*");
+  const bar = document.createElement("div");
+  bar.className = "key-notice";
+  bar.setAttribute("role", "alert");
+  bar.textContent = "REVamp restarted with a new key. Reconnect to use the controls again. ";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "Reconnect";
+  btn.addEventListener("click", () => location.reload());
+  bar.append(btn);
+  document.body.append(bar);
+}
+
 async function api(method, path, body) {
   const url = new URL(path, location.origin);
   const opts = { method, headers: { "X-Revamp-Token": TOKEN } };
@@ -42,6 +65,8 @@ async function api(method, path, body) {
     if (!res.ok) {
       let msg = `${res.status}`;
       try { msg = (await res.json()).error || msg; } catch { /* keep status */ }
+      // Only the server refusing OUR key means it changed; a music source may answer 401 too.
+      if (res.status === 401 && msg === KEY_REFUSED) keyRejected();
       throw new Error(`API ${path}: ${msg}`);
     }
   return res.headers.get("content-type")?.includes("json") ? res.json() : res.text();
@@ -117,6 +142,11 @@ export function setView(id) {
       if (generation === renderGeneration) body.setAttribute("aria-busy", "false");
     });
   document.body.classList.remove("panel-open");
+}
+// The first view once start-up is done, unless the person already picked one while it loaded
+// (a click on Books during start-up was thrown back to Library).
+function showStartView() {
+  if (renderGeneration === 0) setView("library");
 }
 window.revampSetView = setView; // for webamp filePicker callbacks / debugging
 
@@ -418,6 +448,7 @@ let lastResizeKey = "";
 let lastPayload = "";
 function fitDesktopWindow() {
   if (!desktopFloat || !player?.layoutDesktop || fitting) return Promise.resolve(false);
+  if (player.visualizerFullscreen?.()) return Promise.resolve(false); // never resize out of full screen
   fitting = true;
   try {
   if (!player?.layoutDesktop) return Promise.resolve(false);
@@ -462,6 +493,9 @@ function fitDesktopWindow() {
 
 function kickDesktopFit() {
   if (!desktopFloat) return;
+  // A hidden window (minimised, or occluded on Chrome) must not be resized: it used to shrink to
+  // the stack and grow back, restarting MilkDrop (claude a10r19). visibilitychange refits on show.
+  if (document.hidden) return;
   fitDesktopWindow();
   requestAnimationFrame(fitDesktopWindow);
   setTimeout(fitDesktopWindow, 80);
@@ -588,6 +622,18 @@ function mountDesktopFloat() {
   const fitIfShown = () => { if (!document.hidden) fitDesktopWindow(); };
   setInterval(fitIfShown, 1000);
   document.addEventListener("visibilitychange", fitIfShown);
+  // Back from full-screen MilkDrop: put the windows back and fit the OS window to them.
+  let wasFullscreen = false;
+  setInterval(() => {
+    const now = Boolean(player?.visualizerFullscreen?.());
+    if (wasFullscreen && !now) {
+      // A fit skipped during full screen was still remembered as sent: forget it, or the
+      // window keeps its full-screen-era size.
+      lastPayload = ""; lastResizeKey = "";
+      player?.layoutDesktop?.(); kickDesktopFit();
+    }
+    wasFullscreen = now;
+  }, 250);
 }
 
 function installMilkdropMenuKeyboardAccess() {
@@ -648,7 +694,12 @@ let updateNoticed = false;
 async function checkForUpdate() {
   if (!LOADED_BUILD) return;
   let build = "";
-  try { build = (await (await fetch("/api/health", { cache: "no-store" })).json()).build || ""; } catch { return; }
+  try {
+    const h = await (await fetch("/api/health", { cache: "no-store" })).json();
+    // The files on disk now. A server older than alpha.10 can't say (its "build" is what it
+    // started with, never the new files): comparing with that reloaded the page forever.
+    build = h.files || "";
+  } catch { return; }
   if (!build || build === LOADED_BUILD) return;
   if ((window.revampPlayerApi?.nowStatus?.() || "STOPPED") === "STOPPED") return location.reload();
   if (!updateNoticed) {
@@ -837,7 +888,7 @@ async function boot() {
       const h = await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
       setConn(true, `v${h.version || "?"}`);
     } catch { setConn(false, "server down"); }
-    setView("library");
+    showStartView();
     if (hosted) window.parent.postMessage({ type: "revamp:ready", bridge: Boolean(BRIDGE_KEY), control: true }, "*");
     return;
   }
@@ -863,7 +914,7 @@ async function boot() {
   });
   mountDesktopFloat();
   installMilkdropMenuKeyboardAccess();
-  setView("library");
+  showStartView();
   // Empty start with backups on disk? Offer to restore before the user rebuilds anything.
   maybeOfferRestore(viewApi).catch((e) => console.warn("restore offer", e));
   // Book controls and lyrics on the now-playing card (optional: the page works without them).
@@ -908,7 +959,12 @@ if (hosted) {
     const d = e.data;
     if (e.source !== window.parent || !d || d.type !== "revamp:rest" || typeof d.id !== "string") return;
     const reply = (r) => window.parent.postMessage({ type: "revamp:rest-result", id: d.id, ...r }, e.origin === "null" ? "*" : e.origin);
-    if (!localOrigin(e.origin) || !sameKey(d.key)) { console.warn("revamp bridge: refused", e.origin); return; }
+    if (!localOrigin(e.origin)) { console.warn("revamp bridge: refused", e.origin); return; }
+    // A wrong key from our own host means its copy is stale (the server's key changed): say so,
+    // so it fetches the current one, instead of leaving every request to time out (11-02).
+    // The host's copy of the bridge key is stale: say so and it fetches the current one. This
+    // page's own notice is kept for its own key being refused (council round 3).
+    if (!sameKey(d.key)) return reply({ ok: false, status: 401, error: "bridge key", bridgeKey: true });
     const path = String(d.path || ""), method = String(d.method || "GET").toUpperCase();
     // The URL parser drops "." segments ("/./backups"): judge the address fetch will use.
     const target = new URL("/api" + path, location.origin);

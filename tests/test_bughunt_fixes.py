@@ -203,6 +203,9 @@ def test_gateway_takes_over_when_the_short_lived_owner_exits(tmp_path, monkeypat
     answers = iter([{"app": "revamp"}, {"app": "revamp"}])
     monkeypatch.setattr(srv, "_probe_health", lambda p: next(answers, None))
     monkeypatch.setattr(srv, "_foreign_holder", lambda p: False)
+    # The short-lived owner was this profile's own REVamp (same token): the only kind a
+    # watcher may take over from (incident 11-02).
+    monkeypatch.setattr(srv.proof, "listener_identity", lambda base, token, timeout=2.0: True)
     # This exercises ownership handoff, not the background maintenance jobs.
     # Prevent them from outliving this test and changing the global library
     # scan generation during later tests.

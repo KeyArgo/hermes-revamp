@@ -157,3 +157,58 @@ def test_orphan_window_from_a_previous_server_is_closed(server, tmp_path):
     assert window.reap_orphan() is False
     assert other.poll() is None
     other.kill()
+
+
+def test_finds_edge_and_chrome_where_windows_and_macos_install_them(monkeypatch, tmp_path):
+    # User report 11-03 (Windows, alpha.6): "no Chrome or Chromium found" though Edge ships
+    # with every Windows 10/11; nothing is on PATH there.
+    monkeypatch.delenv("REVAMP_FLOAT_BROWSER", raising=False)
+    monkeypatch.setattr(window.shutil, "which", lambda name: None)
+    monkeypatch.setattr(window, "_os_family", lambda: "windows")
+    pf = tmp_path / "Program Files (x86)"
+    edge = pf / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+    edge.parent.mkdir(parents=True)
+    edge.write_text("")
+    for k in ("PROGRAMFILES", "LOCALAPPDATA"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("PROGRAMFILES(X86)", str(pf))
+    assert window.find_browser() == str(edge)
+
+
+def test_windows_skips_the_windowsapps_alias_for_a_real_install(monkeypatch, tmp_path):
+    # Grok a10r7: PATH on Windows holds WindowsApps app-execution aliases (msedge.exe), stubs that
+    # hand off and exit at once ("exited immediately"); the real install must win.
+    monkeypatch.delenv("REVAMP_FLOAT_BROWSER", raising=False)
+    alias = r"C:\Users\e\AppData\Local\Microsoft\WindowsApps\msedge.exe"
+    monkeypatch.setattr(window.shutil, "which", lambda name: alias if name == "msedge" else None)
+    monkeypatch.setattr(window, "_os_family", lambda: "windows")
+    pf = tmp_path / "Program Files"
+    chrome = pf / "Google" / "Chrome" / "Application" / "chrome.exe"
+    chrome.parent.mkdir(parents=True)
+    chrome.write_text("")
+    for k in ("PROGRAMFILES(X86)", "LOCALAPPDATA"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("PROGRAMFILES", str(pf))
+    assert window.find_browser() == str(chrome)
+    chrome.unlink()  # nothing installed: the alias alone is still never used
+    assert window.find_browser() is None
+
+
+def test_linux_still_prefers_the_browser_on_path(monkeypatch):
+    monkeypatch.delenv("REVAMP_FLOAT_BROWSER", raising=False)
+    monkeypatch.setattr(window, "_os_family", lambda: "other")
+    monkeypatch.setattr(window.shutil, "which", lambda name: "/usr/bin/chromium" if name == "chromium" else None)
+    assert window.find_browser() == "/usr/bin/chromium"
+
+
+def test_finds_chrome_in_macos_applications(monkeypatch, tmp_path):
+    monkeypatch.delenv("REVAMP_FLOAT_BROWSER", raising=False)
+    monkeypatch.setattr(window.shutil, "which", lambda name: None)
+    monkeypatch.setattr(window, "_os_family", lambda: "mac")
+    apps = tmp_path / "Applications"
+    chrome = apps / "Google Chrome.app" / "Contents" / "MacOS" / "Google Chrome"
+    chrome.parent.mkdir(parents=True)
+    chrome.write_text("")
+    monkeypatch.setattr(window.os.path, "expanduser", lambda p: str(apps) if p == "~/Applications" else p)
+    # In the list, not necessarily first: a Mac CI machine also has the real /Applications one.
+    assert str(chrome) in window._installed_browsers() and window.find_browser() == window._installed_browsers()[0]

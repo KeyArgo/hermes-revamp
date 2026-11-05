@@ -208,7 +208,12 @@ def test_desktop_page_pins_player_and_uses_the_winamp_menu_for_milkdrop():
     assert 'document.querySelector("#main-window #option")' in app
     assert 'id = "float-milkdrop"' not in app
     assert "api.layoutDesktop" in player
-    assert 'return "milkdropOpenDesktop"' in player
+    # One MilkDrop open/closed choice follows the player into the desktop window (user, 11-02:
+    # "desktop mode makes MilkDrop disappear"), and it never refits out of full screen.
+    assert 'const milkdropSetting = () => "milkdropOn"' in player
+    assert "[milkdropSetting()]: open" in player  # the old per-place keys are only read (migration)
+    assert "if (api.visualizerFullscreen()) return false;" in player
+    assert "if (player.visualizerFullscreen?.()) return Promise.resolve(false);" in app
     assert "visualizerPlacement !== \"desktop\"" in player or 'visualizerPlacement !== "desktop"' in player
     assert "float-desktop" in css and "#0b0e14" in css
     assert "float-milkdrop" not in css

@@ -54,9 +54,17 @@ def _humanise(stem: str) -> tuple[str, str, Optional[int]]:
     title, artist, track_no = stem, "", None
     parts = [p.strip() for p in stem.split(" - ", 1)]
     if len(parts) == 2 and parts[0] and parts[1]:
-        artist, title = parts
-    # Leading track number in the title ("07 Title" / "07. Title").
-    digits = title.split(" ", 1)
+        # "01 - An Unexpected Party" is track 1, not an artist called "01": a purely numeric
+        # first part is the chapter/track index (grok a10r19).
+        # 1-2 digits or a zero-padded number ("01 - Chapter"); "311 - Amber" is a band, not a track
+        # number (claude a10r20).
+        if parts[0].isascii() and parts[0].isdigit() and (len(parts[0]) <= 2 or parts[0][0] == "0"):
+            track_no, title = int(parts[0]), parts[1]
+        else:
+            artist, title = parts
+    # Leading track number in the title ("07 Title" / "07. Title"), unless "01 - " already gave it:
+    # then the number belongs to the title ("01 - 2 Fast 2 Furious", claude a10r21).
+    digits = title.split(" ", 1) if track_no is None else []
     # isascii: "²".isdigit() is True but int("²") raises, which aborted the whole scan.
     if len(digits) == 2 and digits[0].rstrip(".").isascii() and digits[0].rstrip(".").isdigit() and len(digits[0]) <= 3:
         track_no = int(digits[0].rstrip("."))
@@ -325,6 +333,9 @@ def probe(path: str) -> Dict[str, Any]:
     if not meta["album"]:
         parent = p.parent.name
         meta["album"] = None if parent in ("", p.name) else parent
+        # Remember that the album is only the folder's name: it proves nothing about which files
+        # are one book (grok a10r18/a10r19).
+        meta["album_from_folder"] = bool(meta["album"])
     return meta
 
 

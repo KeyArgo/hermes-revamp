@@ -425,8 +425,12 @@ export async function render(root, api, kind = "music") {
     const order = selected.size > 1 && selected.has(i) ? chosenTracks() : tracks.slice();
     const items = order.map(trackToItem);
     const startIdx = order.indexOf(tracks[i]);
-    window.revampPlayerApi.loadTracks(items, { mode: "replace", play: true });
-    window.revampPlayerApi.playIndex(Math.max(0, startIdx));
+    // One call that loads, then plays the chosen row (like Playlists): from the Hermes library
+    // these were two server commands that could land in either order, so a book's continue
+    // was dropped, or undone by the late "play row" (Grok a10r14).
+    const p = window.revampPlayerApi;
+    if (p.playItemsAt) return p.playItemsAt(Math.max(0, startIdx), items);
+    p.loadTracks(items, { mode: "replace", play: false }).then(() => p.playIndex(Math.max(0, startIdx)));
   }
 
   function closeTrackMenu(returnFocus = false) {

@@ -206,6 +206,7 @@ const EN = {
   hideDocked: 'Hide the docked player (mini only)',
   showFrame: 'Show Frame',
   hideFrame: 'Hide Frame',
+  frameHiddenHint: 'REVamp is hidden and your music keeps playing. Press {key} to bring it back, or run REVamp: Show / Hide Frame from the command palette.',
   cmdFrame: 'REVamp: Show / Hide Frame',
   cmdReload: 'REVamp: Reload Player',
   cmdVisualizer: 'REVamp: Show / Hide Visualizer',
@@ -402,17 +403,57 @@ async function rest(path, opts = {}) {
   const read = !opts.method || opts.method === 'GET'
   if (bridge?.ready && path !== '/info') {
     try {
-      return await bridge.request(path, opts)
+      const out = await bridge.request(path, opts)
+      // A command that worked means things recovered: the next failure is news, show it. (Not
+      // reads: background polls succeed every few seconds even while commands fail.)
+      if (!read) lastErrors.clear()
+      return out
     } catch (err) {
-      if (err?.answered || !read) throw err // the server itself said no, or a write: don't resend
+      // A stale key (the bridge's, or the page's own token the server now refuses) never ran the
+      // command: fetch the current key and send this call by the gateway, which reads it fresh.
+      if (err?.bridgeKey || (err?.status === 401 && /invalid or missing token/.test(err.message || ''))) void refreshBridgeKey()
+      else if (err?.answered || !read) throw err // the server itself said no, or a write: don't resend
     }
   }
-  return ctxRef.rest(path, opts)
+  const out = await ctxRef.rest(path, opts)
+  if (!read) lastErrors.clear()
+  return out
+}
+
+// The bridge key follows the server's token. After a token change the page refuses our old
+// copy (and says so): fetch the current key through the gateway (one at a time, 2 s apart).
+let keyRefreshAt = 0
+let keyRefreshing = null
+async function refreshBridgeKey() {
+  // Throttled only after a refresh that worked: a failed one (a wedged gateway) may be retried.
+  if (!ctxRef || keyRefreshing || Date.now() - keyRefreshAt < 2_000) return keyRefreshing
+  keyRefreshing = (async () => {
+    try {
+      const info = await ctxRef.rest('/info', { timeoutMs: 4000 })
+      if (typeof info?.bridge_key === 'string' && info.bridge_key) {
+        ctxRef.storage.set('bridgeKey', info.bridge_key)
+        bridge?.setKey?.(info.bridge_key)
+        keyRefreshAt = Date.now()
+      }
+    } catch { /* the gateway path keeps working meanwhile */ } finally { keyRefreshing = null }
+  })()
+  return keyRefreshing
+}
+
+// The same error, again and again (every click while something is broken), is one notice.
+// A failure of something the person asked for right now (Recover player) always shows.
+const lastErrors = new Map()
+function notifyError(message, { always = false } = {}) {
+  const now = Date.now()
+  if (!always && now - (lastErrors.get(message) || 0) < 30_000) return
+  lastErrors.set(message, now)
+  if (lastErrors.size > 50) for (const [k, at] of lastErrors) if (now - at > 30_000) lastErrors.delete(k)
+  host.notify({ kind: 'error', message })
 }
 
 function command(action, extra = {}) {
   return rest('/command', { method: 'POST', body: { action, ...extra }, timeoutMs: 5000 }).catch(err => {
-    host.notify({ kind: 'error', message: `REVamp: ${err?.message || 'command failed'}` })
+    notifyError(`REVamp: ${err?.message || 'command failed'}`)
   })
 }
 
@@ -528,7 +569,7 @@ async function recoverPlayer() {
   if (ready) {
     void refreshLive()
     host.notify({ kind: 'success', message: EN.recoveryStarted })
-  } else host.notify({ kind: 'error', message: EN.recoveryFailed })
+  } else notifyError(EN.recoveryFailed, { always: true })
 }
 
 async function openBugReport(copyOnly = false) {
@@ -760,7 +801,7 @@ async function setLiked(trackId, liked) {
     if (version === likesVersion) $liked.set(new Set(out?.ids || []))
   } catch (err) {
     if (version === likesVersion) $liked.set(before)
-    host.notify({ kind: 'error', message: `REVamp: ${err?.message || 'like failed'}` })
+    notifyError(`REVamp: ${err?.message || 'like failed'}`)
   }
 }
 
@@ -836,7 +877,7 @@ async function openOnDesktop() {
       win = await rest('/window', { timeoutMs: 4000 }).catch(() => null)
     }
     if (win?.open === true) $desktop.set(true)
-    else host.notify({ kind: 'error', message: `REVamp: ${err?.message || 'could not open the desktop window'}` })
+    else notifyError(`REVamp: ${err?.message || 'could not open the desktop window'}`)
   } finally {
     deskSeq++ // polls begun during the open are stale
     deskBusy = false
@@ -860,7 +901,7 @@ async function bringBackFromDesktop() {
     queueMicrotask(settlePendingPlace)
   }
   pendingBringBack = false // the person is told to close it by hand: no silent second try
-  host.notify({ kind: 'error', message: 'REVamp: could not close the desktop window. Close it by hand and REVamp comes back here.' })
+  notifyError('REVamp: could not close the desktop window. Close it by hand and REVamp comes back here.')
 }
 
 // Play now: replace the queue and start at `index`. Two commands on one SSE
@@ -918,6 +959,10 @@ function moveInto(target, node) {
 }
 
 function createEngine(ctx, url, bridgeKey = '') {
+  let key = bridgeKey
+  let readyBridge = false // the page's last "ready" offered a bridge (setKey may arrive after it)
+  let controlReloadAt = 0 // last automatic reload of the library frame after a refused key
+  let controlRetry = 0
   const frame = document.createElement('iframe')
   frame.title = 'REVamp player'
   frame.src = `${url}/?embed=1`
@@ -958,12 +1003,13 @@ function createEngine(ctx, url, bridgeKey = '') {
   let seq = 0
   const bridgeApi = {
     ready: false,
+    setKey(k) { key = k; bridgeApi.ready = Boolean(key) && readyBridge },
     request(path, opts = {}) {
       return new Promise((resolve, reject) => {
         const id = `r${++seq}-${Date.now().toString(36)}`
         const timer = setTimeout(() => { pending.delete(id); reject(new Error('player did not answer')) }, opts.timeoutMs || 5000)
         pending.set(id, { resolve, reject, timer })
-        send({ type: 'revamp:rest', id, key: bridgeKey, method: opts.method || 'GET', path, body: opts.body })
+        send({ type: 'revamp:rest', id, key, method: opts.method || 'GET', path, body: opts.body })
       })
     }
   }
@@ -1145,6 +1191,22 @@ function createEngine(ctx, url, bridgeKey = '') {
       }
       return
     }
+    // The server refused a page's key (it restarted with a new one). Its notice may sit outside
+    // the visible clip of the Frame or overlay, so the host says it, once: the library frame
+    // (no audio) reloads by itself; the player waits for Recover player, so music never stops
+    // without the person choosing.
+    if (e.data.type === 'revamp:key-rejected' && (e.source === controlFrame.contentWindow || e.source === frame.contentWindow)) {
+      void refreshBridgeKey()
+      // At most once a minute: a page that is refused again right after loading must not loop.
+      if (e.source === controlFrame.contentWindow) {
+        const reloadControl = () => { controlReloadAt = Date.now(); controlRetry = 0; controlFrame.src = controlFrame.src }
+        const wait = 60_000 - (Date.now() - controlReloadAt)
+        if (wait <= 0) reloadControl()
+        else if (!controlRetry) controlRetry = setTimeout(reloadControl, wait) // refused again: one try at the end
+      }
+      else notifyError('REVamp restarted with a new key. Choose Recover player (mini player menu) to reconnect the controls.')
+      return
+    }
     if (e.source === controlFrame.contentWindow) {
       if (e.data.type === 'revamp:bring-player-here') {
         $pageBorrow.set(true)
@@ -1159,12 +1221,15 @@ function createEngine(ctx, url, bridgeKey = '') {
       if (!p) return
       pending.delete(e.data.id); clearTimeout(p.timer)
       if (e.data.ok) p.resolve(e.data.body)
+      // A refused bridge key never reached the server: not "answered", so it goes by the gateway.
+      else if (e.data.bridgeKey === true) p.reject(Object.assign(new Error('bridge key'), { status: 401, bridgeKey: true }))
       else p.reject(Object.assign(new Error(e.data.error || `HTTP ${e.data.status}`), { status: e.data.status, answered: e.data.status >= 400 }))
       return
     }
     if (e.data.type === 'revamp:ready') {
       // While parked the page runs in control mode (no player): still a bridge.
-      bridgeApi.ready = Boolean(bridgeKey) && e.data.bridge === true && (!parked || e.data.control === true)
+      readyBridge = e.data.bridge === true && (!parked || e.data.control === true)
+      bridgeApi.ready = Boolean(key) && readyBridge
       // Only Revamp's own page says ready with a bridge (it has the key in its meta tag).
       if (e.data.bridge === true) { sawRevamp = true; for (const f of readyWaiters.splice(0)) f(true) }
       if (e.data.control) return
@@ -1265,7 +1330,7 @@ function createEngine(ctx, url, bridgeKey = '') {
     // The library page's control frame reloads too: a server update otherwise left
     // it showing the old web app until Hermes itself restarted.
     // A reload forgets the old handshake: whenReady() must wait for the new page.
-    reload() { dropPending(); sawRevamp = false; frame.src = parked ? `${url}/?control=1` : `${url}/?embed=1`; controlFrame.src = `${url}/?embed=1&control=1`; place() },
+    reload() { dropPending(); sawRevamp = false; clearTimeout(controlRetry); controlRetry = 0; frame.src = parked ? `${url}/?control=1` : `${url}/?embed=1`; controlFrame.src = `${url}/?embed=1&control=1`; place() },
     // Resolves true once the page says it is Revamp's player, false after ms.
     whenReady(ms) {
       return new Promise(resolve => {
@@ -1940,7 +2005,7 @@ function RadioList({ text, np, onPending, onText }) {
       else await rest('/radio/favorites', { method: 'POST', body: s })
       favorites.refetch()
     } catch (err) {
-      host.notify({ kind: 'error', message: `REVamp: ${err?.message || t('failed')}` })
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
     }
   }
   const pending = text.length >= 2 && (text !== query || (search.loading && !searchItems.length))
@@ -2075,7 +2140,7 @@ function FolderPanel({ kind = 'music', onClose }) {
       void watchScan()
       setBrowse(null)
     } catch (err) {
-      host.notify({ kind: 'error', message: `REVamp: ${err?.message || 'could not save folders'}` })
+      notifyError(`REVamp: ${err?.message || 'could not save folders'}`)
     } finally {
       setBusy(false)
     }
@@ -2169,7 +2234,7 @@ function PlaylistList({ text, onPending }) {
       const full = await rest(`/playlists/${encodeURIComponent(p.id)}`)
       await playItems(full?.items || [])
     } catch (err) {
-      host.notify({ kind: 'error', message: `REVamp: ${err?.message || t('failed')}` })
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
     }
   }
   const pending = result.isFetching && !result.data
@@ -2206,7 +2271,7 @@ function PlaylistRow({ p, onPlay, onChanged }) {
       await onChanged()
       setMode(null)
     } catch (err) {
-      host.notify({ kind: 'error', message: `REVamp: ${err?.message || t('failed')}` })
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
     } finally {
       setBusy(false)
     }
@@ -2760,11 +2825,21 @@ function RevampBar() {
 // ---------------------------------------------------------------- page + card
 // The pane header's two location buttons. Rendered both as the in-pane row (below) and
 // via the registration's data.headerContent, so hosts either way get the same controls.
+// REVamp's own default (rebindable in Settings > Keyboard Shortcuts), not a Hermes one, so the
+// button that hides the Frame also says how to get it back.
+const frameShortcut = () => (/Mac/i.test(navigator.platform || '') ? 'Cmd+Option+F' : 'Ctrl+Alt+F')
+
+function hideFrameWithHint() {
+  setFrameHidden(true)
+  host.notify({ kind: 'success', message: EN.frameHiddenHint.replace('{key}', frameShortcut()) })
+}
+
 function PaneHeaderButtons() {
   const L = k => EN[k] || k
   return jsxs(Fragment, { children: [
     jsx(SmallAction, { label: L('popOutPlayer'), icon: icons.AppWindow, onClick: () => setPlayerLocation('floating') }),
-    jsx(SmallAction, { label: L('popIn'), icon: icons.PanelBottom, onClick: () => setPlayerLocation('mini') })
+    jsx(SmallAction, { label: L('popIn'), icon: icons.PanelBottom, onClick: () => setPlayerLocation('mini') }),
+    jsx(SmallAction, { label: `${L('hideFrame')} (${frameShortcut()})`, icon: icons.X, onClick: hideFrameWithHint })
   ] })
 }
 
@@ -3114,7 +3189,7 @@ export default {
         ['winamp', 'cmdWinamp', () => setPlayerLocation($playerLocation.get() === 'floating' ? 'docked' : 'floating'), ['mod+alt+w']],
         ['mini', 'cmdMini', () => setPlayerLocation('mini'), ['mod+alt+m']],
         ['reload', 'cmdReload', () => { engine?.reload(); void refreshLive() }, ['mod+alt+r']],
-        ['visualizer', 'cmdVisualizer', () => engine?.visualizer(), ['mod+alt+v']],
+        ['visualizer', 'cmdVisualizer', () => engine?.visualizer(), ['mod+alt+shift+v']],
         ['desktop', 'cmdDesktop', () => void ($desktop.get() ? bringBackFromDesktop() : openOnDesktop()), ['mod+alt+shift+w']]
       ].flatMap(([id, key, run, defaults]) => [
         {
