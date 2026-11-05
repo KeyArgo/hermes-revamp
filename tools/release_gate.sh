@@ -20,8 +20,11 @@ run_shell "pytest" '
     stem=${t##*/}; stem=${stem%.py}
     python3 -m pytest -q -p no:cacheprovider --basetemp="$TMPDIR/$stem" "$t" || exit $?
   done'
-run_shell "node tests" 'for t in tests/*.test.mjs; do node --test "$t"; done'
-run_shell "browser e2e" 'python3 -m pytest -q -p no:cacheprovider tests/test_*e2e.py'
+run_shell "node tests" 'for t in tests/*.test.mjs; do node --test "$t" || exit $?; done'
+run_shell "browser e2e" '
+  # Without these every browser test skips, and all-skipped would read as a pass.
+  python3 -c "import websocket" && { [[ -x /opt/google/chrome/chrome ]] || command -v google-chrome || command -v chromium; } >/dev/null \
+    && python3 -m pytest -q -p no:cacheprovider tests/test_*e2e.py'
 
 export_dir=$(mktemp -d "$scratch/export.XXXXXX")
 export export_dir
@@ -30,15 +33,21 @@ names+=("clean export")
 if cp -a "$root/." "$export_dir/" && rm -rf "$export_dir/.git" "$export_dir/lanes"; then results+=(PASS); else results+=(FAIL); fi
 run_shell "Hermes manifest" 'hermes plugins validate "$export_dir"'
 run_shell "private-info scan" '
-  private_home="/home""/dev"; private_mount="/mnt""/homes"
-  private_net_a="10""\\.0\\.0\\."; private_net_b="192""\\.168\\."
-  private_names="\\b(callisto""-odin|[A-Za-z0-9._-]+\\.local)\\b"
-  ! rg -n -e "$private_home" -e "$private_mount" -e "$private_net_a" -e "$private_net_b" -e "$private_names" "$export_dir" --glob "!*.pyc" --glob "!*.png" --glob "!*.jpg"'
+  # Your own names, paths and addresses live outside the repo (one regex per line), so the
+  # scan never publishes what it looks for: ${REVAMP_PRIVATE_PATTERNS:-~/.config/revamp/private-patterns}
+  patterns="${REVAMP_PRIVATE_PATTERNS:-$HOME/.config/revamp/private-patterns}"
+  [[ -s $patterns ]] || { echo "no private patterns file at $patterns"; exit 1; }
+  args=(); while IFS= read -r p; do [[ -n $p && $p != \#* ]] && args+=(-e "$p"); done < "$patterns"
+  ((${#args[@]})) || { echo "no usable private patterns"; exit 1; }
+  rg -n --hidden --no-ignore "${args[@]}" "$export_dir" --glob "!*.pyc" --glob "!*.png" --glob "!*.jpg"
+  status=$?
+  [[ $status -eq 1 ]]'
 run_shell "version consistency" '
-  v=$(sed -nE "s/^version: *([^ ]+).*/\\1/p" plugin.yaml); \
-  test "$v" = "$(sed -nE "s/^VERSION = \\\"([^\\\"]+)\\\"/\\1/p" revamp_core/server.py)"; \
-  grep -Fq "${v#1.0.0-}" web/index.html; \
-  grep -Fq "\"version\": \"$v\"" claude-code/revamp/.claude-plugin/plugin.json; \
+  v=$(sed -nE "s/^version: *([^ ]+).*/\\1/p" plugin.yaml) && \
+  test -n "$v" && \
+  test "$v" = "$(sed -nE "s/^VERSION = \\\"([^\\\"]+)\\\"/\\1/p" revamp_core/server.py)" && \
+  w=${v#1.0.0-} && grep -Fq "1.0 ${w//./ }</small>" web/index.html && \
+  grep -Fq "\"version\": \"$v\"" claude-code/revamp/.claude-plugin/plugin.json && \
   grep -Fq "## $v " CHANGELOG.md'
 if (( visual )); then run_shell "visual sweep" 'node tools/visual_sweep.mjs'; fi
 

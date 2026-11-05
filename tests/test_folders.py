@@ -268,10 +268,10 @@ def test_older_scan_cannot_overwrite_newer(tmp_path, monkeypatch):
     release = threading.Event()
     real_walk = library._walk
 
-    def walk(root, visited, out):
+    def walk(root, visited, out, *rest):
         if root.name == "old":
             release.wait(10)  # the old scan is slow
-        real_walk(root, visited, out)
+        real_walk(root, visited, out, *rest)
     monkeypatch.setattr(library, "_walk", walk)
 
     library.scan_async([str(old)])
@@ -298,10 +298,10 @@ def test_direct_scan_is_numbered_too(tmp_path, monkeypatch):
     hold = {"a": threading.Event(), "b": threading.Event()}
     real_walk = library._walk
 
-    def walk(root, visited, out):
+    def walk(root, visited, out, *rest):
         if root.name in hold:
             hold[root.name].wait(10)
-        real_walk(root, visited, out)
+        real_walk(root, visited, out, *rest)
     monkeypatch.setattr(library, "_walk", walk)
     library.scan_async([str(a)])
     direct = threading.Thread(target=library.scan_sync, args=([str(b)],))
@@ -343,11 +343,12 @@ def test_scan_publishes_tracks_while_it_runs(tmp_path, monkeypatch):
 
     def slow(path, cached):
         if path.endswith("Song 30.mp3"):
-            gate.wait(10)  # the scan stalls part-way, like a slow NAS file
+            gate.wait(60)  # the scan stalls part-way, like a slow NAS file
         return real(path, cached)
     monkeypatch.setattr(library, "_entry_for", slow)
     library.scan_async([str(lib)])
-    deadline = time.time() + 10
+    # Each junk file takes ~0.3 s to read; on a loaded machine 20 of them can take well over 10 s.
+    deadline = time.time() + 45
     while len(library.all_tracks()) < 20 and time.time() < deadline:
         time.sleep(0.05)
     assert library.is_scanning()
@@ -357,7 +358,7 @@ def test_scan_publishes_tracks_while_it_runs(tmp_path, monkeypatch):
     gate.set()
     # Its own budget: on a busy machine the first wait can use most of a shared one,
     # and the check then ran while the released file was still being read.
-    deadline = time.time() + 10
+    deadline = time.time() + 45
     while library.is_scanning() and time.time() < deadline:
         time.sleep(0.05)
     assert len(library.all_tracks()) == 40
@@ -378,13 +379,14 @@ def test_slow_file_does_not_block_others_and_errors_are_isolated(tmp_path, monke
 
     def flaky(path, cached):
         if path.endswith("Song 00.mp3"):
-            gate.wait(10)  # the FIRST file is the slow one
+            gate.wait(60)  # the FIRST file is the slow one
         if path.endswith("Song 05.mp3"):
             raise RuntimeError("tag reader crashed")
         return real(path, cached)
     monkeypatch.setattr(library, "_entry_for", flaky)
     library.scan_async([str(lib)])
-    deadline = time.time() + 10
+    # Each junk file takes ~0.3 s to read; on a loaded machine 28 of them can take well over 10 s.
+    deadline = time.time() + 45
     while len(library.all_tracks()) < 28 and time.time() < deadline:
         time.sleep(0.05)
     assert len(library.all_tracks()) == 28  # everything but the slow one and the broken one

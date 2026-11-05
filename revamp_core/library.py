@@ -101,11 +101,21 @@ def save_index(complete: bool = True) -> None:
 _NEVER_FOLLOW = ("/proc", "/sys", "/dev", "/etc", "/boot", "/run", "/root", "/var/run")  # not /var/lib: MPD keeps music there
 
 
-def _safe_link_dir(target: str) -> bool:
+def _safe_link_dir(target: str, root: Optional[str] = None) -> bool:
     t = target.replace("\\", "/")
     if any(t == p or t.startswith(p + "/") for p in _NEVER_FOLLOW):
         return False
-    return not any(part.startswith(".") for part in t.split("/") if part)
+    parts = [part for part in t.split("/") if part]
+    if root:
+        # Hidden folders the music folder itself lives in (a Flatpak's ~/.var/app/..., a drive
+        # mounted under a dot-folder) are not "hidden places": only judge the part of the link's
+        # target below what it shares with the music folder.
+        shared = [part for part in root.replace("\\", "/").split("/") if part]
+        n = 0
+        while n < min(len(parts), len(shared)) and parts[n] == shared[n]:
+            n += 1
+        parts = parts[n:]
+    return not any(part.startswith(".") for part in parts)
 
 
 def is_audio_target(path: str) -> bool:
@@ -114,9 +124,10 @@ def is_audio_target(path: str) -> bool:
     return os.path.splitext(os.path.realpath(path))[1].lower() in tags_mod.AUDIO_EXTS
 
 
-def _walk(root: Path, visited: set[str], out: List[str]) -> None:
+def _walk(root: Path, visited: set[str], out: List[str], top: Optional[str] = None) -> None:
     try:
         real = os.path.realpath(root)
+        top = top or real  # the music folder this walk started from
         if real in visited:
             return
         visited.add(real)
@@ -130,9 +141,9 @@ def _walk(root: Path, visited: set[str], out: List[str]) -> None:
         try:
             link = entry.is_symlink()
             if entry.is_dir(follow_symlinks=True):
-                if link and not _safe_link_dir(os.path.realpath(entry.path)):
+                if link and not _safe_link_dir(os.path.realpath(entry.path), top):
                     continue
-                _walk(Path(entry.path), visited, out)
+                _walk(Path(entry.path), visited, out, top)
             elif entry.is_file(follow_symlinks=True):
                 if os.path.splitext(entry.name)[1].lower() in tags_mod.AUDIO_EXTS \
                         and (not link or is_audio_target(entry.path)):
@@ -159,6 +170,9 @@ def _entry_for(path: str, cached: Optional[Dict[str, Any]]) -> Optional[Dict[str
         "title": meta.get("title") or Path(path).stem,
         "artist": meta.get("artist"),
         "album": meta.get("album"),
+        # True when the album is only the folder's name (tags.probe's fallback): the numbers
+        # beside it are guesses too, so _book_continue must not trust them (grok a10r19).
+        "album_from_folder": bool(meta.get("album_from_folder")),
         "album_artist": meta.get("album_artist"),
         "track_no": meta.get("track_no"),
         "disc_no": meta.get("disc_no"),
@@ -482,11 +496,29 @@ def _matches(entry: Dict[str, Any], words: List[str]) -> bool:
     return all((t in hay) if _NO_SPACE_SCRIPTS.search(t) else (" " + t in padded) for t in tokens)
 
 
+def near_end(pos: float, duration: float, margin: float = 30) -> bool:
+    """A place in the last *margin* seconds of a file. A place past the stored length means the
+    length is wrong (a VBR guess), not that the file is finished."""
+    dur = float(duration or 0)
+    return dur > 0 and dur - margin <= float(pos or 0) <= dur + 1
+
+
+def natural(text: str) -> list:
+    """Names with numbers compared as numbers ("Chapter 2" before "Chapter 10"). ASCII digits
+    only: int() refuses some other Unicode digits ("１２")."""
+    return [(0, int(p), "") if p.isascii() and p.isdigit() else (1, 0, p.lower())
+            for p in re.split(r"([0-9]+)", str(text or "")) if p]
+
+
+def album_order(t: Dict[str, Any]) -> tuple:
+    """Within one album: disc, track number, then the title with numbers as numbers. The queue,
+    the Books list and a book's "next part" all use this, so they never disagree."""
+    return (t.get("disc_no") or 0, t.get("track_no") or 0, natural(t.get("title") or ""))
+
+
 _SORTERS = {
-    "artist": lambda t: ((t.get("artist") or "").lower(), (t.get("album") or "").lower(),
-                         t.get("track_no") or 0, (t.get("title") or "").lower()),
-    "album": lambda t: ((t.get("album") or "").lower(), t.get("disc_no") or 0,
-                        t.get("track_no") or 0, (t.get("title") or "").lower()),
+    "artist": lambda t: ((t.get("artist") or "").lower(), (t.get("album") or "").lower(), *album_order(t)),
+    "album": lambda t: ((t.get("album") or "").lower(), *album_order(t)),
     "title": lambda t: (t.get("title") or "").lower(),
     "added": lambda t: float(t.get("added") or 0),
 }
@@ -532,7 +564,7 @@ def _public(window: List[Dict[str, Any]], kinds: Dict[str, str]) -> List[Dict[st
                 pos = int(float(raw or 0))
             except (TypeError, ValueError):
                 pos = 0
-            if pos > 0:
+            if pos > 0 and not near_end(pos, t.get("duration")):  # finished: nothing to "left off" at
                 rec["resume"] = pos
         out.append(rec)
     return out

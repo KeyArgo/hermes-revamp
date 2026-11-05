@@ -29,7 +29,32 @@ from typing import Any, Dict, List, Optional, Tuple
 from . import store
 from .config import data_dir
 
-BROWSERS = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser", "microsoft-edge")
+BROWSERS = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser",
+            "microsoft-edge", "microsoft-edge-stable", "chrome", "msedge", "brave")
+
+
+def _os_family() -> str:
+    return "windows" if os.name == "nt" else ("mac" if sys.platform == "darwin" else "other")
+
+
+def _installed_browsers() -> List[str]:
+    """Where Chrome-family browsers install on Windows and macOS. They are not on PATH there,
+    so looking up command names alone found nothing, not even the Edge every Windows 10/11
+    has (user report, 11-03: "no Chrome or Chromium found")."""
+    found: List[str] = []
+    family = _os_family()
+    if family == "windows":
+        roots = [os.environ.get(k) for k in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
+        rel = (("Google", "Chrome", "Application", "chrome.exe"), ("Microsoft", "Edge", "Application", "msedge.exe"),
+               ("BraveSoftware", "Brave-Browser", "Application", "brave.exe"), ("Chromium", "Application", "chrome.exe"))
+        found = [os.path.join(r, *x) for x in rel for r in roots if r]
+    elif family == "mac":
+        apps = (("Google Chrome.app", "Contents", "MacOS", "Google Chrome"), ("Chromium.app", "Contents", "MacOS", "Chromium"),
+                ("Microsoft Edge.app", "Contents", "MacOS", "Microsoft Edge"),
+                ("Brave Browser.app", "Contents", "MacOS", "Brave Browser"))
+        found = [os.path.join(base, *a) for a in apps
+                 for base in ("/Applications", os.path.expanduser("~/Applications"))]
+    return [path for path in found if os.path.isfile(path)]
 WINDOW_SIZE = (300, 420)  # first paint; the page then sizes the window to the player stack
 
 _lock = threading.Lock()
@@ -76,11 +101,16 @@ def find_browser() -> Optional[str]:
     override = os.environ.get("REVAMP_FLOAT_BROWSER")
     if override:
         return shutil.which(override) or (override if os.path.isfile(override) else None)
+    # Where Windows and macOS install browsers first: on Windows, PATH usually holds only
+    # WindowsApps app-execution aliases, stubs that hand off to a browser and exit at once.
+    installed = _installed_browsers()
+    if installed and _os_family() != "other":
+        return installed[0]
     for name in BROWSERS:
         path = shutil.which(name)
-        if path:
+        if path and "windowsapps" not in path.replace("/", "\\").lower().split("\\"):
             return path
-    return None
+    return installed[0] if installed else None
 
 
 def float_gpu_args() -> List[str]:
@@ -305,7 +335,8 @@ def open_window(port: int, position: float = 0.0, playing: bool = False) -> Dict
             return {"open": True, "already": True}
         browser = find_browser()
         if not browser:
-            raise WindowError("no Chrome or Chromium found (set REVAMP_FLOAT_BROWSER to its path)")
+            raise WindowError("the desktop window needs Chrome, Edge, Brave or Chromium, and none was found "
+                              "(or set REVAMP_FLOAT_BROWSER to the browser's path)")
         store.update({"handoff": {"position": float(position or 0), "playing": bool(playing),
                                   "ts": time.time(), "for": "float"}})
         install_linux_desktop_identity()
@@ -465,8 +496,12 @@ def _apply_outer_size(width: int, height: int) -> bool:
         if not page or not page.get("targetId"):
             return False
         win = cdp([("Browser.getWindowForTarget", {"targetId": page["targetId"]})])[0]
-        bounds: Dict[str, Any] = {"width": int(width), "height": int(height), "windowState": "normal"}
         current = win.get("bounds") if isinstance(win.get("bounds"), dict) else {}
+        if current.get("windowState") == "fullscreen":
+            # Full-screen MilkDrop: a resize (sent as windowState "normal") would throw the window
+            # out of full screen. A fit already on its way when full screen began lands here.
+            return True
+        bounds: Dict[str, Any] = {"width": int(width), "height": int(height), "windowState": "normal"}
         for edge in ("left", "top"):
             if isinstance(current.get(edge), (int, float)) and not isinstance(current.get(edge), bool):
                 bounds[edge] = int(current[edge])

@@ -49,7 +49,7 @@ def _defaults() -> Dict[str, Any]:
         "volume": 80,
         "balance": 0,
         "eq": {"on": False, "preamp": 0.0, "bands": [0.0] * 10},
-        "skin": "classic",
+        "skin": "builtin:REVamp-Nous.wsz",  # REVamp Nous (light) first; Classic stays one click away
         "playlist": [],
         "current_index": -1,
         "shuffle": False,
@@ -124,6 +124,14 @@ def get_state() -> Dict[str, Any]:
         with_live = dict(st)
         with_live["live"] = _live_view(live)
         return with_live
+
+
+def heartbeat_age() -> float:
+    """Seconds since the last player heartbeat (infinite if none yet)."""
+    with _LOCK:
+        st = _load() if _STATE is None else _STATE
+        ts = float((st.get("live") or {}).get("last_heartbeat") or 0)
+    return time.time() - ts if ts else float("inf")
 
 
 def _live_view(live: Dict[str, Any]) -> Dict[str, Any]:

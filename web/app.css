@@ -481,7 +481,7 @@ body.approval-wait .approval-banner { display: inline-flex; }
    than the stage in pop-out mode and got overlapped by the panel), and it leaves the
    stage the full width. */
 @media (max-width: 899px) {
-  .shell { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; padding: 8px; gap: 8px; }
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; overflow-y: auto; padding: 8px; gap: 8px; }
   .brand, .nav button .label, .np-meta, .np-sleep, .np-sleep-left,
   .np-extras, .np-book, .np-art, .nowplaying-card { display: none; }
   /* min-height:auto, not the base 0: when the page is taller than the window (queue open) the
@@ -497,10 +497,10 @@ body.approval-wait .approval-banner { display: inline-flex; }
   .stage-wrap { grid-column: 1; grid-row: 2; height: max-content; min-height: 0; }
   .panel { grid-column: 1; grid-row: 3; min-height: 420px; }
   .tabbar { display: none !important; }
-  #app { grid-template-rows: auto 1fr auto; }
+  #app { grid-template-rows: 1fr auto; } /* main area, then the ticker (the tab bar is hidden here) */
   .ticker { margin: 0 8px 6px; }
 }
-body.embed .shell { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; padding: 8px; gap: 8px; }
+body.embed .shell { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; overflow-y: auto; padding: 8px; gap: 8px; }
 body.embed .brand, body.embed .nav button .label, body.embed .np-meta,
 body.embed .np-sleep, body.embed .np-sleep-left,
 body.embed .np-extras, body.embed .np-book, body.embed .np-art, body.embed .nowplaying-card { display: none; }
@@ -512,7 +512,7 @@ body.embed .stage { flex: none; height: auto; padding: 8px; }
 body.embed .stage-wrap { grid-column: 1; grid-row: 2; height: max-content; min-height: 0; }
 body.embed .panel { grid-column: 1; grid-row: 3; min-height: 420px; }
 body.embed .tabbar { display: none !important; }
-body.embed #app { grid-template-rows: auto 1fr auto; }
+body.embed #app { grid-template-rows: 1fr auto; }
 /* Very narrow Hermes Desktop pane: tighter gutters; --revamp-fit (set by app.js) scales
    whatever still does not fit the 275px classic stack. */
 @media (max-width: 419px) {
@@ -883,3 +883,11 @@ html[data-revamp-fx] .glass, html[data-revamp-bg] .glass { background: color-mix
   .theme-col { width: auto; }
   .theme-side { padding: 10px 0 0; border: 0; border-top: 1px solid var(--glass-brd); margin-top: 4px; }
 }
+
+/* One quiet bar when the server's key changed (app.js keyRejected). */
+.key-notice { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 99999;
+  display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 10px;
+  background: var(--panel, #161a22); color: var(--text, #e8ecf3); border: 1px solid var(--accent, #6c8cff);
+  font: 13px/1.3 system-ui, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.4); max-width: calc(100vw - 32px); }
+.key-notice button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 0; cursor: pointer;
+  background: var(--accent, #6c8cff); color: #fff; }

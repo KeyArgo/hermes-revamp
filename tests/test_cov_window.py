@@ -198,7 +198,7 @@ class FakeProc:
 
 def test_open_window_no_browser(monkeypatch, win):
     monkeypatch.setattr(window, "find_browser", lambda: None)
-    with pytest.raises(WindowError, match="no Chrome"):
+    with pytest.raises(WindowError, match="none was found"):
         window.open_window(8114)
 
 

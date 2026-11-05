@@ -181,7 +181,7 @@ async function pinColorfulPreset(page) {
 }
 
 async function record(serverPort, token, music, temp) {
-  await state(serverPort, token, { playlist: music, current_index: 0, skin: "classic", volume: 80, settings: { milkdropOpenFloating: true, milkdropOpen: true, ticker: true, duck_on_approval: true } });
+  await state(serverPort, token, { playlist: music, current_index: 0, skin: "classic", volume: 80, settings: { milkdropOn: true, ticker: true, duck_on_approval: true } });
   const page = await openPage(serverPort, CAPTURE_W, CAPTURE_H);
   await waitFor(() => evaluate(page, "Boolean(window.revampPlayerApi?.loadTracks && window.revampPlayerApi?.setVisualizerPlacement)"), "player API");
   await waitFor(async () => (await json(`http://127.0.0.1:${serverPort}/api/state`, { headers: { "X-Revamp-Token": token } })).live?.player_connected, "player connection");

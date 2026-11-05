@@ -10,6 +10,7 @@ protection. ``GET /`` injects the token as a meta tag and sends no ACAO.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
@@ -17,6 +18,8 @@ import os
 import socket
 import stat
 import sys
+import shutil
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -34,7 +37,7 @@ from .config import (data_dir, library_dirs, library_dirs_custom, library_folder
 
 logger = logging.getLogger("revamp.server")
 
-VERSION = "1.0.0-alpha.9"
+VERSION = "1.0.0-alpha.10"
 APP_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = APP_ROOT / "web"
 
@@ -66,20 +69,6 @@ def bridge_key(token: str) -> str:
     """Key for the page's postMessage bridge: proves a request comes from the Hermes plugin."""
     import hmac, hashlib
     return hmac.new(token.encode("utf-8"), b"revamp-bridge", hashlib.sha256).hexdigest() if token else ""
-
-
-def _opened_path(fd: int) -> Optional[str]:
-    """The real path of an open file, where the OS can say (Linux, macOS)."""
-    try:
-        if os.path.isdir("/proc/self/fd"):
-            return os.readlink(f"/proc/self/fd/{fd}")
-        import fcntl
-        if hasattr(fcntl, "F_GETPATH"):
-            raw = fcntl.fcntl(fd, fcntl.F_GETPATH, b"\0" * 1024)
-            return raw.split(b"\0", 1)[0].decode("utf-8", "surrogateescape") or None
-    except (OSError, ImportError, ValueError):
-        pass
-    return None
 
 
 _TOKEN_LOCK = threading.Lock()
@@ -262,6 +251,17 @@ def _socket_table_readable() -> bool:
 
 _SKIN_FILES = (".wsz", ".zip", ".png")  # all the page ever loads from a skin folder
 AGENT_EVENT_MAX_BYTES = 16 * 1024
+
+
+def _same_file(judged: os.stat_result, path: str) -> bool:
+    # Compared with the same call (lstat) before and after the open: lstat and fstat fill in
+    # st_ino from different Windows APIs, and a mismatch there would refuse every track.
+    try:
+        now = os.lstat(path)
+    except OSError:
+        return False
+    return not stat.S_ISLNK(now.st_mode) and os.path.samestat(judged, now) and \
+        (now.st_size, now.st_mtime_ns) == (judged.st_size, judged.st_mtime_ns)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -492,6 +492,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._sources("GET", path, qs, {})
         if path == "/api/playback":
             return self._send_json(playback.current())
+        if path == "/api/resume/book":
+            return self._send_json(_book_continue((qs.get("id") or [""])[0], (qs.get("from") or [""])[0]))
         if path == "/api/resume":
             key = (qs.get("key") or [""])[0]
             if not key:
@@ -679,9 +681,17 @@ class Handler(BaseHTTPRequestHandler):
             key = body.get("key")
             if not isinstance(key, str) or not key or len(key) > 512:
                 return self._err(400, "key required")
-            pos = _position(body.get("position"))
+            raw = body.get("position")
+            pos = _position(raw)
             if pos is False:
                 return self._err(400, "position must be a number")
+            if _keeps_finished_mark(key, pos):
+                return self._send_json({"ok": True, "kept": "finished"})
+            if pos is None and isinstance(raw, (int, float)) and not isinstance(raw, bool) \
+                    and _keeps_finished_mark(key, 0):
+                # A page floors its place, so 0.4 s in a replay of a finished part is a plain 0
+                # (grok a10r16). It means "still in the opening second", not "forget this book".
+                return self._send_json({"ok": True, "kept": "finished"})
             try:
                 sources.set_progress(key, pos)
             except sources.SourceError as exc:
@@ -971,27 +981,36 @@ class Handler(BaseHTTPRequestHandler):
         *check* vets the path after it is opened, and the opened file must still be the
         one at *path*: a file swapped for a link between a check and the open is never
         served."""
+        # Resolve links first, judge the real file, then open exactly that path without following
+        # a link at its end: nothing swapped in afterwards can change which file is served.
+        # (No file-descriptor lookups: Hermes's plugin scan rates those a HIGH finding.)
+        target = path
+        if check is not None:
+            try:
+                target = os.path.realpath(path)
+            except OSError:
+                return self._err(404, "file vanished")
+            if not check(target):
+                return self._err(404, "not an audio file")
+        # Windows has no O_NOFOLLOW: note which file was judged, and serve only that same file.
+        judged = None
+        if check is not None and not hasattr(os, "O_NOFOLLOW"):
+            try:
+                judged = os.lstat(target)
+            except OSError:
+                return self._err(404, "file vanished")
+            if stat.S_ISLNK(judged.st_mode):
+                return self._err(404, "not an audio file")
         try:
             # Non-blocking so a path swapped for a FIFO cannot hang this thread.
-            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
+            fd = os.open(target, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+                         | (getattr(os, "O_NOFOLLOW", 0) if check is not None else 0))
         except OSError:
             return self._err(404, "file vanished")
         with os.fdopen(fd, "rb") as fh:
             try:
                 st = os.fstat(fd)
-                ok = stat.S_ISREG(st.st_mode)
-                if ok and check is not None:
-                    opened = _opened_path(fd)
-                    if opened:
-                        ok = check(opened)  # judge the file actually opened, not the name
-                    else:
-                        # No way to name the open file here: it must be the file at *path*
-                        # both before and after the check.
-                        ident = (st.st_dev, st.st_ino)
-                        before = os.stat(path)
-                        ok = check(path)
-                        after = os.stat(path)
-                        ok = ok and (before.st_dev, before.st_ino) == ident == (after.st_dev, after.st_ino)
+                ok = stat.S_ISREG(st.st_mode) and (judged is None or _same_file(judged, target))
             except OSError:
                 ok = False
             if not ok:
@@ -1536,11 +1555,114 @@ def _fs_dirs_handler(request: "Handler", raw_path: str) -> None:
 # Server lifecycle
 # ---------------------------------------------------------------------------
 
+BOOK_PLACE_MIN = 30  # seconds: a shorter place means "just started", not "where I was"
+
+
+def _keeps_finished_mark(key: str, pos: Any) -> bool:
+    """A part listened to the end keeps that mark when it is played again from the start: the
+    first seconds of a replay must not make continue forget that this part was finished.
+
+    ``pos`` 0 is "still in the opening second", not a clear (grok a10r16: a replay saved
+    ``0`` and erased the finished mark of the part)."""
+    if not (isinstance(key, str) and key.startswith("local:track:")) or pos is None or pos > BOOK_PLACE_MIN:
+        return False
+    t = library.get_track(key[len("local:track:"):])
+    old, _ = store.get_resume_entry(key)
+    if old is None or not _finished_place(t, old):
+        return False
+    # A report that is itself the end of the file is a fresh finish: store it (with a new time),
+    # or a short part replayed and finished again never becomes the newest mark and continue goes
+    # back to an older part (codex a10r18).
+    return not _finished_place(t, pos)
+
+
+def _finished_place(track: Any, pos: Any) -> bool:
+    """A saved place in the last stretch of *track*.
+
+    The margin must be the same 30 s the page refuses to seek into (player.js: ``pos >= dur - 30``
+    starts the file from the top), or the two disagree: a place the server calls real but the page
+    calls "the end" is dropped the moment the person replays that part. Only a file shorter than
+    30 s gets a smaller window, so a place 10 s into a 20 s part is not "finished" (codex a10r16,
+    grok a10r17)."""
+    dur = float((track or {}).get("duration") or 0)
+    margin = BOOK_PLACE_MIN if dur > BOOK_PLACE_MIN else max(2.0, dur * 0.1)
+    return library.near_end(pos, dur, margin)
+
+
+def _book_continue(track_id: str, came_from: str = "") -> dict:
+    """A book in several files (one folder, one album): started from its first file, where was
+    the person last? ``{"id", "position", "part", "parts"}`` for the file with the newest real
+    place, or ``{}`` (play the file as asked). A later file picked on purpose plays as asked,
+    and so does part 1 reached from inside the same book (*came_from*: Previous, repeat, a pick
+    of part 1 while listening to the book)."""
+    t = library.get_track(track_id) if isinstance(track_id, str) and track_id else None
+    if not t or library.kind_of(t) != "audiobook":
+        return {}
+    # Album compared like the Books list does (ignoring case), so "Dune" and "dune" are one book.
+    folder, album = os.path.dirname(str(t.get("path") or "")), (t.get("album") or "").strip().casefold()
+    same = [x for x in library.all_tracks()
+            if os.path.dirname(str(x.get("path") or "")) == folder and (x.get("album") or "").strip().casefold() == album]
+    if not album or album == os.path.basename(folder).strip().casefold():
+        # No album of its own (the scanner fills in the folder's name): only numbered parts of
+        # one name ("Saga 01", "Saga 02", or "001", "002") are one book. Separate books side by
+        # side ("Dune.m4b", "Foundation.m4b"; "1984", "Fahrenheit 451") never are.
+        # Distinct track numbers on every file prove the order on their own -- but only when the
+        # album is a real tag: when it is just the folder's name, the scanner also invented the
+        # numbers, so "01 Dune" / "02 Foundation" would look like one book (grok a10r18/a10r19).
+        nos = [x.get("track_no") for x in same]
+        # A missing marker means an index older than alpha.10 (cached entries are not re-read when
+        # size+mtime match), so treat it as the folder-name fallback too: an upgraded library must
+        # not start merging separate books again (claude a10r20).
+        tagged_album = all(x.get("album_from_folder") is False for x in same)
+        numbered = tagged_album and all(isinstance(n, int) and not isinstance(n, bool) and n > 0
+                                        for n in nos) and len(set(nos)) == len(nos)
+        stems = [os.path.splitext(os.path.basename(str(x.get("path") or "")))[0] for x in same]
+        skeleton = {re.sub(r"[0-9]+", "#", st).strip().casefold() for st in stems}
+        # A zero-padded series ("001", "002", ...) is a chapter index even with no other name.
+        numeric_series = all(re.fullmatch(r"0[0-9]*", st.strip()) for st in stems) and \
+            len({len(st.strip()) for st in stems}) == 1
+        # One shared name with its numbers ("Saga 01"/"Saga 02"), keeping at least one letter:
+        # bare numbers are titles of their own ("1984", "2001"), never parts of one book.
+        one_name = numeric_series or (
+            all(re.search(r"[0-9]", st) for st in stems) and len(skeleton) == 1
+            and any(c.isalpha() for c in next(iter(skeleton))))
+        if not one_name and not numbered:
+            return {}
+    # Exactly the Books list's (the queue's) order, so "next part" is the part that plays next.
+    parts = sorted(same, key=library._SORTERS["artist"])
+    if len(parts) < 2 or parts[0].get("id") != track_id:
+        return {}
+    if came_from and any(x.get("id") == came_from for x in parts):
+        return {}
+    best, best_at, best_pos, best_n = None, -1.0, 0, 0
+    for n, x in enumerate(parts, 1):
+        pos, at = store.get_resume_entry(items.local_id(str(x.get("id"))))
+        # A short part never reaches BOOK_PLACE_MIN, so its own end counts as a real place.
+        if pos is not None and (pos > BOOK_PLACE_MIN or _finished_place(x, pos)) \
+                and float(at or 0) > best_at:
+            best, best_at, best_pos, best_n = x, float(at or 0), int(pos), n
+    if best is not None:
+        if _finished_place(best, best_pos):
+            if best_n == len(parts):
+                return {"restart": True}  # the whole book is done: part 1 from its very start
+            # Stopped at the end of a part: go on with the next one, from its start.
+            best, best_pos, best_n = parts[best_n], 0, best_n + 1
+    if best is None or best.get("id") == track_id:
+        return {}
+    return {"id": best.get("id"), "position": best_pos, "part": best_n, "parts": len(parts)}
+
+
 def _health_payload(srv: Any) -> dict:
     return {"app": "revamp", "version": getattr(srv, "revamp_version", VERSION),
             "build": getattr(srv, "revamp_build", web_build()), "pid": os.getpid(),
+            # The page files on disk now ("build" is what this process started with): a page
+            # compares its own stamp with this, or one loaded after an update reloads forever.
+            "files": web_build(),
             "started_at": getattr(srv, "revamp_started_at", time.time()),
-            "owner": getattr(srv, "revamp_owner", "plugin")}
+            "owner": getattr(srv, "revamp_owner", "plugin"),
+            # A random id per running server: a watcher re-proves who holds the port whenever it
+            # changes, so an old proof never vouches for a different server (council round 3).
+            "instance": getattr(srv, "revamp_instance", "")}
 
 
 def _probe_health(port: int, timeout: float = 2.0) -> Optional[dict]:
@@ -1576,35 +1698,270 @@ def build_server(port: Optional[int] = None, data: Optional[str] = None,
     srv.revamp_build = build or web_build()
     srv.revamp_owner = "service" if owner == "service" else "plugin"
     srv.revamp_started_at = time.time()
+    import secrets as _secrets
+    srv.revamp_instance = _secrets.token_hex(8)
     return srv
 
 
 WATCH_INTERVAL = 5.0
+SERVICE_GRACE = 15.0  # seconds a vanished service gets to come back before a plugin takes over
 _watching = False
+_watch_gen = 0  # bumped to retire every running watcher (tests start many)
+_taking_over = False
 _owned = False  # this process holds the port
 
 
-def _watch_owner(port: int) -> None:
-    """Start (once per process) a thread that serves the port if its owner dies."""
+# ---------------------------------------------------------------------------
+# Port lease: which library holds the port. One Hermes gateway can host REVamp for several
+# profiles, all wanting the same port; the server holding it refreshes a small lease (its data
+# dir's fingerprint + time), also across its own restart. Another profile's REVamp never binds
+# while that lease is fresh, so a restart gap can't hand our port to another library
+# (incident 11-02, council round 4). A stale lease means that REVamp is gone: the port is free.
+# ---------------------------------------------------------------------------
+
+LEASE_TTL = 30.0
+LEASE_REFRESH = 10.0
+
+
+def _lease_dir() -> Path:
+    """One folder per user, the same for every REVamp process of that user whatever its
+    environment (a systemd unit and the Hermes gateway can differ in XDG_RUNTIME_DIR), and
+    private to the user (not a shared /tmp another account could write into)."""
+    raw = os.environ.get("REVAMP_LEASE_DIR")
+    if raw:
+        d = Path(raw)
+    elif os.name == "nt":
+        d = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "revamp" / "run"
+    else:
+        d = Path.home() / ".local" / "state" / "revamp" / "run"
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        if os.name == "posix":
+            os.chmod(d, 0o700)
+    except OSError:
+        pass
+    return d
+
+
+def _lease_path(port: int) -> Path:
+    return _lease_dir() / f"revamp-port-{int(port)}.lease"
+
+
+def _lease_id() -> str:
+    import hashlib
+    return hashlib.sha256(str(data_dir().resolve()).encode("utf-8", "surrogateescape")).hexdigest()[:16]
+
+
+def _read_lease(port: int) -> Optional[dict]:
+    try:
+        raw = json.loads(_lease_path(port).read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) and isinstance(raw.get("data"), str) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _write_lease(port: int) -> None:
+    p = _lease_path(port)
+    tmp = p.with_name(f".{p.name}.{os.getpid()}")
+    try:
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"data": _lease_id(), "ts": time.time(), "pid": os.getpid()}, fh)
+        os.replace(str(tmp), str(p))
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+
+def _lock_fh(fh: Any) -> None:
+    """Take an exclusive lock on *fh*; raises OSError when it could not (never silently unlocked).
+
+    ``msvcrt.locking`` cannot lock a byte of an empty file (errno 13), which is what the lock
+    file used to be on Windows, so the port check ran unprotected (grok a10r16)."""
+    try:
+        fh.seek(0, os.SEEK_END)
+        if fh.tell() == 0:
+            fh.write(b"\0")
+            fh.flush()
+    except OSError:
+        pass
+    try:
+        import fcntl
+    except ImportError:  # Windows
+        import msvcrt
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        return
+    fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+
+
+@contextlib.contextmanager
+def _port_lock(port: int):
+    """Serialises "may I take the port? bind it, write the lease" across REVamp processes, so two
+    profiles can never both pass the check and then bind (council round 8). Best effort where the
+    platform has no file locks, but a lock that fails is logged, never passed off as held."""
+    path = _lease_path(port).with_suffix(".lock")
+    fh = None
+    try:
+        fh = open(path, "a+b")
+        _lock_fh(fh)
+    except OSError as exc:
+        logger.error("revamp: could not serialise the port decision on %s (%s)", port, exc)
+    try:
+        yield
+    finally:
+        if fh is not None:
+            try:
+                fh.close()  # closing releases the lock
+            except OSError:
+                pass
+
+
+def _may_take_port(port: int, was_ours: Optional[bool]) -> bool:
+    """May this REVamp bind *port* now that nothing answers there?"""
+    lease = _read_lease(port)
+    if lease is None:
+        # No lease (nothing ever held it, or a REVamp from before leases): a watcher needs proof
+        # it was ours; a start-up that found nothing passes None and may go ahead.
+        return was_ours is not False
+    if time.time() - float(lease.get("ts") or 0) > LEASE_TTL:
+        return True  # whoever held it has been gone a while
+    return lease.get("data") == _lease_id()
+
+
+def _keep_lease(port: int, srv: Any) -> None:
+    _write_lease(port)
+
+    def run() -> None:
+        while getattr(srv, "socket", None) is not None and srv.socket.fileno() != -1:
+            time.sleep(LEASE_REFRESH)
+            if srv.socket.fileno() == -1:
+                break
+            try:
+                _write_lease(port)
+            except Exception:  # one bad refresh must not end the lease for good
+                logger.debug("revamp: lease refresh failed", exc_info=True)
+    threading.Thread(target=run, name="revamp-lease", daemon=True).start()
+
+
+def _retry_after_lease(port: int, **kwargs: Any) -> None:
+    """A start-up refused by another library's fresh lease tries again once it has gone stale (that
+    REVamp never came back) or the port answers (then the usual rules apply). Once per process."""
+    global _lease_retrying
+    with _lock:
+        if _lease_retrying:
+            return
+        _lease_retrying = True
+
+    def run() -> None:
+        global _lease_retrying, _started
+        try:
+            while True:
+                time.sleep(WATCH_INTERVAL)
+                if _probe_health(port) is not None:
+                    # Answering again: if it is our own install, the usual watching takes over;
+                    # another library's server is waited out here, never handed to a watcher.
+                    if proof.listener_identity(f"http://127.0.0.1:{int(port)}", get_token()) is True:
+                        if ensure_server(port, **kwargs) is not None:
+                            return
+                        with _lock:  # refused again in between (a lease appeared): keep trying
+                            _started = False
+                    continue
+                if _may_take_port(port, None):
+                    ensure_server(port, **kwargs)
+                    if _owned:
+                        return
+        finally:
+            with _lock:
+                _lease_retrying = False
+    threading.Thread(target=run, name="revamp-lease-retry", daemon=True).start()
+
+
+_lease_retrying = False
+
+
+def _watch_owner(port: int, owner: Optional[str] = None, ours: Optional[bool] = None,
+                 instance: Optional[str] = None, as_owner: str = "plugin") -> None:
+    """Start (once per process) a thread that serves the port if its owner dies.
+
+    A port proven to be ours (the server there knows our token: same profile, same library)
+    is taken over after a short grace; any other only once nothing has answered for longer
+    than a lease lasts and no other library holds a fresh lease, as a fresh start-up would:
+    another profile's REVamp never steps in during a restart (incident 11-02). *owner* and
+    *ours* are what the caller just saw, so a service gone before the first poll still gets
+    its grace."""
     global _watching, _started
     with _lock:
         if _watching:
             return
         _watching = True
 
+    gen = _watch_gen
+
     def run() -> None:
-        global _watching, _started
+        global _watching, _started, _taking_over
+        last_owner: Optional[str] = owner
+        was_ours: Optional[bool] = ours
+        # What the caller saw, so even the first poll notices a different server (round 6).
+        seen: Tuple[Any, ...] = (instance,) if ours is not None else ()
+        checked_at = 0.0
+        missed = 0
         while True:
             time.sleep(WATCH_INTERVAL)
+            if gen != _watch_gen:
+                return
             health = _probe_health(port)
             if health and health.get("app") == "revamp":
+                last_owner, missed = health.get("owner"), 0
+                # Prove who it is when something about it changed, or once a minute: not a
+                # second request every 5 s. A timeout ("can't tell") keeps what we knew.
+                now_seen = (health.get("instance"), health.get("owner"), health.get("version"), health.get("build"))
+                if seen and now_seen[0] != seen[0]:
+                    was_ours = None  # a different server: an old proof never vouches for it (round 4)
+                # An older server has no instance id: continuity can't be shown, so prove every poll.
+                if not now_seen[0] or now_seen != seen or was_ours is None or time.monotonic() - checked_at > 60:
+                    ident = proof.listener_identity(f"http://127.0.0.1:{int(port)}", get_token())
+                    if ident is not None:
+                        was_ours = ident
+                    elif not now_seen[0]:
+                        was_ours = None  # an old server we can't follow: unproven until it proves again
+                    seen, checked_at = now_seen, time.monotonic()
+                continue
+            # A watcher only ever takes back a port proven to be ours, and never against another
+            # library's fresh lease. A stale lease frees the port for a new start-up, not for a
+            # watcher of a different profile (council round 5).
+            # Another library's lease here, even a stale one, means a server we never saw held the
+            # port since our last proof: that proof no longer counts (council round 9).
+            missed += 1  # polls in a row with nothing answering
+            lease = _read_lease(port)
+            if lease is not None and lease.get("data") != _lease_id():
+                was_ours = None
+            if was_ours is not True:
+                # Not ours (or never proven): only once the port has been free longer than a
+                # lease lasts, and no other library holds a fresh lease, may it be taken, as a
+                # fresh start-up would. A restart (seconds) never qualifies.
+                if missed * WATCH_INTERVAL < LEASE_TTL or not _may_take_port(port, None):
+                    continue
+            elif not _may_take_port(port, True):
+                continue
+            # A service that stops answering is usually being restarted by systemd (an update,
+            # a crash): give it time to come back before a plugin takes its port.
+            if last_owner == "service" and missed * WATCH_INTERVAL < SERVICE_GRACE:
                 continue
             if health is None and _foreign_holder(port):
                 continue  # someone else's app; ensure_server's warning covers it
             with _lock:
                 _watching = False
                 _started = False
-            if ensure_server(port) is not None:
+                _taking_over = True  # main() keeps a service alive through this (probes take seconds)
+            try:
+                took = ensure_server(port, owner=as_owner)  # a service stays a service
+            finally:
+                with _lock:
+                    _taking_over = False
+            if took is not None:
                 if _owned:
                     logger.info("revamp: took over port %s after its owner went away", port)
                 return  # we serve it now, or a fresh watcher took over the watching
@@ -1637,8 +1994,19 @@ def web_build() -> str:
     return _BUILD[1]
 
 
+_PRE_RANK = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}
+
+
 def _version_key(value: Any) -> Tuple[int, ...]:
-    return tuple(int(part) for part in re.findall(r"\d+", str(value))[:3]) or (0,)
+    """Comparable version: 1.0.0-alpha.9 < 1.0.0-alpha.10 < 1.0.0-beta.1 < 1.0.0-rc.1 < 1.0.0.
+    (Only the first three numbers used to count, so every 1.0.0 alpha looked the same.)"""
+    m = re.match(r"\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-.]?([A-Za-z]+)[-.]?(\d+)?)?", str(value or ""))
+    if not m:
+        return (0,)
+    major, minor, patch = (int(x) if x else 0 for x in m.group(1, 2, 3))
+    if not m.group(4):
+        return (major, minor, patch, 3, 0)  # a release sorts after all its pre-releases
+    return (major, minor, patch, _PRE_RANK.get(m.group(4).lower(), 0), int(m.group(5) or 0))
 
 
 def _request_upgrade_shutdown(port: int, token: str) -> bool:
@@ -1667,14 +2035,26 @@ def _wait_for_port_release(port: int, timeout: float = 3.0) -> bool:
 
 
 def _shutdown_for_upgrade(srv: ThreadingHTTPServer) -> None:
-    """Release the listener after its acknowledgement has reached the upgrader."""
+    """Release the listener after its acknowledgement has reached the upgrader.
+
+    Giving the port away used to leave ``_started``/``_owned`` set and start no watcher, so if the
+    new owner later stopped (systemd stop, a crash) nothing served the port again until Hermes
+    restarted (claude a10r19)."""
+    global _started, _owned
+    owner = "service" if getattr(srv, "revamp_owner", "plugin") == "service" else "plugin"
+    port = srv.server_address[1]
     time.sleep(0.05)
     srv.shutdown()
     srv.server_close()
+    with _lock:
+        _started = False
+        _owned = False
+    _watch_owner(port, owner=owner, ours=True, as_owner=owner)
 
 
 def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
-                  version: Optional[str] = None, build: Optional[str] = None) -> Optional[int]:
+                  version: Optional[str] = None, build: Optional[str] = None,
+                  _raced: int = 0) -> Optional[int]:
     """Idempotently start the server. Returns the bound port, or None.
 
     If the port already serves a healthy Revamp, do nothing. If a foreign app
@@ -1700,36 +2080,104 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
         # incumbents, but have no upgrade protocol metadata; watch and take
         # over if they disappear instead of rejecting the caller outright.
         legacy_incumbent = not any(health.get(key) for key in ("owner", "version", "build"))
-        should_yield = owner != "service" and incumbent_owner == "service" and incumbent_version >= local_version
+        # A plugin never asks a REVamp service to step aside, whatever its version or build:
+        # systemd owns that process and restarts it on upgrade. Asking it to shut down left the
+        # port free for a moment, and another REVamp (another profile in the same gateway)
+        # grabbed it with its own empty library.
+        # Same install = the server there proves it holds our token (same profile, same library);
+        # None when it could not be told (a timeout), which the watcher keeps re-checking.
+        same_install = proof.listener_identity(f"http://127.0.0.1:{port}", token)
+        should_yield = owner != "service" and incumbent_owner == "service"
         should_upgrade = (local_version > incumbent_version or build != health.get("build") or
                           (owner == "service" and incumbent_owner != "service"))
+        if should_yield:
+            # A plugin never shuts a service down or restarts it: the hand-over leaves the port free
+            # for a moment, and another REVamp can take it. From alpha.10 the service updates itself
+            # (_restart_when_updated); an older one is restarted by the person, once.
+            should_upgrade = False
+            if local_version > incumbent_version and same_install is not False:
+                if incumbent_version < _version_key(SELF_UPDATING_SINCE):
+                    logger.warning("revamp: the REVamp service runs %s; run `systemctl --user restart "
+                                   "revamp` once to finish updating to %s (it updates itself after that)",
+                                   health.get("version") or "an older version", version)
+                else:
+                    logger.warning("revamp: the REVamp service runs %s, older than this plugin (%s); it "
+                                   "updates itself only from its own install folder", health.get("version"), version)
+        if should_upgrade and same_install is True:
+            _write_lease(port)  # same library (proven): claim the port before the incumbent lets it go
         if should_upgrade and _request_upgrade_shutdown(port, token) and _wait_for_port_release(port):
             health = None
         elif legacy_incumbent or should_yield or not should_upgrade:
-            logger.info("revamp: healthy %s already owns port %s; watching it", incumbent_owner or "server", port)
-            _watch_owner(port)
+            if same_install is False:
+                # It proved it is a different library (another profile): say so, never silently
+                # show that library as this one's.
+                logger.warning("revamp: port %s is used by another profile's REVamp; set "
+                               "plugins.entries.revamp.port to run both", port)
+            else:
+                logger.info("revamp: healthy %s already owns port %s; watching it", incumbent_owner or "server", port)
+            _watch_owner(port, owner=incumbent_owner, ours=same_install, instance=health.get("instance"),
+                         as_owner=owner)
             return port
         else:
-            logger.warning("revamp: healthy older REVamp on port %s would not hand over", port)
+            if same_install is False:
+                logger.warning("revamp: port %s is used by another profile's REVamp; set "
+                               "plugins.entries.revamp.port to run both", port)
+            else:
+                logger.warning("revamp: healthy older REVamp on port %s would not hand over", port)
+            # Keep watching it all the same (a failed hand-over of our own install must still be
+            # rescued if that server dies; another profile's never is: proof and lease decide).
+            _watch_owner(port, owner=incumbent_owner, ours=same_install, instance=health.get("instance"),
+                         as_owner=owner)
+            return None
+    # Check the lease, bind and write our lease as one step no other REVamp process can split.
+    with _port_lock(port):
+        if health is None and not _foreign_holder(port) and not _may_take_port(port, None):
+            # Another profile's REVamp holds a fresh lease on this port (it is restarting): wait
+            # for it, never step in with this library.
+            logger.warning("revamp: port %s is reserved by another profile's REVamp; set "
+                           "plugins.entries.revamp.port to run both", port)
             with _lock:
                 _started = False
+            _retry_after_lease(port, owner=owner, version=version, build=build)
             return None
-    if health is None and _foreign_holder(port):
-        logger.warning(
-            "revamp: port %s is held by a NON-Revamp app; set "
-            "plugins.entries.revamp.port in config.yaml (or $REVAMP_PORT) "
-            "and restart.", port)
-        with _lock:
-            _started = False
+        raced = False
+        if health is None and _foreign_holder(port):
+            # Another REVamp (another profile starting at the same moment) may have bound it while
+            # we waited for the lock: that is not a foreign app, and gets the usual ownership rules.
+            # (At most twice: two REVamps starting and stopping in lockstep can't loop forever.)
+            raced = _raced < 2 and (_probe_health(port) or {}).get("app") == "revamp"
+            with _lock:
+                _started = False
+            if not raced:
+                logger.warning(
+                    "revamp: port %s is held by a NON-Revamp app; set "
+                    "plugins.entries.revamp.port in config.yaml (or $REVAMP_PORT) "
+                    "and restart.", port)
+                return None
+        lost_bind = None
+        if not raced:
+            try:
+                srv = build_server(port, version=version, build=build, owner=owner)
+            except OSError as exc:
+                with _lock:
+                    _started = False
+                lost_bind = exc
+            else:
+                _owned = True
+                _keep_lease(port, srv)
+    if lost_bind is not None:
+        # Two profiles passed the check together (a platform whose file lock failed, or a lease
+        # written a moment after the bind): the loser used to give up and show the winner's
+        # library. Decide again by the usual ownership rules instead (grok a10r16) -- but only
+        # after leaving the lock, since the retry takes it again and flock is not re-entrant
+        # (codex a10r17).
+        if _raced < 2 and (_probe_health(port) or {}).get("app") == "revamp":
+            logger.info("revamp: lost the bind race for port %s (%s); deciding again", port, lost_bind)
+            return ensure_server(port, owner=owner, version=version, build=build, _raced=_raced + 1)
+        logger.error("revamp: cannot bind 127.0.0.1:%s (%s)", port, lost_bind)
         return None
-    try:
-        srv = build_server(port, version=version, build=build, owner=owner)
-    except OSError as exc:
-        with _lock:
-            _started = False
-        logger.error("revamp: cannot bind 127.0.0.1:%s (%s)", port, exc)
-        return None
-    _owned = True
+    if raced:  # lost a start-up race to another REVamp: decide again, now that it answers
+        return ensure_server(port, owner=owner, version=version, build=build, _raced=_raced + 1)
     srv.daemon_threads = True
     t = threading.Thread(target=srv.serve_forever, name="revamp-http", daemon=True)
     t.start()
@@ -1756,6 +2204,91 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     return port
 
 
+UPDATE_CHECK = 30.0
+SELF_UPDATING_SINCE = "1.0.0-alpha.10"  # services from this version restart themselves on update
+
+
+def _installed_version() -> str:
+    """The version in plugin.yaml on disk (an update replaces it under the running service)."""
+    try:
+        for line in (Path(__file__).resolve().parents[1] / "plugin.yaml").read_text(encoding="utf-8").splitlines():
+            if line.startswith("version:"):
+                return line.split(":", 1)[1].strip().strip("'\"")
+    except OSError:
+        pass
+    return ""
+
+
+PLAYING_GRACE = 180.0  # a hidden Hermes window may heartbeat only about once a minute
+
+
+def _is_playing(live: dict, heard_recently: bool) -> bool:
+    # A "PLAYING" left behind by a page that went away long ago is not playing; one from a page
+    # that heartbeats slowly because Hermes is minimised still is.
+    now = live.get("now_playing") or {}
+    return (bool(live.get("player_connected")) or heard_recently) and \
+        str(now.get("status") or "").upper() == "PLAYING"
+
+
+def _quiet_for_restart() -> bool:
+    try:
+        playing = _is_playing(store.get_state().get("live") or {},
+                              heard_recently=store.heartbeat_age() < PLAYING_GRACE)
+    except Exception:
+        return False  # can't tell: count it as busy
+    return not playing and not window.is_open()
+
+
+def _reenter_install_dir(start_dir: str) -> None:
+    """Move back into the install folder **by name** before re-exec.
+
+    Hermes updates a plugin by swapping the folder (old one renamed aside or deleted), so a
+    process whose working folder follows the old inode sits in a folder that is gone, and
+    ``python -m`` finds no package there: the service dies on restart (claude a10r16). The name
+    now points at the new copy, so re-entering it is enough. No-op when it is the same folder."""
+    if not start_dir:
+        return
+    try:
+        here, there = os.stat("."), os.stat(start_dir)
+    except OSError:
+        here = there = None
+    if here is not None and there is not None \
+            and (here.st_dev, here.st_ino) == (there.st_dev, there.st_ino):
+        return  # same folder, nothing to re-enter
+    os.chdir(start_dir)
+
+
+def _restart_when_updated() -> None:
+    """The service restarts itself (same process, same systemd unit) when a newer REVamp is
+    installed under it. Plugins never ask it to step aside any more (incident 11-02)."""
+    def run() -> None:
+        quiet_before = False
+        try:
+            start_dir = os.getcwd()  # the install folder's path name, not its inode
+        except OSError:
+            start_dir = ""
+        while True:
+            time.sleep(UPDATE_CHECK)
+            disk = _installed_version()
+            if disk and _version_key(disk) > _version_key(VERSION):
+                quiet, quiet_before = quiet_before, _quiet_for_restart()
+                # Quiet on two checks in a row: a page that just reconnected (reporting STOPPED
+                # before its first Play) is not cut off seconds later.
+                if not (quiet and quiet_before):
+                    continue  # music playing or a desktop window open: never cut it off; try later
+                logger.info("revamp: %s installed under running %s; restarting", disk, VERSION)
+                for handler in logging.getLogger().handlers:
+                    handler.flush()  # (not logging.shutdown(): if the exec fails we keep logging)
+                argv = list(getattr(sys, "orig_argv", []) or [sys.executable, "-m", "revamp_core.server", *sys.argv[1:]])
+                try:
+                    _reenter_install_dir(start_dir)
+                    os.execv(sys.executable, argv)
+                except OSError:  # (a half-finished update): keep serving the old code, try again later
+                    logger.warning("revamp: could not restart on %s; still running %s", disk, VERSION, exc_info=True)
+                    quiet_before = False
+    threading.Thread(target=run, name="revamp-update-check", daemon=True).start()
+
+
 def main() -> None:
     import argparse
     ap = argparse.ArgumentParser(prog="python -m revamp_core.server")
@@ -1771,6 +2304,17 @@ def main() -> None:
     # The optional systemd unit is the durable owner.  Plugin-loaded instances
     # yield to it when it is healthy at the same or a newer release.
     port = ensure_server(args.port, owner="service")
+    _restart_when_updated()
+    # Waiting for the port (another profile's REVamp holds it, or a lease): a service stays up
+    # and takes the port when it frees, instead of exiting and being given up on by systemd.
+    # (Given up only after 3 s with none of them; a watcher mid-takeover sets _taking_over.)
+    waiting = lambda: _lease_retrying or _watching or _taking_over  # noqa: E731
+    idle = 0 if waiting() else 3
+    while port is None and not _owned and idle < 3:
+        time.sleep(1)  # the retry and watcher threads are daemons: this process must stay
+        idle = 0 if waiting() else idle + 1
+    if port is None and _owned:
+        port = int(args.port or setting("port"))
     if port is None:
         raise SystemExit(2)
     # Standalone: scan synchronously once so the index is warm immediately.

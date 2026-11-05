@@ -136,9 +136,14 @@ Agent activity ticker with a live tool event.
 
 Player settings, approval chime/dip controls, recovery backup actions, and the event log.
 
+## Show and hide the Frame
+
+Click the **×** at the top of the Frame to hide it. Your music keeps playing. Press `Ctrl+Alt+F` (`Cmd+Option+F` on Mac), or run **REVamp: Show / Hide Frame** from the command palette, to bring it back. These are REVamp's own shortcuts; all of them are listed under REVamp in Hermes's Keyboard Shortcuts settings, where you can change them.
+
 ## Troubleshooting
 
 - If the mini player is offline, choose **Reconnect**; the server keeps its queue and position.
+- If the mini player is gone after a restart, Hermes is probably in Simple mode, which hides the status bar each time it starts. Switch to Advanced from the command palette. `Ctrl+Shift+S` (`Cmd+Shift+S` on Mac) shows the bar until the next restart.
 - Reopen Hermes after a plugin update. **REVamp: Reload Player** reloads the player view (its embedded iframe), not the installed plugin or an update.
 - Set `REVAMP_FLOAT_BROWSER` to a Chrome/Chromium executable when pop-out browser discovery fails.
 - Install FFmpeg for `ffprobe` if audiobook chapters are missing. Durations and basic tags are read without it.

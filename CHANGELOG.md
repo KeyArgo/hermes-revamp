@@ -2,6 +2,38 @@
 
 Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
 
+## 1.0.0-alpha.10 - 2026-11-03 (pre-release)
+
+- The nav icons sit in a row across the top in narrow layouts and inside Hermes, so the panel below can no longer cover them (thanks to Pukujan). The agent strip at the bottom stays a thin bar.
+- Pop out to desktop finds Chrome, Edge, Brave or Chromium where Windows and macOS install them. Before, it said "no Chrome or Chromium found" on those systems.
+- Installing from GitHub no longer stops at a security-scan confirmation: the scan is back to "safe".
+- MilkDrop stays open when you move the player into its own desktop window, and its full screen there works on the first try. Your MilkDrop choice is now the same in every place.
+- REVamp's player and Hermes can no longer end up talking to two different REVamp servers: a REVamp only ever takes over an address it can prove is its own, holds a lease on it while it runs, and the background service updates itself when a newer version is installed.
+- If the server's key ever changes, REVamp shows one "Reconnect" notice instead of an error on every click, and your music keeps playing.
+- Tells versions apart correctly (alpha.9 is older than alpha.10).
+- Audiobooks in several files (001.mp3, 002.mp3 ...) remember which file you were in: starting the book goes on in that file at the place you stopped ("Continuing at part 9 of 12"). Pick another part yourself and it plays that one.
+- Starting a book from the Books list goes on where you were, even after a restart; separate books kept together in one folder are never mixed up.
+- A very short part (under half a minute) is remembered like any other, and finishing one takes you on to the next part instead of replaying the part before it.
+- Replaying a finished part no longer forgets that you finished it, so the book still goes on from there.
+- A book on a slow drive (a NAS, or a disc waking up) keeps your place: REVamp waits for it to start and retries the jump instead of overwriting where you were.
+- The player stays light over a long session: pausing, skipping and repeating no longer leave background timers running.
+- A band whose name is a number (311, 702) keeps its name in the artist field; it is no longer read as a track number.
+- On Windows, two Hermes profiles starting at the same moment can no longer both take one address: the second waits, and says to set `plugins.entries.revamp.port` instead of showing the other profile's library.
+- An update is applied even though the installer replaces the folder REVamp runs from, so the background service no longer stops dead while updating itself.
+- Songs in folders you linked into your music folder show up even when the music folder itself is inside a hidden folder (a Flatpak's `~/.var/app/...`, a drive mounted under a dot-folder).
+- A tab you click while REVamp is still starting up stays open; it was thrown back to Library.
+- The library no longer reloads itself every 20 seconds after an update installed while REVamp was running.
+- Switching to the Mini player really closes MilkDrop, so it stops drawing off-screen; shown again, MilkDrop follows your choice for where the player is now.
+- Pop out to desktop on Windows uses the browser you installed, never the Edge shortcut in WindowsApps that opens and closes at once.
+- Two Hermes profiles on the same port: the one that starts second waits for the port instead of giving up, and says to set `plugins.entries.revamp.port` to run both at once.
+- **If you run REVamp's optional background service:** restart it once after this update (`systemctl --user restart revamp`). From alpha.10 on it updates itself.
+- Pausing a book in the moment it starts no longer replaces your saved place with the first second; pressing Play takes you to your place. If the first jump to your place fails and you move the seek bar yourself, the retry no longer pulls you back.
+- The Frame has a clear × button. Hiding it keeps your music playing and tells you how to bring it back (`Ctrl+Alt+F`, or `Cmd+Option+F` on Mac).
+- The visualizer shortcut is now `Ctrl+Alt+Shift+V` (`Cmd+Option+Shift+V` on Mac), because `Ctrl+Alt+V` is Hermes's voice input on Windows and Linux.
+- If you drag the seek bar while a book is paused right at its start, that spot is saved straight away and Play stays there.
+- A file name like `01 - 2 Fast 2 Furious` keeps its whole title and track number 1.
+- New installs start on REVamp's own Nous skin (the light one). Classic is still one click away in the skin list, and anyone who already picked a skin keeps it.
+
 ## 1.0.0-alpha.9 - 2026-11-02 (pre-release)
 
 - Pop out to desktop works on Debian and Ubuntu again. Alpha.8 handed the window its private DevTools connection through a shell command that Debian's and Ubuntu's `/bin/sh` can't run when the server has many connections open, so the window could fail to open.

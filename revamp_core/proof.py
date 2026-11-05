@@ -30,6 +30,33 @@ def valid_nonce(nonce: str) -> bool:
     return isinstance(nonce, str) and bool(_NONCE.match(nonce))
 
 
+def listener_identity(base: str, token: str, timeout: float = 2.0) -> Optional[bool]:
+    """True: the server at *base* proved it holds *token* (our install). False: it answered with
+    a proof for a different token (another profile's REVamp). None: no answer we can judge
+    (timeout, refused, an old server without proofs): callers keep what they knew."""
+    if not token:
+        return None
+    try:
+        port = urllib.parse.urlsplit(base).port
+    except ValueError:
+        return None
+    if not port:
+        return None
+    nonce = secrets.token_hex(16)
+    try:
+        req = urllib.request.Request(f"{base}/api/health?nonce={nonce}", headers={"Accept": "application/json"})
+        with local_opener().open(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read(4096).decode("utf-8-sig"))
+    except Exception:
+        return None
+    got: Optional[str] = payload.get("proof") if isinstance(payload, dict) else None
+    if not isinstance(got, str):
+        return None
+    # As bytes: compare_digest raises TypeError on a str that isn't ASCII, and a stranger's garbage
+    # must read as "not ours", not kill the caller (claude + grok a10r21).
+    return hmac.compare_digest(got.encode("utf-8", "replace"), health_proof(token, nonce, port).encode())
+
+
 def verify_listener(base: str, token: str, timeout: float = 2.0) -> bool:
     """True only if the server at *base* (http://127.0.0.1:<port>) proves it knows *token*.
 
@@ -52,7 +79,7 @@ def verify_listener(base: str, token: str, timeout: float = 2.0) -> bool:
     except Exception:
         return False
     proof: Optional[str] = payload.get("proof") if isinstance(payload, dict) else None
-    return isinstance(proof, str) and hmac.compare_digest(proof, health_proof(token, nonce, port))
+    return isinstance(proof, str) and hmac.compare_digest(proof.encode("utf-8", "replace"), health_proof(token, nonce, port).encode())
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
