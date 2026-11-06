@@ -91,7 +91,7 @@ def test_a_book_in_several_files_continues_and_previous_does_not_bounce(tmp_path
                                f"--user-data-dir={prof}", "--remote-debugging-port=0", "--remote-allow-origins=*",
                                "--window-size=1200,900", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(50):
+        for _ in range(150):  # a busy CI machine can take well over 10 s to start Chrome
             if os.path.exists(prof + "/DevToolsActivePort"):
                 break
             time.sleep(0.2)

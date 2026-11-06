@@ -1969,7 +1969,9 @@ def _watch_owner(port: int, owner: Optional[str] = None, ours: Optional[bool] = 
                 if _owned:
                     logger.info("revamp: took over port %s after its owner went away", port)
                 return  # we serve it now, or a fresh watcher took over the watching
-            with _lock:  # lost a bind race; keep watching
+            with _lock:  # lost a bind race; keep watching (unless retired meanwhile)
+                if gen != _watch_gen:
+                    return  # a retired watcher must not claim the watching flag for a new one
                 _watching = True
 
     threading.Thread(target=run, name="revamp-watch", daemon=True).start()

@@ -61,7 +61,7 @@ def test_spectrum_animates_before_during_and_after_milkdrop(tmp_path):
                                "--use-gl=angle", "--use-angle=swiftshader-webgl", "--enable-unsafe-swiftshader",
                                f"--user-data-dir={prof}", "--remote-debugging-port=0", "--window-size=1100,800", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(50):
+        for _ in range(150):
             if os.path.exists(prof + "/DevToolsActivePort"): break
             time.sleep(0.2)
         dport = open(prof + "/DevToolsActivePort").read().split()[0]

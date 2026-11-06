@@ -1130,6 +1130,9 @@ def test_another_profiles_revamp_on_the_port_is_reported(monkeypatch, caplog):
         "app": "revamp", "owner": "plugin", "version": "1.0.0-alpha.10", "build": "b", "instance": "X"})
     monkeypatch.setattr(server, "_watch_owner", lambda p, **kw: None)
     monkeypatch.setattr(server.proof, "listener_identity", lambda base, token, timeout=2.0: False)
+    # Nothing real is asked to step aside: on a CI machine something may answer on 18114, and
+    # a granted shutdown skipped the warning this test is about (macOS CI, flaky).
+    monkeypatch.setattr(server, "_request_upgrade_shutdown", lambda *a: False)
     for build in ("b", "other-build"):  # Claude a10r6: other profiles' builds usually differ
         _reset_server_globals(monkeypatch)
         caplog.clear()
@@ -1257,7 +1260,7 @@ def test_a_service_gone_before_the_first_poll_still_gets_its_grace(monkeypatch):
     start = _time.monotonic()
     server._watch_owner(18114, owner="service", ours=True)
     assert done.wait(5)
-    assert took[0] - start >= 0.5
+    assert took[0] - start >= 0.4  # grace is counted in polls; Windows' clock ticks every ~16 ms
 
 
 def test_service_still_takes_over_from_a_plugin(monkeypatch):
@@ -1296,7 +1299,7 @@ def test_watcher_gives_a_vanished_service_time_to_come_back(monkeypatch):
     start = _time.monotonic()
     server._watch_owner(18114)
     assert done.wait(5)
-    assert took[0] - start >= 0.5, "took a service's port before its grace period"
+    assert took[0] - start >= 0.4, "took a service's port before its grace period"  # see above
 
 
 def test_versions_compare_across_pre_releases():
@@ -1751,3 +1754,30 @@ def test_a_start_up_race_is_decided_again_at_most_twice(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING, logger=server.logger.name):
         assert server.ensure_server(18114, owner="plugin", version="1.0.0-alpha.10", build="x") is None
     assert state["n"] <= 6 and "NON-Revamp" in caplog.text
+
+
+def test_a_retired_watcher_never_claims_the_watching_flag_again(monkeypatch):
+    # CI (Linux, Windows): a watcher that lost a bind race set _watching = True after the next
+    # test had cleared it, so that test's own watcher never started.
+    import time as _time
+    _reset_server_globals(monkeypatch)
+    monkeypatch.setattr(server, "WATCH_INTERVAL", 0.02)
+    monkeypatch.setattr(server, "SERVICE_GRACE", 0.0)
+    monkeypatch.setattr(server, "_probe_health", lambda p: None)
+    monkeypatch.setattr(server, "_foreign_holder", lambda p: False)
+    monkeypatch.setattr(server, "_may_take_port", lambda p, ours: True)
+    calls = []
+
+    def lost_race(port, **kw):  # the bind is lost; meanwhile the watcher is retired
+        calls.append(port)
+        server._watch_gen += 1
+        server._watching = False
+        return None
+    monkeypatch.setattr(server, "ensure_server", lost_race)
+    server._watch_owner(18114, owner="plugin", ours=True)
+    deadline = _time.monotonic() + 2
+    while not calls and _time.monotonic() < deadline:
+        _time.sleep(0.01)
+    _time.sleep(0.2)
+    assert calls and server._watching is False
+

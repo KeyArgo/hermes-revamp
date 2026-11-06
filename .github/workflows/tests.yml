@@ -38,11 +38,13 @@ jobs:
         env:
           REVAMP_HOME: ${{ runner.temp }}/revamp-home
           HERMES_HOME: ${{ runner.temp }}/hermes-home
+        # One process per test file, like tools/release_gate.sh: watcher threads and servers a
+        # file starts must not disturb a later file (the whole tree in one process was flaky).
         run: >
-          python -m pytest -q -p no:cacheprovider
-          --ignore=tests/test_control_mode_play_e2e.py
-          --ignore=tests/test_nav_rail_e2e.py
-          --ignore=tests/test_hermes_radio.py
+          python tools/run_tests_per_file.py
+          --ignore tests/test_control_mode_play_e2e.py
+          --ignore tests/test_nav_rail_e2e.py
+          --ignore tests/test_hermes_radio.py
       - name: Run Node regression tests
         if: runner.os != 'Windows'
         run: for t in tests/*.test.mjs; do node --test "$t"; done
@@ -50,7 +52,8 @@ jobs:
   e2e:
     name: browser e2e (ubuntu)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The apt mirror alone has taken 28 minutes: give the tests themselves room.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -59,7 +62,7 @@ jobs:
       - name: Install Chrome and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y google-chrome-stable ffmpeg
+          sudo apt-get install -y --no-install-recommends google-chrome-stable ffmpeg
           python -m pip install pytest websocket-client
       - name: Run browser regressions
         env:
