@@ -1130,6 +1130,9 @@ def test_another_profiles_revamp_on_the_port_is_reported(monkeypatch, caplog):
         "app": "revamp", "owner": "plugin", "version": "1.0.0-alpha.10", "build": "b", "instance": "X"})
     monkeypatch.setattr(server, "_watch_owner", lambda p, **kw: None)
     monkeypatch.setattr(server.proof, "listener_identity", lambda base, token, timeout=2.0: False)
+    # Nothing real is asked to step aside: on a CI machine something may answer on 18114, and
+    # a granted shutdown skipped the warning this test is about (macOS CI, flaky).
+    monkeypatch.setattr(server, "_request_upgrade_shutdown", lambda *a: False)
     for build in ("b", "other-build"):  # Claude a10r6: other profiles' builds usually differ
         _reset_server_globals(monkeypatch)
         caplog.clear()
