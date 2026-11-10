@@ -1163,7 +1163,12 @@ def test_the_self_update_needs_two_quiet_checks_in_a_row(monkeypatch):
 
 
 def test_installed_version_reads_plugin_yaml():
-    assert server._version_key(server._installed_version()) == server._version_key(server.VERSION)
+    """plugin.yaml is the release target; the running build may read `1.0.0-dev.N` on top of
+    it. What must hold is that the two name the same release, so a bump to plugin.yaml still
+    changes the answer instead of the service reciting a number compiled into server.py."""
+    manifest = server._installed_version()
+    assert manifest, "plugin.yaml must declare a version"
+    assert server.VERSION.split("-", 1)[0] == manifest.split("-", 1)[0]
 
 
 def test_watcher_never_takes_another_profiles_port_within_a_lease(monkeypatch):

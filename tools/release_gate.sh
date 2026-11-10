@@ -43,10 +43,12 @@ run_shell "private-info scan" '
   status=$?
   [[ $status -eq 1 ]]'
 run_shell "version consistency" '
-  v=$(sed -nE "s/^version: *([^ ]+).*/\\1/p" plugin.yaml) && \
+  v=$(sed -nE "s/^version: *//p" plugin.yaml | tr -d "\"") && \
   test -n "$v" && \
-  test "$v" = "$(sed -nE "s/^VERSION = \\\"([^\\\"]+)\\\"/\\1/p" revamp_core/server.py)" && \
-  w=${v#1.0.0-} && grep -Fq "1.0 ${w//./ }</small>" web/index.html && \
+  ! grep -Eq "^VERSION = [\"]" revamp_core/server.py && \
+  grep -Fq "version_stamp" revamp_core/server.py && \
+  grep -Fq "id=\"app-version\"" web/index.html && \
+  ! grep -Fq "alpha" web/index.html && \
   grep -Fq "\"version\": \"$v\"" claude-code/revamp/.claude-plugin/plugin.json && \
   grep -Fq "## $v " CHANGELOG.md'
 if (( visual )); then run_shell "visual sweep" 'node tools/visual_sweep.mjs'; fi

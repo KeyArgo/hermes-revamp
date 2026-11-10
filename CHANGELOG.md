@@ -1,6 +1,13 @@
 # Changelog
 
-Test builds are numbered `1.0.0-alpha.N`. Each build gets a new number that is never reused, so you can tell which one you have: it shows in the corner of the REVamp page.
+Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets a new number that is never reused, so you can tell which one you have: the header chip shows it, and clicking copies the line.
+
+## 1.0.0 - 2026-11-10 (release)
+
+First public release. The version chip in the header now reads the running build from the
+server's own stamp — `v1.0.0-dev.N · date · short sha`, amber while the tree it came from is
+dirty — and clicking it copies that line for a bug report. A number is no longer typed into the
+page, so the chip cannot announce an old version.
 
 ## 1.0.0-alpha.10 - 2026-11-05 (pre-release)
 
