@@ -1,0 +1,5150 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "__init__.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 4
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "__init__.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 5
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "__init__.py",
+      "fingerprint": "2116cb95f937ab07",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "__init__.py",
+      "fingerprint": "3ec249b326b80555",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "__init__.py",
+      "fingerprint": "83c7c54abbeef9b0",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "__init__.py",
+      "fingerprint": "b02181eb61acd295",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "__init__.py",
+      "fingerprint": "e5bb4e275678c78c",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "__init__.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 5
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "__init__.py",
+      "fingerprint": "455e0641a56d947f",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "__init__.py",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "__init__.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "762a0332b304f1dd",
+      "count": 4
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 8
+    },
+    {
+      "rule": "ruff/F841",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "2fef3a703de7dd51",
+      "count": 1
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "66c2dca35577ff77",
+      "count": 1
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "b92c713b98566572",
+      "count": 1
+    },
+    {
+      "rule": "ruff/N999",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "10efc783dad57924",
+      "count": 1
+    },
+    {
+      "rule": "ruff/PLR1711",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "9f730a1a70a6144b",
+      "count": 2
+    },
+    {
+      "rule": "ruff/RET501",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "9f730a1a70a6144b",
+      "count": 2
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "__init__.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 5
+    },
+    {
+      "rule": "ai-slop/double-type-assertion",
+      "engine": "ai-slop",
+      "file": "claude-code/revamp/hooks/register.tsx",
+      "fingerprint": "0021b9bbc1ca63ec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/double-type-assertion",
+      "engine": "ai-slop",
+      "file": "claude-code/revamp/hooks/register.tsx",
+      "fingerprint": "b1692e6fc4a1b442",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/double-type-assertion",
+      "engine": "ai-slop",
+      "file": "claude-code/revamp/hooks/register.tsx",
+      "fingerprint": "c900115fd8a47406",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "dashboard/plugin_api.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "dashboard/plugin_api.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "dashboard/plugin_api.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "dashboard/plugin_api.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "dashboard/plugin_api.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 5
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "dashboard/plugin_api.py",
+      "fingerprint": "a6284e6d3d43bdfb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "dashboard/plugin_api.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/empty-function",
+      "engine": "ai-slop",
+      "file": "desktop/plugin.js",
+      "fingerprint": "1fb057f3b8875d3c",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/empty-function",
+      "engine": "ai-slop",
+      "file": "desktop/plugin.js",
+      "fingerprint": "c12245775a83d169",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "desktop/plugin.js",
+      "fingerprint": "a594aecd94fef980",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "desktop/plugin.js",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "desktop/plugin.js",
+      "fingerprint": "0a30f75f0f29ab51",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "desktop/plugin.js",
+      "fingerprint": "314cdae80b8e99c2",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "desktop/plugin.js",
+      "fingerprint": "554f5577f217048a",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "desktop/plugin.js",
+      "fingerprint": "6bd59001ad7997b5",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "desktop/plugin.js",
+      "fingerprint": "8640aa663a04fe59",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-empty",
+      "engine": "lint",
+      "file": "desktop/plugin.js",
+      "fingerprint": "95bc545467a5a96b",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-empty",
+      "engine": "lint",
+      "file": "desktop/plugin.js",
+      "fingerprint": "ca33f970ce0c7be1",
+      "count": 2
+    },
+    {
+      "rule": "eslint/no-self-assign",
+      "engine": "lint",
+      "file": "desktop/plugin.js",
+      "fingerprint": "2670fc4e06b88094",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-undef",
+      "engine": "lint",
+      "file": "desktop/plugin.js",
+      "fingerprint": "53d23ef25776bd27",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-undef",
+      "engine": "lint",
+      "file": "desktop/plugin.js",
+      "fingerprint": "ab27143ee03ed945",
+      "count": 2
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "desktop/plugin.js",
+      "fingerprint": "31320157641febec",
+      "count": 1
+    },
+    {
+      "rule": "unicorn/no-useless-fallback-in-spread",
+      "engine": "lint",
+      "file": "desktop/plugin.js",
+      "fingerprint": "ce04b2ce2a922483",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/todo-stub",
+      "engine": "ai-slop",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "59092beb27606b47",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "021fb596db81e6d0",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "1a47e11164c6e311",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "4c57a894b0895b84",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "53a5370e71275739",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "58b7faf6eed25949",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "7b0af95b0d78e1fb",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "a0f42be4f7630481",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "c764432c4e4abf49",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "e52a1813c4604951",
+      "count": 2
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "eb95d05bec45a499",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "f4b491924ec86e3c",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "fc7f576798e5b658",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "docs/ref/skinSprites.ts",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/N999",
+      "engine": "lint",
+      "file": "revamp_core/__init__.py",
+      "fingerprint": "e3b0c44298fc1c14",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 5
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/silent-recovery",
+      "engine": "ai-slop",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 5
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "a6284e6d3d43bdfb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ruff/SIM102",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "befe34b5b76a8cff",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "0f96c55fd3037dc1",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "12ebd36a2cef0daf",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "227f425e1c6b8301",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "356037160e3306d9",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "433e771ab87531ac",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "553f8aeac4e986e9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "687da7fa236ba751",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "6e37a3a1c655d462",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "9f3df235e4415593",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "cd68c7b03f32c5ef",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "df4ddecb6b42840b",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "ef397fc02603879c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "f9f92dd6e72958d5",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "460a8f757eae5e5a",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "687da7fa236ba751",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "6e37a3a1c655d462",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "9f3df235e4415593",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "cd68c7b03f32c5ef",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/backup.py",
+      "fingerprint": "ef397fc02603879c",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "24349b528c047e9b",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "687094c88b86523e",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "6c3d485438106ece",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "a58bd71825586154",
+      "count": 4
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "c1fc63f1b2c8d460",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "ffdd23f48e5f1b0e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "c2eddcc0aba5a0b2",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP037",
+      "engine": "lint",
+      "file": "revamp_core/chapters.py",
+      "fingerprint": "c1fc63f1b2c8d460",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/client.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/F401",
+      "engine": "lint",
+      "file": "revamp_core/client.py",
+      "fingerprint": "de2abade832c8e35",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/client.py",
+      "fingerprint": "19a1302039072822",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/client.py",
+      "fingerprint": "6a7613616a46fbd0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/client.py",
+      "fingerprint": "c347a1ed1ff5d4db",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/client.py",
+      "fingerprint": "ef25f771f4bfce86",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/client.py",
+      "fingerprint": "f8ef35d714aa850f",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/config.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/config.py",
+      "fingerprint": "cbacbb4245e218ae",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/config.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 2
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/config.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/config.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/config.py",
+      "fingerprint": "a658c62cbfabac9a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/config.py",
+      "fingerprint": "c3dd7463fa55f1a2",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/config.py",
+      "fingerprint": "c7c50335c922d843",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/config.py",
+      "fingerprint": "e1946961d0294fcc",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/config.py",
+      "fingerprint": "f1bb19faf77f6060",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/items.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/FURB167",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "f4c6633c8e1f6f74",
+      "count": 1
+    },
+    {
+      "rule": "ruff/FURB188",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "3f3b6315ceaf9d71",
+      "count": 1
+    },
+    {
+      "rule": "ruff/PLR0124",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "f8e2231ccecd14fc",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "0b3e247e07c69ed4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "40c3adcf5c23259a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "4eb79bbcb00a8577",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "5f54618abc53c5d7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "6d973e6be65ec993",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "847359ceb14ca764",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "f6b82f825e4a9a6e",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "ff1e517f9e09d660",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "d0ac32f0ff7e82b0",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "0b3e247e07c69ed4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "0c0f00eb9aa7661e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "3b899d70f3e67c2f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "4eb79bbcb00a8577",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "847359ceb14ca764",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/items.py",
+      "fingerprint": "9fe57689252f633e",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/library.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 3
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "revamp_core/library.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/library.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/library.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "revamp_core/library.py",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/library.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "4ea083ccfee71dd8",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "a6284e6d3d43bdfb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/PLR0124",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "7eb9a3a46fbf465d",
+      "count": 1
+    },
+    {
+      "rule": "ruff/PLR0124",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "ad49eef18c74a128",
+      "count": 1
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ruff/SIM102",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "451623fe262dfa14",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "06c471a170716b7e",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "080dd8748cf002d7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "0a79c73aefdf7f25",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "179be970e75f4afd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "208da8f69e933b80",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "247bf641f929aac0",
+      "count": 5
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "2574f526f8e01de1",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "2ccf879649f05c8e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "4049874846f71849",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "43d18c1bc7167fa9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "4c2bc9323c58dac1",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "50b9073d01140629",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "5c57538b5f064dfd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "5d4d6e4ed081217a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "66b810ce55ebd1c8",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "6cd2baaeccb9fd43",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "7861643f44db78dc",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "8ddcc5286eb6c352",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "bca095aa92624bb2",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "be800697c4f73a29",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "d4f6256b17a60b53",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "e23754bb9527a610",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "f0949d97e7175ffa",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "f11e139190caff89",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "f176b5c4ecf5c655",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "f2726eb41283529d",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "f5ad39d6e4b0d75d",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "f67f2adf8fc540d2",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "d0ac32f0ff7e82b0",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "179be970e75f4afd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "18036851a3986d48",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "208da8f69e933b80",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "43d18c1bc7167fa9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "5c57538b5f064dfd",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "bca095aa92624bb2",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "bd8300cbfbab093c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "d4f6256b17a60b53",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "e23754bb9527a610",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "f0949d97e7175ffa",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/library.py",
+      "fingerprint": "f2726eb41283529d",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/hardcoded-url",
+      "engine": "ai-slop",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "e7dd1baec758e35a",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 4
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF046",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "99d16c45f2effcc7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF046",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "af16b52f8831087b",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "10c43b47f37db922",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "1d5a12b0fbcbb9d4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "3aaab060db10701c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "518eab6dabe7315a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "7d9921d9883e5fb9",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "9be0ddd203b93286",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "9d7eb74dc3a6b646",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "a8846ffefc72cba5",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "b8988e1c97d779cc",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "be8fbf875eb41afb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "c180c1e3b5fb8b1b",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "c6f37239fe10739a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "ec11dc6af33cbee4",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "f2a6f5555e47951d",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "98866b0b78dc2054",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "1d5a12b0fbcbb9d4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "5a0d36d280bfc379",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "9d7eb74dc3a6b646",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "b8988e1c97d779cc",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "be8fbf875eb41afb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/lyrics.py",
+      "fingerprint": "f2a6f5555e47951d",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 3
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 4
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "a6284e6d3d43bdfb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "19bab07b7696ddc5",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "3d51366bea5dce68",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "4655bbc8314afbff",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "48e70aa8e8e22d0f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "7363607999c1e593",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "76ab75c8b44af034",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "c4e11b5c4c81ed01",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "ff7bacdcfc2b5124",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "d0ac32f0ff7e82b0",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/museum.py",
+      "fingerprint": "39f5aa89168a01f8",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "c224b37051cb1510",
+      "count": 1
+    },
+    {
+      "rule": "ruff/SIM905",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "564d0309cd9dc04e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "0e16982d9b9f2d65",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "1052fa2aceab9492",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "11c31be3205bbe55",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "3695448721a8f264",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "55750fbad6a5c081",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "7b6d2db1153e9e66",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "ab1e6fb3547429d9",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "d9a865727b67b535",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "fff205078ed25301",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "d4aabbe56f8d9af7",
+      "count": 4
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "7b6d2db1153e9e66",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playback.py",
+      "fingerprint": "b68275ae08c90bcf",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 3
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 2
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "60dc67ee5ba90aee",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/FURB167",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "4a99d18be7d1002c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "1100fd653dbbe684",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "1a02a7b09c015549",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "20a49010a3aae8a6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "258e9db026b02f7a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "2990f89029d95f2d",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "4e1a44d739c638bd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "52231c1eee5d0bc0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "53c0f9d2b980f0f3",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "65eb769589419f38",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "78386a058792af21",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "8f5a3d6b313b5985",
+      "count": 4
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "a5a21cded719d074",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "a74d0513b0c11b3b",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "b21045c4e4a4f2c1",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "b78a05b0c8d66621",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "c180c1e3b5fb8b1b",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "c7d7df58ae2ade1a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "e47725b43790ee0c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "e8c57d3037af6c32",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "ead6a06be3920080",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "d0ac32f0ff7e82b0",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "0c894c2f672f7353",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "1a02a7b09c015549",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "20a49010a3aae8a6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "52231c1eee5d0bc0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "53c0f9d2b980f0f3",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "65eb769589419f38",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "78386a058792af21",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "b0097bd68494e524",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "b21045c4e4a4f2c1",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "b78a05b0c8d66621",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "c7d7df58ae2ade1a",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/playlists.py",
+      "fingerprint": "e47725b43790ee0c",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/proof.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/proof.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/proof.py",
+      "fingerprint": "97137a8a1c330161",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/proof.py",
+      "fingerprint": "af906ed371f9e8a7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/proof.py",
+      "fingerprint": "dff9ec56ea18d780",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/hardcoded-url",
+      "engine": "ai-slop",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "33e2f29bb4e32541",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/hardcoded-url",
+      "engine": "ai-slop",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "44f81c436833c1b4",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/hardcoded-url",
+      "engine": "ai-slop",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "dc4d0f54f1722e1f",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 5
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 1
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "b79cac6645b359c4",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "66ea890f6d105ca6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 2
+    },
+    {
+      "rule": "ruff/FURB167",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "8bfd86c9ae835310",
+      "count": 2
+    },
+    {
+      "rule": "ruff/FURB188",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "cc8aeabc2c0db346",
+      "count": 1
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "a6284e6d3d43bdfb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/SIM103",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "0c3fdb551e62c5e5",
+      "count": 1
+    },
+    {
+      "rule": "ruff/TRY004",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "af38ddede2202ba4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "041ca920360e400f",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "056be9ffbcbf4895",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "23bafa7ace134620",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "3580587a565c17de",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "36447520d75d44e2",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "3704530a7a4ea8a8",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "3eaea177a5064b56",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "431ca784bb28c37c",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "4bd71d9851d4b053",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "50860ddd8b4adc5a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "53b4e44933fd2f13",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "560725700e8a1ae3",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "59fb8625821d772b",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "5a89ce9a0873a17e",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "5b1d6dc1ee69a82a",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "5d7b4cafe1097866",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "5f54618abc53c5d7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "6273a99c92f2f85d",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "684315bf633b8093",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "71090022648bcdf0",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "739eaf454d774bc3",
+      "count": 5
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "780f417a8e869ccd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "807a0f89148d130e",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "85cb3dff8c39f798",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "8f5a3d6b313b5985",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "921b446a70958e10",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "943e3d4b46fdfb12",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "9e28c165fd26b5e7",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "b31e92b0dcc506ca",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "b79cac6645b359c4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "c180c1e3b5fb8b1b",
+      "count": 4
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "c1f8b76337cef7dd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "c23df62121d6e6ca",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "cf42885956158290",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "d3026e2576a738db",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "d4c9a79cd4ec2a88",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "d7325712ba6c69ae",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "ebd670db717c774e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "f21d91453ecf3c2f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "f3942b98e3f4f7eb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "fe0258a113cddf0c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "98866b0b78dc2054",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP041",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "a2b3b102105b1361",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "3704530a7a4ea8a8",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "4fd8342d5235f44e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "5a89ce9a0873a17e",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "6150900bd25f1ef0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "684315bf633b8093",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "943e3d4b46fdfb12",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "c715c691154c0c63",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/radio.py",
+      "fingerprint": "d3026e2576a738db",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-isinstance-ladder",
+      "engine": "ai-slop",
+      "file": "revamp_core/redact.py",
+      "fingerprint": "5afe6092f3dbc877",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/redact.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/redact.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 8
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 3
+    },
+    {
+      "rule": "ai-slop/python-isinstance-ladder",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "ecf19a0581ac8887",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "07c247b37c1461af",
+      "count": 2
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "08fe654fe612e25f",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "1192adff98653ea2",
+      "count": 2
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "12a4e65f0762d64d",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "153a6a86f2da1271",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "1ae28f51bec78b78",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "1e3cb5a96fc65b2f",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "384234fcbb185180",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "3a53636e5d2e06cc",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "43c0386803e6ba21",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "45ce1eceecb5809f",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "54d924c1c75af38b",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "57d7e90b00944df6",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "5ea926ad2197f27c",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "618ba4d495b91dc7",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "63f10c11ea154e5b",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "68239057c4c78d9c",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "6afd93525e89f886",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "7994560d53520360",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "824b876066f63e6a",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "8a26ec9f4f843c0b",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "93c3f7d11a6bff02",
+      "count": 2
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "a06a70c471a87eab",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "c002b5bb9d19ffe4",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "c177e4c2b9f625bf",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "c3aac1b40f2c3388",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "cca6e13847ef6ebb",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "d9148394a893cc5b",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "da7a7cc706931b29",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "ee6a8dacd93cc15e",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "f5a54104d39b009d",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-repetitive-dispatch",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "ff2882f7a3d088a0",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 8
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "60dc67ee5ba90aee",
+      "count": 2
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "c07f92f6d7306031",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 3
+    },
+    {
+      "rule": "ai-slop/unused-import",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "09d25239ae3d62e9",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/unused-import",
+      "engine": "ai-slop",
+      "file": "revamp_core/server.py",
+      "fingerprint": "582f9ff727d7496a",
+      "count": 1
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "revamp_core/server.py",
+      "fingerprint": "ac47983162091aea",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "revamp_core/server.py",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "revamp_core/server.py",
+      "fingerprint": "02b7cb7c9ac37776",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "revamp_core/server.py",
+      "fingerprint": "286d21793cbf77ba",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "revamp_core/server.py",
+      "fingerprint": "419e76771bbc968d",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/server.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "762a0332b304f1dd",
+      "count": 2
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "786a6dfb43025cca",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 7
+    },
+    {
+      "rule": "ruff/F401",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "09d25239ae3d62e9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/F401",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "582f9ff727d7496a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/F841",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "ff468cb7ba9f5dd6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "937702a49f4452b9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "a6284e6d3d43bdfb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/PLW0602",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "be94c9576b1efba4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF100",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "11314e0ec63790d1",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF100",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "a7bcdf7e0907b33f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 3
+    },
+    {
+      "rule": "ruff/SIM102",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "f12b4f07282b466a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/SIM114",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "a5dfb19ce6817961",
+      "count": 1
+    },
+    {
+      "rule": "ruff/SIM114",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "b0cd7606a18549bb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/SIM115",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "8950cdecd71f434b",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "02c46033a497c6bb",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "0a64f3216ce9dba0",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "113f86cec1e3ce55",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "12ff84ffd9f7a8ba",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "13e69b69d628fb71",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "18656a6e7a1502d8",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "21922f910aa2817a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "22f4c0c8aaeef640",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "342a820e2d2b1611",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "3aedad94dc143241",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "419e76771bbc968d",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "60cb368cde2e0796",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "640120b28bfbba2e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "7f403929124816b0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "802bfce3b900eedc",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "855f7f8dc5cd5f6a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "8c9e78e317dc1595",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "8ebb48757a3d23e9",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "9016bbfc93ea7d39",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "941da776508bb16e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "97b3ff7d52f883b7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "a3fdf86754f549e2",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "c180c1e3b5fb8b1b",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "c5eff2e713573efb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "c5ff4bbdb6bd200a",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "ce097286d9e87e66",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "f13bf518e1600c9f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "f690c7abf9804bf5",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP012",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "1c6a3822bead254a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP031",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "8e0115b46fcad96a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "d4aabbe56f8d9af7",
+      "count": 4
+    },
+    {
+      "rule": "ruff/UP037",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "7d7c84fdfdef9412",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "02b7cb7c9ac37776",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "21922f910aa2817a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "3ad84ec9a5e2cd22",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "65e346a8954b8773",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "67c6ecacd024e107",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "97b3ff7d52f883b7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "a06ae36272796e74",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "a3fdf86754f549e2",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "a441631ad7faccce",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "adc4bf3ed8ee0cfb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "b3ea375694727bf8",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "b47728cad3d7cc94",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "c08aba0d869797a5",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "ce097286d9e87e66",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "d4df310f4b2e44f1",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "f13bf518e1600c9f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/server.py",
+      "fingerprint": "f3fd70f60db5ffec",
+      "count": 4
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "02bcfb4fed50d4e0",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "c3548d71b8b260bd",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "02bcfb4fed50d4e0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "77bf1f4a3dca9dff",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "c3548d71b8b260bd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ruff/N999",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "12f455c221f5a45f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "02bcfb4fed50d4e0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "c3548d71b8b260bd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "0b3e247e07c69ed4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "1ef295e836f1187f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "259dd475f75835f4",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "270bf74fc49b6c51",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "3f7a297ca13c16e3",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "55750fbad6a5c081",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "5e4f9f0edd5c31f3",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "770d0a0cd219f9c9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "86e36a23bcc1a18e",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "a8fdcd2f64471b42",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "af56c661e50feda9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "e5a93ed1c12779ca",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "ea054aea161072ae",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "f6b82f825e4a9a6e",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "d0ac32f0ff7e82b0",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "0b3e247e07c69ed4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "5217a7d9b93c2b67",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "5f89f1545d16a321",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "770d0a0cd219f9c9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "a8fdcd2f64471b42",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "ad5170ed827a0758",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "aed8a8783379e04d",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/__init__.py",
+      "fingerprint": "e98741b369ca0c09",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "259dd475f75835f4",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "761e6d1d2b2242a5",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "770d0a0cd219f9c9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "7896600c3dd75046",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "e5a93ed1c12779ca",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "ea054aea161072ae",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "4d4131f5c980ffe6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "770d0a0cd219f9c9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/local.py",
+      "fingerprint": "7896600c3dd75046",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/sources/radio.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/radio.py",
+      "fingerprint": "770d0a0cd219f9c9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/radio.py",
+      "fingerprint": "dc9278b8f3d40189",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/radio.py",
+      "fingerprint": "e5a93ed1c12779ca",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/sources/radio.py",
+      "fingerprint": "ea054aea161072ae",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/sources/radio.py",
+      "fingerprint": "4d4131f5c980ffe6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/radio.py",
+      "fingerprint": "770d0a0cd219f9c9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/sources/radio.py",
+      "fingerprint": "dc9278b8f3d40189",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/store.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/store.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 2
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "revamp_core/store.py",
+      "fingerprint": "4354f2c117038c1b",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/store.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/C401",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "a6c4bea42259810d",
+      "count": 2
+    },
+    {
+      "rule": "ruff/I001",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "a6284e6d3d43bdfb",
+      "count": 1
+    },
+    {
+      "rule": "ruff/PLW0602",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "4d3e34b5900a21c9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "043e829b1d4caaa3",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "3e6626719005e98a",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "4354f2c117038c1b",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "44a93d80b1e91a38",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "61d73ee155388bbc",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "62291b9163b8d87d",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "7602ea22b443251d",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "8585cbb8d6206b15",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "90932eb910090091",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "a15dab78b40a0043",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "adc7468a68a83b77",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "c08e75ca329daccc",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "d012c4c66ae9bf51",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "e0dfd01151811319",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "e4efebf7a8eb4e39",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "f3179d643c719f4c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "fd642a1d684f917b",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "d0ac32f0ff7e82b0",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "3e6626719005e98a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "90932eb910090091",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "a15dab78b40a0043",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "b655fe29f839007c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "c86f0af09be5463f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/store.py",
+      "fingerprint": "e4efebf7a8eb4e39",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "5c4688e3c1ee3aec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 8
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 8
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "045b562616164f0a",
+      "count": 1
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "2c5fff19c8a4a145",
+      "count": 1
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "68b17b5c7edcd682",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "408d9f7729303b73",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 17
+    },
+    {
+      "rule": "ruff/PLR0124",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "d11b91985b02d466",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF046",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "2816453ff7b1a642",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF046",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "cc87276a94f1b916",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF046",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "fafe3acaaa18e5de",
+      "count": 1
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 8
+    },
+    {
+      "rule": "ruff/SIM102",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "de35a275cf317b50",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "04d25ba3952b31a9",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "15ff0a31e3a285c0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "182397057377af6f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "221c84a3dd16d755",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "22862fb11b059d9d",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "25c080a53a8cc371",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "2c5fff19c8a4a145",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "3020bafbf37e6045",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "3b62b926c608af50",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "3c80662195082ac0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "3c84f817387efb83",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "3e2073a491957897",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "4049874846f71849",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "459d2e0f025257c8",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "4e1a44d739c638bd",
+      "count": 4
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "5f54618abc53c5d7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "653a81f8cd3cf5da",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "6a3ef6d463a8d9c7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "6fcc32306ae25473",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "700956b9cec0f017",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "76f5455f03221f94",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "7c767fd4dc0eee92",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "7dd1029236316984",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "85725fc76c35cc12",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "8dd293e6ab9c2fa9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "9ce630678202d9a6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "ae172f2ad7b5c366",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "d07c607784d2125c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "db64ef2e3ba22d3a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "e65082a88673f2e6",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "ed35bdf5a89436b4",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "f8f3a1e67ee2a803",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "f93b8048a88a3ec8",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "c0a980189a27886d",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "045b562616164f0a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "04d25ba3952b31a9",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "0b04f7fc648615ee",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "22862fb11b059d9d",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "2bb6ff0a98c011e0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "3020bafbf37e6045",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "34c2f8e9536326ce",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "3b62b926c608af50",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "549e4abcd5744d6f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "5685f9c87e0a3833",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "653a81f8cd3cf5da",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "6906885605a00bc3",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "6b718ecb0625ce3a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "76f5455f03221f94",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "9e6100b669c01ebd",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "ae172f2ad7b5c366",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "b52ff51c5bbfa3cf",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "b77559ba414fccf5",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "bb23299a28a2ae25",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "d8202ff59cff1758",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "db64ef2e3ba22d3a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "e65082a88673f2e6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "eb741bef70fcd1be",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "ed35bdf5a89436b4",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "f48051acdf261339",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/tags.py",
+      "fingerprint": "f93b8048a88a3ec8",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/python-broad-except",
+      "engine": "ai-slop",
+      "file": "revamp_core/window.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/window.py",
+      "fingerprint": "4e6d523f491a1cde",
+      "count": 6
+    },
+    {
+      "rule": "ai-slop/swallowed-exception",
+      "engine": "ai-slop",
+      "file": "revamp_core/window.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "revamp_core/window.py",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "python-formatting",
+      "engine": "format",
+      "file": "revamp_core/window.py",
+      "fingerprint": "message:eb8329b770c7842a",
+      "count": 1
+    },
+    {
+      "rule": "ruff/BLE001",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF046",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "0b9a83d72c5192fe",
+      "count": 1
+    },
+    {
+      "rule": "ruff/RUF046",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "5aca9861897df8c3",
+      "count": 2
+    },
+    {
+      "rule": "ruff/S110",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "e9dc52bf3963abec",
+      "count": 1
+    },
+    {
+      "rule": "ruff/SIM115",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "0fa2c2b9715a8462",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "00a01dc46baad8b5",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "09448742713f70ae",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "0f92f88bc3a65ec0",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "12b86bf0f6cbb7f3",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "1fd72a7f92c2c2d7",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "24fcd2d06a97c44b",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "291abca0eed2cc1f",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "2b7c20f717349922",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "2f55ef8f17c7ab82",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "326f4ecb8eed0d4b",
+      "count": 4
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "5ae7770b72984bd1",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "5efe9648ceca85cf",
+      "count": 5
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "66beba0d52a131d3",
+      "count": 2
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "836d2640043d78d2",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "9193ce076d038355",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "ac0e9dfba2ad341c",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "c8ddb59f60975de6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "cb6cfbf423ba71b6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "e8ecc1379b3db908",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "f2d739cc2b075dfe",
+      "count": 4
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "f52318d9712b1f60",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "f6f0f46498e2a1c8",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP006",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "f7e380928f3862b6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP035",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "98866b0b78dc2054",
+      "count": 3
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "12b86bf0f6cbb7f3",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "64c6487ec5c9b532",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "91654eac7fbf69df",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "c8ddb59f60975de6",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "cc84482820540a60",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "d00268f47ed72b26",
+      "count": 1
+    },
+    {
+      "rule": "ruff/UP045",
+      "engine": "lint",
+      "file": "revamp_core/window.py",
+      "fingerprint": "f7e380928f3862b6",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/unused-css",
+      "engine": "ai-slop",
+      "file": "web/app.css",
+      "fingerprint": "067e9ea18ec90b48",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/unused-css",
+      "engine": "ai-slop",
+      "file": "web/app.css",
+      "fingerprint": "290cc10ae608c247",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/unused-css",
+      "engine": "ai-slop",
+      "file": "web/app.css",
+      "fingerprint": "f26d624541f6919a",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/thin-wrapper",
+      "engine": "ai-slop",
+      "file": "web/app.js",
+      "fingerprint": "9a791b526d9f46c8",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "web/app.js",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/app.js",
+      "fingerprint": "183f1a52ad4cde09",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/app.js",
+      "fingerprint": "4982f2177f773fc1",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/app.js",
+      "fingerprint": "d3eef4b697dcf2c6",
+      "count": 2
+    },
+    {
+      "rule": "security/innerhtml",
+      "engine": "security",
+      "file": "web/app.js",
+      "fingerprint": "449b29f761380202",
+      "count": 1
+    },
+    {
+      "rule": "security/innerhtml",
+      "engine": "security",
+      "file": "web/app.js",
+      "fingerprint": "f721777233abb272",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/early-mode.js",
+      "fingerprint": "b9f8f6c16000d0bf",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/focus/adapter.js",
+      "fingerprint": "efe16a2426f0f08b",
+      "count": 1
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "web/focus/engine.js",
+      "fingerprint": "45987873316c9e7d",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "web/focus/engine.js",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/focus/engine.js",
+      "fingerprint": "45987873316c9e7d",
+      "count": 1
+    },
+    {
+      "rule": "unicorn/no-useless-fallback-in-spread",
+      "engine": "lint",
+      "file": "web/items.js",
+      "fingerprint": "3ba009c13d74c6a9",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/minivis.mjs",
+      "fingerprint": "8bbc12da7db1ad71",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/empty-function",
+      "engine": "ai-slop",
+      "file": "web/player.js",
+      "fingerprint": "3f6c33be09215bb4",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/meta-comment",
+      "engine": "ai-slop",
+      "file": "web/player.js",
+      "fingerprint": "0601882ede571ece",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/meta-comment",
+      "engine": "ai-slop",
+      "file": "web/player.js",
+      "fingerprint": "70ea789f305a77e2",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/player.js",
+      "fingerprint": "7b1904798d4dc5a7",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/player.js",
+      "fingerprint": "b6a0fa480df15360",
+      "count": 1
+    },
+    {
+      "rule": "complexity/deep-nesting",
+      "engine": "code-quality",
+      "file": "web/player.js",
+      "fingerprint": "0ae2a46cdf5c23cc",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "web/player.js",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/player.js",
+      "fingerprint": "0ae2a46cdf5c23cc",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/player.js",
+      "fingerprint": "18126dc8dbf56608",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/player.js",
+      "fingerprint": "1db191408c09dcfc",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-empty",
+      "engine": "lint",
+      "file": "web/player.js",
+      "fingerprint": "27ec2a63d2ce9dc9",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/player.js",
+      "fingerprint": "cab7f85d958376da",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/player.js",
+      "fingerprint": "d6439c23e1bd0f9f",
+      "count": 1
+    },
+    {
+      "rule": "unicorn/no-useless-fallback-in-spread",
+      "engine": "lint",
+      "file": "web/player.js",
+      "fingerprint": "d9043001a979ea1d",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/theme.js",
+      "fingerprint": "8c32e2cea8fa0123",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/theme.js",
+      "fingerprint": "eeea78aa148ce748",
+      "count": 1
+    },
+    {
+      "rule": "unicorn/prefer-string-starts-ends-with",
+      "engine": "lint",
+      "file": "web/theme.js",
+      "fingerprint": "f16d845253381e3e",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/agent.js",
+      "fingerprint": "4db930cbfc7c2b37",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/views/agent.js",
+      "fingerprint": "4746c1c131a2fd98",
+      "count": 1
+    },
+    {
+      "rule": "security/innerhtml",
+      "engine": "security",
+      "file": "web/views/agent.js",
+      "fingerprint": "01265fd31982cbe7",
+      "count": 1
+    },
+    {
+      "rule": "security/innerhtml",
+      "engine": "security",
+      "file": "web/views/agent.js",
+      "fingerprint": "91fcfb5df5d8eb7c",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/views/backups.js",
+      "fingerprint": "f5c301676faab3e7",
+      "count": 1
+    },
+    {
+      "rule": "code-quality/duplicate-block",
+      "engine": "code-quality",
+      "file": "web/views/backups.js",
+      "fingerprint": "514c56d3fb943da8",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/backups.js",
+      "fingerprint": "e7b975844a8d02f5",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/focus.js",
+      "fingerprint": "4db930cbfc7c2b37",
+      "count": 1
+    },
+    {
+      "rule": "complexity/too-many-params",
+      "engine": "code-quality",
+      "file": "web/views/focus.js",
+      "fingerprint": "234e3122280f6800",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/folders.js",
+      "fingerprint": "1101d7f4bbb22b45",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "web/views/library.js",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/library.js",
+      "fingerprint": "e43e4a153c1712a1",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-expressions",
+      "engine": "lint",
+      "file": "web/views/library.js",
+      "fingerprint": "21cd6dd4b631606b",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/views/library.js",
+      "fingerprint": "fba890d9c407e2d1",
+      "count": 1
+    },
+    {
+      "rule": "security/innerhtml",
+      "engine": "security",
+      "file": "web/views/library.js",
+      "fingerprint": "88a679e6b1d0a0cf",
+      "count": 1
+    },
+    {
+      "rule": "security/innerhtml",
+      "engine": "security",
+      "file": "web/views/library.js",
+      "fingerprint": "f41a28a5f9959523",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/views/modal.js",
+      "fingerprint": "1c8ad5dc2eb44df2",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/npextras.js",
+      "fingerprint": "0150a6fb15ce9568",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/playlists.js",
+      "fingerprint": "4db930cbfc7c2b37",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/empty-function",
+      "engine": "ai-slop",
+      "file": "web/views/radio.js",
+      "fingerprint": "b2c8d8c17caa4756",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/empty-function",
+      "engine": "ai-slop",
+      "file": "web/views/radio.js",
+      "fingerprint": "fb5e6225ee162bdb",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/views/radio.js",
+      "fingerprint": "4964702e77df920b",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/views/radio.js",
+      "fingerprint": "6f3b040a39a49cd1",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/views/radio.js",
+      "fingerprint": "9edd9ff8ff48074b",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/views/radio.js",
+      "fingerprint": "d8b7aa9fbfb2acaf",
+      "count": 1
+    },
+    {
+      "rule": "ai-slop/narrative-comment",
+      "engine": "ai-slop",
+      "file": "web/views/radio.js",
+      "fingerprint": "f9d3da90321b6ec3",
+      "count": 1
+    },
+    {
+      "rule": "complexity/file-too-large",
+      "engine": "code-quality",
+      "file": "web/views/radio.js",
+      "fingerprint": "message:96b0128c3491727f",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/radio.js",
+      "fingerprint": "4d39ebd9567a3da9",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/radio.js",
+      "fingerprint": "4db930cbfc7c2b37",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/radio.js",
+      "fingerprint": "f255bd322556ed2b",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/radio.js",
+      "fingerprint": "f9eb86c7918ac027",
+      "count": 1
+    },
+    {
+      "rule": "eslint/no-unused-vars",
+      "engine": "lint",
+      "file": "web/views/radio.js",
+      "fingerprint": "36988e6928987647",
+      "count": 1
+    },
+    {
+      "rule": "complexity/function-too-long",
+      "engine": "code-quality",
+      "file": "web/views/skins.js",
+      "fingerprint": "4db930cbfc7c2b37",
+      "count": 1
+    }
+  ]
+}

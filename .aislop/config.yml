@@ -1,0 +1,13 @@
+version: 1
+# Policy: inovinlabs-suite/STATIC-ANALYSIS-STANDARD.md
+# The score measures the source; it is not a target. What is declared here are facts about the
+# runtime, and tools/ is the dev harness (not shipped) — not suppressed findings.
+
+exclude: [node_modules, .git, dist, build, coverage, tools]
+
+# The gate is "no new findings", not "no findings". `aislop baseline write` records the debt this
+# repo already carries; CI then fails only on what appears after that.
+ci:
+  failBelow: 0
+  format: json
+  baseline: .aislop/ci-baseline.json
