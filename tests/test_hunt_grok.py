@@ -84,3 +84,25 @@ def test_hook_child_does_not_inherit_harness_secrets(monkeypatch):
     assert "PATH" in env
     assert "OPENAI_API_KEY" not in env
     assert "AWS_SECRET_ACCESS_KEY" not in env
+
+
+class _HostReq:
+    def __init__(self, host: str, port: int):
+        self.headers = {"Host": host}
+        self.server = type("S", (), {"server_address": ("127.0.0.1", port)})()
+
+
+def test_browser_host_on_port_80_omits_the_port():
+    """Browsers send ``Host: 127.0.0.1`` with no port when the server is on port 80."""
+    from revamp_core.server import Handler
+
+    ok = Handler._loopback_host
+    assert ok(_HostReq("127.0.0.1", 80)) is True
+    assert ok(_HostReq("localhost", 80)) is True
+    assert ok(_HostReq("127.0.0.1:80", 80)) is True
+    assert ok(_HostReq("evil.example", 80)) is False
+    assert ok(_HostReq("evil.example:80", 80)) is False
+    assert ok(_HostReq("127.0.0.1.evil.example", 80)) is False
+    # Any other port still has to be named: an omitted port is 80, not "whatever we bound".
+    assert ok(_HostReq("127.0.0.1:8114", 8114)) is True
+    assert ok(_HostReq("127.0.0.1", 8114)) is False

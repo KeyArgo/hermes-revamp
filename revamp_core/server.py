@@ -384,6 +384,10 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlsplit("//" + self.headers.get("Host", ""))
             host, port = parsed.hostname, parsed.port
             expected = int(self.server.server_address[1])
+            # Browsers omit the port when it is the scheme default. This server speaks
+            # plain HTTP, so a missing port means 80, and only a server on 80 accepts it.
+            if port is None:
+                port = 80
             if not host or port != expected:
                 return False
             return host in ("127.0.0.1", "localhost")
