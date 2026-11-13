@@ -37,7 +37,33 @@ from .config import (data_dir, library_dirs, library_dirs_custom, library_folder
 
 logger = logging.getLogger("revamp.server")
 
-VERSION = "1.0.0-alpha.10"
+# One source for the running build: BUILD_INFO.json (installed) -> live git (checkout) ->
+# plugin.yaml (release target). A number typed into this file would drift from the manifest.
+try:
+    from . import version_stamp as _stamp
+except Exception:  # imported outside the package (tests, scripts)
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import version_stamp as _stamp  # type: ignore[no-redef]
+    except Exception:
+        _stamp = None  # type: ignore[assignment]
+
+
+def _stamp_dict() -> Dict[str, Any]:
+    """version, commit, dates, dirty, channel — never a guess."""
+    if _stamp is not None:
+        try:
+            return _stamp.as_dict()
+        except Exception:
+            logger.warning("revamp: version stamp unreadable", exc_info=True)
+    return {"version": "1.0.0", "commit": "", "commit_short": "", "commit_date": "",
+            "built_at": "", "dirty": False, "channel": "release", "source": "manifest"}
+
+
+try:
+    VERSION = _stamp.version() if _stamp is not None else "1.0.0"
+except Exception:
+    VERSION = "1.0.0"
 APP_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = APP_ROOT / "web"
 
@@ -486,6 +512,9 @@ class Handler(BaseHTTPRequestHandler):
     # -- API GET routes ---------------------------------------------------------
 
     def _api_get(self, path: str, qs: Dict[str, List[str]]) -> None:
+        if path in ("/api/version", "/api/about"):
+            # The chip's only source: version · commit date · short commit, plus dirty/channel.
+            return self._send_json(_stamp_dict())
         if path == "/api/events":
             return self._sse()
         if path == "/api/sources" or path.startswith("/api/sources/"):

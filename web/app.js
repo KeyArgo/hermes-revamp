@@ -195,6 +195,60 @@ function setConn(ok, text) {
   el.textContent = text || (ok ? "connected" : "offline");
 }
 
+// ---------------------------------------------------------------- build line
+// One source: the server's own stamp (/api/version). A number typed into this bundle would
+// drift from the code answering the requests, and the drift would be invisible.
+async function copyText(t) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(t);
+      return true;
+    }
+  } catch { /* fall through to the textarea */ }
+  try {
+    const area = document.createElement("textarea");
+    area.value = t;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  } catch { return false; }
+}
+
+async function showVersion() {
+  const chip = document.getElementById("app-version");
+  if (!chip) return;
+  let build;
+  try { build = await apiGet("/api/version"); } catch { return; }   // no guess beats a wrong number
+  if (!build || !build.version) return;
+  const parts = ["v" + build.version];
+  if (build.commit_date) parts.push(String(build.commit_date).slice(0, 10));
+  const sha = build.commit_short || build.commit;
+  if (sha) parts.push(String(sha).slice(0, 8));
+  const line = parts.join(" · ") + (build.dirty ? " · modified" : "");
+  chip.textContent = line;
+  chip.classList.toggle("dirty", !!build.dirty);
+  chip.title = [
+    "REVamp " + build.version,
+    build.commit ? "commit " + build.commit : "no commit (installed copy)",
+    build.commit_date ? "committed " + build.commit_date : "",
+    build.built_at ? "installed " + build.built_at : "",
+    build.channel ? "channel " + build.channel : "",
+    "click to copy this line",
+  ].filter(Boolean).join("\n");
+  chip.addEventListener("click", async () => {
+    const copied = await copyText("REVamp " + line);
+    // Say "copied" only when something was copied: a badge that lies is worse than no badge.
+    chip.dataset.copied = copied ? "1" : "failed";
+    chip.textContent = copied ? "copied ✓" : "copy failed";
+    setTimeout(() => { delete chip.dataset.copied; chip.textContent = line; }, 1400);
+  });
+}
+
 // ---------------------------------------------------------------- ticker
 export function pushTicker(entries) {
   const track = document.getElementById("ticker-track");
@@ -876,6 +930,8 @@ function mountControlStage() {
 }
 async function boot() {
   mountThemeButton(document.querySelector(".panel-head"), document.getElementById("conn-pill"));
+  // Fill the build chip from the server's stamp, in both the player and control shells.
+  void showVersion();
   // Control mode is a complete library shell, but never imports Webamp or initializes
   // a playback backend. Its API actions operate on the one player owned by Hermes.
   if (CONTROL) {
