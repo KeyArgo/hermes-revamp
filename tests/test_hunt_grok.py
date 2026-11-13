@@ -154,3 +154,17 @@ def test_walk_does_not_follow_a_link_whose_realpath_is_macos_etc(tmp_path, monke
     out = []
     library._walk(music, set(), out)
     assert out == []
+
+
+def test_folder_kind_follows_platform_case_folding(monkeypatch):
+    """Windows and macOS treat /Music and /music as one folder. The kind must too."""
+    from revamp_core import library
+
+    monkeypatch.setattr(library.os.path, "normcase", lambda p: p.lower())
+    books = {"path": "/Music/Books/Chapter.mp3", "genre": "Rock", "duration": 10}
+    kinds = {"/music/books": "books", "/music": "music"}
+    assert library.kind_of(books, kinds) == "audiobook"
+    # The Music folder itself wins over a genre that would otherwise say "book".
+    single = {"path": "/Music/Singles/a.mp3", "genre": "Audiobook", "duration": 10}
+    assert library.kind_of(single, kinds) == "music"
+    assert library.folder_of("/Music/Books/Chapter.mp3", ["/music", "/music/books"]) == "/music/books"

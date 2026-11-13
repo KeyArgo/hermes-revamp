@@ -439,7 +439,8 @@ _LONG_TRACK_SECS = 1200
 
 
 def _norm_root(path: str) -> str:
-    return os.path.normpath(os.path.expanduser(path))
+    # normcase folds case where the filesystem does (Windows) and leaves Linux paths alone.
+    return os.path.normcase(os.path.normpath(os.path.expanduser(path)))
 
 
 def _kinds_map() -> Dict[str, str]:
@@ -451,13 +452,19 @@ def _kinds_map() -> Dict[str, str]:
 
 
 def folder_of(path: str, folders) -> str:
-    """The innermost of *folders* (normalized paths) holding *path*, or ''."""
+    """The innermost of *folders* (normalized paths) holding *path*, or ''.
+
+    The returned string is the folder as it was given (a kinds-map key), compared
+    after the platform's case folding so the lookup still finds that key."""
     path = _norm_root(path)
     best = ""
+    best_key = ""
     for folder in folders:
-        if (path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)) and len(folder) > len(best):
-            best = folder
-    return best
+        folded = _norm_root(str(folder))
+        if (path == folded or path.startswith(folded.rstrip(os.sep) + os.sep)) and len(folded) > len(best):
+            best = folded
+            best_key = folder
+    return best_key
 
 
 def kind_of(track: dict, kinds: Optional[Dict[str, str]] = None) -> str:
