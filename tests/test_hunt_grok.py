@@ -180,3 +180,27 @@ def test_set_library_folders_accepts_a_plain_path(monkeypatch, tmp_path):
         {"path": "/mnt/music", "kind": "music"},
         {"path": "/mnt/books", "kind": "books"},
     ]
+
+
+def test_lyrics_cache_save_does_not_follow_a_symlink(tmp_path, monkeypatch):
+    from revamp_core import lyrics
+
+    monkeypatch.setattr(lyrics, "data_dir", lambda: tmp_path)
+    secret = tmp_path / "secret"
+    secret.write_text("keep-me", encoding="utf-8")
+    try:
+        os.symlink(secret, tmp_path / lyrics.CACHE_NAME)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    old = dict(lyrics._CACHE)
+    lyrics._CACHE.clear()
+    lyrics._CACHE["k"] = {"hit": True, "ts": 1.0, "data": {"plain": "hi"}}
+    try:
+        lyrics._save()
+    finally:
+        lyrics._CACHE.clear()
+        lyrics._CACHE.update(old)
+    assert secret.read_text(encoding="utf-8") == "keep-me"
+    cache = tmp_path / lyrics.CACHE_NAME
+    assert cache.is_file() and not cache.is_symlink()
+    assert "hi" in cache.read_text(encoding="utf-8")
