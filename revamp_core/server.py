@@ -435,9 +435,15 @@ class Handler(BaseHTTPRequestHandler):
             # Never sent by the player; unread, its body would be parsed as the next request.
             self.close_connection = True
             return self._err(411, "send a Content-Length")
+        lengths = self.headers.get_all("Content-Length", [])
+        if (len(lengths) > 1 or
+                (lengths and (not lengths[0] or not lengths[0].isascii() or
+                              not lengths[0].isdigit()))):
+            self.close_connection = True
+            return self._err(400, "bad Content-Length")
         try:
-            length = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
+            length = int(lengths[0]) if lengths else 0
+        except ValueError:  # Python limits conversion of exceptionally long integers
             self.close_connection = True
             return self._err(400, "bad Content-Length")
         limit = self.MAX_BODY
