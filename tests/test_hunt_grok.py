@@ -106,3 +106,51 @@ def test_browser_host_on_port_80_omits_the_port():
     # Any other port still has to be named: an omitted port is 80, not "whatever we bound".
     assert ok(_HostReq("127.0.0.1:8114", 8114)) is True
     assert ok(_HostReq("127.0.0.1", 8114)) is False
+
+
+def test_symlink_scan_skips_macos_and_windows_system_targets():
+    """realpath("/etc") is /private/etc on macOS; Windows system dirs use a drive letter."""
+    from revamp_core import library
+
+    assert library._safe_link_dir("/etc") is False
+    assert library._safe_link_dir("/private/etc") is False
+    assert library._safe_link_dir("/private/etc/ssh") is False
+    assert library._safe_link_dir("/private/var/run") is False
+    assert library._safe_link_dir("/private/var/root") is False
+    assert library._safe_link_dir("/var/root") is False
+    assert library._safe_link_dir("C:/Windows/System32") is False
+    assert library._safe_link_dir("D:\\Windows") is False
+    assert library._safe_link_dir("C:/Program Files/Common Files") is False
+    assert library._safe_link_dir("C:/Users/me/AppData/Roaming") is False
+    # MPD's library and a normal music drive stay reachable, including the macOS spelling.
+    assert library._safe_link_dir("/var/lib/mpd/music") is True
+    assert library._safe_link_dir("/private/var/lib/mpd/music") is True
+    assert library._safe_link_dir("D:/Music/Albums") is True
+    assert library._safe_link_dir("/mnt/nas/Music") is True
+
+
+def test_walk_does_not_follow_a_link_whose_realpath_is_macos_etc(tmp_path, monkeypatch):
+    from revamp_core import library
+
+    music = tmp_path / "Music"
+    music.mkdir()
+    etc = tmp_path / "etc-files"
+    etc.mkdir()
+    (etc / "secret.mp3").write_bytes(b"\x00" * 16)
+    try:
+        os.symlink(etc, music / "system")
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    real = library.os.path.realpath
+    etc_real = real(str(etc))
+
+    def wrapped(path):
+        got = real(path)
+        if got == etc_real:
+            return "/private/etc"
+        return got
+
+    monkeypatch.setattr(library.os.path, "realpath", wrapped)
+    out = []
+    library._walk(music, set(), out)
+    assert out == []
