@@ -2,12 +2,20 @@
 
 Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets a new number that is never reused, so you can tell which one you have: the header chip shows it, and clicking copies the line.
 
-## 1.0.0 - 2026-11-10 (release)
+## 1.0.0 — next catalog version
 
-First public release. The version chip in the header now reads the running build from the
+The first stable release, following 1.0.0-alpha.6 in the Hermes plugin catalog. It is released when
+the catalog accepts its pin. The version chip in the header now reads the running build from the
 server's own stamp — `v1.0.0-dev.N · date · short sha`, amber while the tree it came from is
 dirty — and clicking it copies that line for a bug report. A number is no longer typed into the
 page, so the chip cannot announce an old version.
+
+- A checkout no longer restarts itself in a loop: the update watcher compares the release the
+  code declares with `plugin.yaml`, not the `-dev.N` string the chip shows.
+- A stale `BUILD_INFO.json` no longer pairs an old commit with a live version.
+- Tests hold on Windows and macOS: one process per test file in CI, and two flakes on merged main
+  fixed (a retired port watcher never re-claims the watching flag).
+- Every push checks that `plugin.yaml`, the Claude Code mod's manifest and this changelog agree.
 
 ## 1.0.0-alpha.10 - 2026-11-05 (pre-release)
 

@@ -60,8 +60,11 @@ def _stamp_dict() -> Dict[str, Any]:
             "built_at": "", "dirty": False, "channel": "release", "source": "manifest"}
 
 
+# VERSION is the release this code declares (plugin.yaml), never the "-dev.N" display string:
+# the update watcher compares it with plugin.yaml on disk, and "1.0.0-dev" sorts below "1.0.0",
+# so a checkout would restart itself forever. The chip shows the full stamp from _stamp_dict().
 try:
-    VERSION = _stamp.version() if _stamp is not None else "1.0.0"
+    VERSION = _stamp.as_dict().get("release") or _stamp.version() if _stamp is not None else "1.0.0"
 except Exception:
     VERSION = "1.0.0"
 APP_ROOT = Path(__file__).resolve().parent.parent
