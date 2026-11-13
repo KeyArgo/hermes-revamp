@@ -384,6 +384,10 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlsplit("//" + self.headers.get("Host", ""))
             host, port = parsed.hostname, parsed.port
             expected = int(self.server.server_address[1])
+            # Browsers omit the port when it is the scheme default. This server speaks
+            # plain HTTP, so a missing port means 80, and only a server on 80 accepts it.
+            if port is None:
+                port = 80
             if not host or port != expected:
                 return False
             return host in ("127.0.0.1", "localhost")
@@ -395,11 +399,7 @@ class Handler(BaseHTTPRequestHandler):
         return path.startswith("/api/")
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        # OPTIONS is a route too.  Do not let a hostile web origin use it to
-        # probe a loopback listener with an attacker-controlled Host header.
-        if not self._loopback_host():
-            return self._err(421, "request host must be loopback")
-        self._send(204, b"", "text/plain")
+        self._dispatch("OPTIONS")
 
     def do_GET(self) -> None:
         self._dispatch("GET")
@@ -435,9 +435,15 @@ class Handler(BaseHTTPRequestHandler):
             # Never sent by the player; unread, its body would be parsed as the next request.
             self.close_connection = True
             return self._err(411, "send a Content-Length")
+        lengths = self.headers.get_all("Content-Length", [])
+        if (len(lengths) > 1 or
+                (lengths and (not lengths[0] or not lengths[0].isascii() or
+                              not lengths[0].isdigit()))):
+            self.close_connection = True
+            return self._err(400, "bad Content-Length")
         try:
-            length = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
+            length = int(lengths[0]) if lengths else 0
+        except ValueError:  # Python limits conversion of exceptionally long integers
             self.close_connection = True
             return self._err(400, "bad Content-Length")
         limit = self.MAX_BODY
@@ -467,6 +473,9 @@ class Handler(BaseHTTPRequestHandler):
     def _route_dispatch(self, method: str) -> None:
         path = urllib.parse.urlsplit(self.path).path
         qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+
+        if method == "OPTIONS":
+            return self._send(204, b"", "text/plain")
 
         if path == "/api/health" and method in ("GET", "HEAD"):
             payload = _health_payload(self.server)
@@ -1326,10 +1335,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(404, "bad path")
         # Strictly inside the served folder: its parent can hold the token
         # (data dir for /skins/user/) or source files (repo for /web/).
+        if target.is_dir():
+            try:
+                target = (target / "index.html").resolve()
+            except (ValueError, OSError):
+                return self._err(404, "bad path")
         if not target.is_relative_to(root):
             return self._err(404, "bad path")
-        if target.is_dir():
-            target = target / "index.html"
         if not target.is_file():
             return self._err(404, "not found")
         # Skin folders hold downloaded/dropped files: only skins and previews are served from

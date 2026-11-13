@@ -98,13 +98,35 @@ def save_index(complete: bool = True) -> None:
 
 # Places a symlinked folder inside a music folder must never lead the scanner: system
 # trees, and hidden folders (~/.ssh, ~/.hermes ...). Links to other music drives still work.
-_NEVER_FOLLOW = ("/proc", "/sys", "/dev", "/etc", "/boot", "/run", "/root", "/var/run")  # not /var/lib: MPD keeps music there
+# Not /var/lib: MPD keeps music there. On macOS realpath("/etc") is "/private/etc" and
+# realpath("/var/run") is "/private/var/run", so those spellings are the same trees.
+_NEVER_FOLLOW = ("/proc", "/sys", "/dev", "/etc", "/boot", "/run", "/root", "/var/run",
+                 "/private/etc", "/private/var/run", "/private/var/root", "/var/root")
+# First directory under a Windows drive. These are single path components (the space is not a separator).
+_WINDOWS_ROOTS = ("windows", "programdata", "program files", "program files (x86)")
+
+
+def _system_link(target: str) -> bool:
+    """True when *target* is a system tree the scanner must not walk into."""
+    t = target.replace("\\", "/")
+    if any(t == p or t.startswith(p + "/") for p in _NEVER_FOLLOW):
+        return True
+    parts = [part for part in t.split("/") if part]
+    # "C:/Windows", "D:\\Program Files", "C:/Users/me/AppData". A music folder on D: is not one.
+    if not (parts and len(parts[0]) == 2 and parts[0][1] == ":"):
+        return False
+    folded = [part.casefold() for part in parts[1:]]
+    if not folded:
+        return False
+    if folded[0] in _WINDOWS_ROOTS:
+        return True
+    return "appdata" in folded
 
 
 def _safe_link_dir(target: str, root: Optional[str] = None) -> bool:
-    t = target.replace("\\", "/")
-    if any(t == p or t.startswith(p + "/") for p in _NEVER_FOLLOW):
+    if _system_link(target):
         return False
+    t = target.replace("\\", "/")
     parts = [part for part in t.split("/") if part]
     if root:
         # Hidden folders the music folder itself lives in (a Flatpak's ~/.var/app/..., a drive
@@ -417,7 +439,8 @@ _LONG_TRACK_SECS = 1200
 
 
 def _norm_root(path: str) -> str:
-    return os.path.normpath(os.path.expanduser(path))
+    # normcase folds case where the filesystem does (Windows) and leaves Linux paths alone.
+    return os.path.normcase(os.path.normpath(os.path.expanduser(path)))
 
 
 def _kinds_map() -> Dict[str, str]:
@@ -429,13 +452,19 @@ def _kinds_map() -> Dict[str, str]:
 
 
 def folder_of(path: str, folders) -> str:
-    """The innermost of *folders* (normalized paths) holding *path*, or ''."""
+    """The innermost of *folders* (normalized paths) holding *path*, or ''.
+
+    The returned string is the folder as it was given (a kinds-map key), compared
+    after the platform's case folding so the lookup still finds that key."""
     path = _norm_root(path)
     best = ""
+    best_key = ""
     for folder in folders:
-        if (path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)) and len(folder) > len(best):
-            best = folder
-    return best
+        folded = _norm_root(str(folder))
+        if (path == folded or path.startswith(folded.rstrip(os.sep) + os.sep)) and len(folded) > len(best):
+            best = folded
+            best_key = folder
+    return best_key
 
 
 def kind_of(track: dict, kinds: Optional[Dict[str, str]] = None) -> str:
