@@ -78,6 +78,14 @@ def check(release: bool) -> list[str]:
     version = manifest_version()
     if not SEMVER.match(version or ""):
         return [f"plugin.yaml version {version!r} is not SemVer"]
+    if "-" in version:
+        errors.append(f"plugin.yaml version {version!r} carries a pre-release tag: the file states the "
+                      "release being worked toward; '-dev.N' is computed at runtime, never written")
+    cfg = ROOT / ".release-check.json"
+    if cfg.is_file():
+        base = json.loads(cfg.read_text(encoding="utf-8")).get("dev_base", 0)
+        if type(base) is not int or base < 0:
+            errors.append(f".release-check.json dev_base {base!r} must be a whole number >= 0")
 
     for rel in mirrors():
         text = (ROOT / rel).read_text(encoding="utf-8") if (ROOT / rel).is_file() else ""

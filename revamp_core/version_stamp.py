@@ -112,11 +112,29 @@ def _is_release(declared: str, commit: str) -> bool:
     return bool(pin) and bool(commit) and pin == commit
 
 
+def _dev_base() -> int:
+    """Builds made before this repo's history began (``dev_base`` in ``.release-check.json``).
+
+    A public repo can start from a fresh history while its private dev repo already numbered builds
+    in the hundreds. Without the base, the count restarted near 1 and a new build read older than
+    one already installed. N = dev_base + commits, so it only ever climbs.
+    """
+    for candidate in (_HERE, _HERE.parent, _HERE.parent.parent, _HERE.parent.parent.parent):
+        path = candidate / ".release-check.json"
+        if path.is_file():
+            try:
+                base = json.loads(path.read_text(encoding="utf-8")).get("dev_base", 0)
+            except (OSError, ValueError, AttributeError):
+                return 0
+            return base if type(base) is int and base >= 0 else 0
+    return 0
+
+
 def _dev_suffix() -> str:
     if _git("rev-parse", "--is-shallow-repository") == "true":
         return "-dev"
     count = _git("rev-list", "--count", "HEAD")
-    return f"-dev.{count}" if count.isdigit() else "-dev"
+    return f"-dev.{_dev_base() + int(count)}" if count.isdigit() else "-dev"
 
 
 def as_dict() -> dict:
