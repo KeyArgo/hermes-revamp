@@ -168,3 +168,15 @@ def test_folder_kind_follows_platform_case_folding(monkeypatch):
     single = {"path": "/Music/Singles/a.mp3", "genre": "Audiobook", "duration": 10}
     assert library.kind_of(single, kinds) == "music"
     assert library.folder_of("/Music/Books/Chapter.mp3", ["/music", "/music/books"]) == "/music/books"
+
+
+def test_set_library_folders_accepts_a_plain_path(monkeypatch, tmp_path):
+    """A path string is a Music folder. A non-path entry is skipped, not a crash."""
+    from revamp_core import config
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    config.set_library_folders(["/mnt/music", {"path": "/mnt/books", "kind": "books"}, 3, None])
+    assert config.library_folders() == [
+        {"path": "/mnt/music", "kind": "music"},
+        {"path": "/mnt/books", "kind": "books"},
+    ]

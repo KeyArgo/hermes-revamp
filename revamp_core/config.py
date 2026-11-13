@@ -193,13 +193,20 @@ def library_dirs_custom() -> bool:
     return isinstance(raw.get("library_folders"), list) or isinstance(raw.get("library_dirs"), list)
 
 
-def set_library_folders(folders: list[dict]) -> None:
-    """Persist the app-chosen folders (even an empty list). Raises OSError."""
+def set_library_folders(folders: list) -> None:
+    """Persist the app-chosen folders (even an empty list). Raises OSError.
+
+    A plain path string is a Music folder. Anything that is neither a string nor
+    a dict is skipped: it used to crash on ``.get`` while saving the list."""
+    cleaned = []
+    for item in folders:
+        if isinstance(item, str):
+            item = {"path": item, "kind": "music"}
+        if not isinstance(item, dict):
+            continue
+        cleaned.append({"path": str(item.get("path") or ""), "kind": _norm_kind(item.get("kind"))})
     data = _load_settings()
-    data["library_folders"] = [
-        {"path": str(f.get("path") or ""), "kind": _norm_kind(f.get("kind"))}
-        for f in folders
-    ]
+    data["library_folders"] = cleaned
     data.pop("library_dirs", None)
     _save_settings(data)
 
