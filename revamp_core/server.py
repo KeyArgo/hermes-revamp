@@ -1331,10 +1331,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(404, "bad path")
         # Strictly inside the served folder: its parent can hold the token
         # (data dir for /skins/user/) or source files (repo for /web/).
+        if target.is_dir():
+            try:
+                target = (target / "index.html").resolve()
+            except (ValueError, OSError):
+                return self._err(404, "bad path")
         if not target.is_relative_to(root):
             return self._err(404, "bad path")
-        if target.is_dir():
-            target = target / "index.html"
         if not target.is_file():
             return self._err(404, "not found")
         # Skin folders hold downloaded/dropped files: only skins and previews are served from
