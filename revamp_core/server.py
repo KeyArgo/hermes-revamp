@@ -395,11 +395,7 @@ class Handler(BaseHTTPRequestHandler):
         return path.startswith("/api/")
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        # OPTIONS is a route too.  Do not let a hostile web origin use it to
-        # probe a loopback listener with an attacker-controlled Host header.
-        if not self._loopback_host():
-            return self._err(421, "request host must be loopback")
-        self._send(204, b"", "text/plain")
+        self._dispatch("OPTIONS")
 
     def do_GET(self) -> None:
         self._dispatch("GET")
@@ -473,6 +469,9 @@ class Handler(BaseHTTPRequestHandler):
     def _route_dispatch(self, method: str) -> None:
         path = urllib.parse.urlsplit(self.path).path
         qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+
+        if method == "OPTIONS":
+            return self._send(204, b"", "text/plain")
 
         if path == "/api/health" and method in ("GET", "HEAD"):
             payload = _health_payload(self.server)
