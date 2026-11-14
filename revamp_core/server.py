@@ -1056,9 +1056,11 @@ class Handler(BaseHTTPRequestHandler):
                 ok = False
             if not ok:
                 return self._err(404, "not an audio file")
-            if hasattr(os, "set_blocking"):
+            if getattr(os, "O_NONBLOCK", 0):
                 # Non-blocking was only for the open: a read on a network share (Samba,
                 # FUSE) that has to wait must not look like the end of the file.
+                # Windows has no O_NONBLOCK, so the file was never non-blocking there, and
+                # os.set_blocking (Python 3.12+ on Windows) rejects a regular file outright.
                 os.set_blocking(fd, True)
             return self._send_open_file(fh, path, st.st_size)
 

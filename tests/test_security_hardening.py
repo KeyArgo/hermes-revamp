@@ -917,7 +917,7 @@ def test_without_hard_links_the_published_token_wins(tmp_path, monkeypatch):
     assert server.get_token() == "winner" == tok.read_text()
 
 
-@pytest.mark.skipif(not hasattr(os, "set_blocking"), reason="posix")
+@pytest.mark.skipif(not getattr(os, "O_NONBLOCK", 0), reason="posix")
 def test_opened_media_is_read_blocking(tmp_path):
     song = tmp_path / "a.mp3"
     song.write_bytes(b"ID3")
