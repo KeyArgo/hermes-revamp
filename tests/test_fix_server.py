@@ -140,12 +140,15 @@ def test_relative_import_uses_origin_directory(tmp_path, monkeypatch):
 
 
 def test_export_uses_saved_offline_path():
+    import os
     from revamp_core import playlists
 
+    # An absolute path on this platform: from Python 3.13, Windows no longer counts "/music/..." as one.
+    saved = os.path.join(os.path.abspath(os.sep), "music", "offline.mp3")
     item = {"id": "local:track:aaaaaaaaaaaaaaaa", "source": "local", "kind": "music",
             "playback": {"backend": "webamp", "url": "/api/media/aaaaaaaaaaaaaaaa"},
-            "path": "/music/offline.mp3"}
-    assert playlists.item_path(item) == "/music/offline.mp3"
+            "path": saved}
+    assert playlists.item_path(item) == saved
 
 
 def test_startup_always_schedules_a_reconciliation_scan(tmp_path, monkeypatch):

@@ -143,10 +143,14 @@ def test_folder_links_never_lead_into_hidden_or_system_places(tmp_path):
     assert not library._safe_link_dir("/proc/self")
 
 
-def test_a_music_folder_inside_a_hidden_folder_still_follows_its_links(tmp_path):
+def test_a_music_folder_inside_a_hidden_folder_still_follows_its_links(tmp_path, monkeypatch):
     # Release gate a10 (temp files under ~/.cache): with the music folder itself inside a hidden
     # folder (a Flatpak's ~/.var/app/..., a drive mounted under a dot-folder) every linked folder
     # was skipped. Only hidden folders below what the link shares with the music folder count.
+    if "appdata" in str(tmp_path).casefold():
+        # Windows keeps temp files under AppData, a system tree links are never followed into
+        # (test_hunt_grok covers that); this test is about hidden folders only.
+        monkeypatch.setattr(library, "_system_link", lambda target: False)
     base = tmp_path / ".var" / "app"
     drive = base / "nas" / "Albums"
     drive.mkdir(parents=True)
