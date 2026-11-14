@@ -538,10 +538,14 @@ async function collectPluginBugEnv() {
   let revampVersion = 'unknown'
   let revampBuild = 'unknown'
   try {
-    const h = bridge?.ready ? await bridge.request('/api/health', { timeoutMs: 4000 }) : null
+    // '/health' (the bridge adds "/api"); it once asked for /api/api/health and always said "unknown".
+    const h = bridge?.ready ? await bridge.request('/health', { timeoutMs: 4000 }) : null
     if (h?.version) revampVersion = String(h.version)
     if (h?.build) revampBuild = String(h.build)
   } catch { /* player not ready */ }
+  // The full build line, as the chip shows it, is what a report needs.
+  const build = $build.get() || await readBuild()
+  if (build) revampVersion = buildLine(build)
   if (revampVersion === 'unknown') {
     try {
       const info = await rest('/info', { timeoutMs: 3000 })
@@ -2747,7 +2751,8 @@ function buildLine(build) {
 async function readBuild() {
   const ok = info => (info && typeof info === 'object' && info.version ? info : null)
   if (bridge?.ready) {
-    try { const info = ok(await bridge.request('/api/version', { timeoutMs: 4000 })); if (info) return info } catch { /* fall through */ }
+    // The page's bridge adds "/api" itself (web/app.js): '/version' reaches /api/version.
+    try { const info = ok(await bridge.request('/version', { timeoutMs: 4000 })); if (info) return info } catch { /* fall through */ }
   }
   try { return ok(await ctxRef?.rest('/version', { timeoutMs: 4000 })) } catch { return null } // no guess beats a wrong number
 }

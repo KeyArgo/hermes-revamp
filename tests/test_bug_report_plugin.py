@@ -47,7 +47,18 @@ def test_the_host_opens_the_short_form_and_copies_the_details():
 def test_the_desktop_chip_reads_the_build_through_the_player_first():
     read = PLUGIN[PLUGIN.index("async function readBuild("):]
     read = read[:read.index("\n}\n")]
-    assert read.index("bridge.request('/api/version'") < read.index("ctxRef?.rest('/version'")
+    assert read.index("bridge.request('/version'") < read.index("ctxRef?.rest('/version'")
+
+
+def test_bridge_paths_never_repeat_the_api_prefix():
+    """The page's bridge fetches "/api" + path (web/app.js). A path written as '/api/version'
+    became /api/api/version: the chip stayed empty and bug reports said "unknown" (2026-11-14)."""
+    web = (REPO / "web" / "app.js").read_text(encoding="utf-8")
+    assert 'new URL("/api" + path' in web, "the bridge's prefix rule changed: revisit this test"
+    paths = re.findall(r"bridge\.request\('([^']+)'", PLUGIN)
+    assert paths, "no literal bridge paths found"
+    bad = [p for p in paths if p.startswith("/api/")]
+    assert not bad, f"bridge paths that would become /api/api/...: {bad}"
 
 
 def test_place_menu_first_run_tip():
