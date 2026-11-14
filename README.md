@@ -168,7 +168,9 @@ to the agent.
 ## Works well with REVamp
 
 Two more Hermes plugins from the same maker. Both are optional, and REVamp never installs anything
-for you. They are also listed at the bottom of **Settings → REVamp**.
+for you. They are also at the bottom of **Settings → REVamp**, where **Find in Plugins** opens
+Hermes's Capabilities → Plugins and **Marketplace** opens each one's Hermes Marketplace page (GitHub
+until its catalog listing is approved; both are in review).
 
 | | |
 |---|---|

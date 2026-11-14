@@ -14,7 +14,9 @@ old version.
 - The version chip is in Hermes Desktop too: beside the title in Settings → REVamp, and compact in
   the status-bar player menu, built the same way as the player page's chip.
 - **Works well with REVamp:** Settings → REVamp ends with Aura and Music Studio, the maker's other
-  Hermes plugins, each with a copyable install command and a GitHub link. Nothing installs by itself.
+  Hermes plugins. **Find in Plugins** opens Hermes's Capabilities → Plugins, **Marketplace** opens
+  the plugin's Hermes Marketplace page (GitHub until it is listed), and the install command can be
+  copied. Nothing installs by itself.
 - A long playlist name (up to the 200-character limit) no longer fails on Windows: the file name is
   capped at 80 characters while the name you typed is kept whole.
 - Programs REVamp starts (ffprobe, the pop-out browser) no longer inherit Hermes's API keys; they get

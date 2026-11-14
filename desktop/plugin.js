@@ -2784,34 +2784,45 @@ function VersionChip({ compact = false }) {
 
 // ---------------------------------------------------------------- the suite
 // One quiet card at the bottom of Settings > REVamp, nowhere else: the maker's other Hermes
-// plugins that work with REVamp. SDK only (ctx.os.openExternal / writeClipboard), nothing
-// installs by itself. Install commands use owner/repo until each plugin is in the catalog.
+// plugins that work with REVamp. Each opens Hermes's own Capabilities > Plugins (host.navigate,
+// the route Hermes's command palette uses; it highlights the plugin once installed) and its Hermes
+// Marketplace page. SDK only; nothing installs by itself. Until a plugin is in the catalog
+// (`listed: false`) its marketplace page does not exist yet, so the card points at GitHub and
+// copies the owner/repo install command instead; flip `listed` when the catalog accepts it.
+const MARKETPLACE = 'https://hermes-agent.nousresearch.com/marketplace/'
+const PLUGINS_ROUTE = '/capabilities?tab=plugins&plugin='
 const SUITE = [
   {
     id: 'aura',
+    catalogName: 'aura',
+    listed: false,
     name: 'Aura',
     pitch: 'A MilkDrop visualiser behind all of Hermes that moves with whatever plays, REVamp included, and a film pane for watching while you work. Linux first.',
-    repo: 'https://github.com/KeyArgo/hermes-aura',
-    install: 'hermes plugins install KeyArgo/hermes-aura'
+    repo: 'KeyArgo/hermes-aura'
   },
   {
     id: 'music-studio',
+    catalogName: 'hermes-music-studio',
+    listed: false,
     name: 'Music Studio',
     pitch: 'Describe a song and approve the lyrics; it renders on your own GPU. Send the songs you like to a "Music Studio" playlist here in REVamp.',
-    repo: 'https://github.com/KeyArgo/hermes-music-studio',
-    install: 'hermes plugins install KeyArgo/hermes-music-studio'
+    repo: 'KeyArgo/hermes-music-studio'
   }
 ]
+
+const suiteInstall = item => `hermes plugins install ${item.listed ? item.catalogName : item.repo}`
+const suitePage = item => (item.listed ? MARKETPLACE + item.catalogName : `https://github.com/${item.repo}`)
 
 function SuiteCard() {
   const [copied, setCopied] = useState('')
   const copy = async item => {
     let ok = false
-    try { await ctxRef?.os.writeClipboard(item.install); ok = Boolean(ctxRef) } catch { ok = false }
+    try { await ctxRef?.os.writeClipboard(suiteInstall(item)); ok = Boolean(ctxRef) } catch { ok = false }
     setCopied(ok ? item.id : '')
     if (ok) setTimeout(() => setCopied(''), 1600)
   }
   const open = url => { try { void ctxRef?.os.openExternal(url) } catch { /* a host without it: no-op */ } }
+  const findInPlugins = item => { try { host.navigate(PLUGINS_ROUTE + encodeURIComponent(item.catalogName)) } catch { /* no router: stay */ } }
   return jsxs('div', {
     className: 'revamp-suite',
     style: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--ui-stroke-secondary)', alignSelf: 'stretch' },
@@ -2825,14 +2836,18 @@ function SuiteCard() {
             jsx('div', { style: { fontSize: 12, fontWeight: 600, color: 'var(--ui-text-primary)' }, children: item.name }),
             jsx('div', { style: { fontSize: 11, lineHeight: 1.4, color: 'var(--ui-text-tertiary)' }, children: item.pitch })
           ] }),
-          jsxs('div', { style: { display: 'flex', gap: 4, flex: 'none' }, children: [
+          jsxs('div', { style: { display: 'flex', gap: 4, flex: 'none', flexWrap: 'wrap' }, children: [
             jsx(Button, {
-              variant: 'ghost', size: 'micro', title: item.install, 'aria-label': `Copy the ${item.name} install command`,
-              onClick: () => void copy(item), children: copied === item.id ? 'Copied ✓' : 'Copy install command'
+              variant: 'outline', size: 'micro', 'aria-label': `Find ${item.name} in Capabilities, Plugins`,
+              title: 'Opens Capabilities > Plugins in Hermes', onClick: () => findInPlugins(item), children: 'Find in Plugins'
             }),
             jsx(Button, {
-              variant: 'ghost', size: 'micro', 'aria-label': `${item.name} on GitHub`,
-              onClick: () => open(item.repo), children: 'GitHub'
+              variant: 'ghost', size: 'micro', 'aria-label': item.listed ? `${item.name} in the Hermes Marketplace` : `${item.name} on GitHub`,
+              title: suitePage(item), onClick: () => open(suitePage(item)), children: item.listed ? 'Marketplace' : 'GitHub'
+            }),
+            jsx(Button, {
+              variant: 'ghost', size: 'micro', title: suiteInstall(item), 'aria-label': `Copy the ${item.name} install command`,
+              onClick: () => void copy(item), children: copied === item.id ? 'Copied ✓' : 'Copy install command'
             })
           ] })
         ]
