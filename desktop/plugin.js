@@ -248,6 +248,9 @@ const EN = {
   reportBug: 'Report a bug',
   reportBugHint: 'Opens GitHub with your environment filled in. Nothing is sent until you submit the issue.',
   copyBugDetails: 'Copy details',
+  nowPlaying: 'Now playing',
+  readyToPlay: 'Ready when you are',
+  nothingHint: 'Pick music, a book or a station below',
   bugCopied: 'Bug details copied',
   bugCopyFailed: 'Could not copy the bug details',
   bugOpenedCopied: 'Bug form opened in your browser. The details are copied: paste them into Diagnostics.',
@@ -351,6 +354,111 @@ const CSS = `
 .revamp-qhead .revamp-space{flex:1}
 .revamp-num{font-size:10px;color:var(--ui-text-tertiary);width:18px;text-align:right;flex-shrink:0;font-family:var(--font-mono,monospace)}
 .revamp-select{height:20px;max-width:110px;font-size:11px;color:var(--ui-text-secondary);background:transparent;border:1px solid var(--ui-stroke-secondary);border-radius:4px}
+
+/* ---- the status menu, "golden hour": plum card, amber and coral light, cream type ---- */
+.revamp-panel{width:348px;padding:5px;border-radius:20px}
+.revamp-shell{
+  --rv-plum:#24121c;--rv-plum2:#3a1a26;--rv-amber:#ffb45a;--rv-coral:#ff7d5c;--rv-rose:#ff5c86;
+  --rv-cream:#fff2e2;--rv-sand:#efc6a4;--rv-dim:rgba(255,226,198,.55);--rv-line:rgba(255,206,160,.16);
+  position:relative;display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:16px;color:var(--rv-cream);
+  background:
+    radial-gradient(140% 70% at 100% -10%,rgba(255,150,80,.34),transparent 58%),
+    radial-gradient(90% 60% at -10% 110%,rgba(255,92,134,.20),transparent 60%),
+    linear-gradient(165deg,var(--rv-plum2),var(--rv-plum) 62%);
+  box-shadow:inset 0 1px 0 rgba(255,230,200,.14),inset 0 0 0 1px rgba(255,190,140,.10),0 18px 40px rgba(20,6,12,.45)}
+.revamp-stage{display:flex;flex-direction:column;gap:8px;padding:10px 10px 12px;border-radius:14px;
+  background:linear-gradient(180deg,rgba(255,236,214,.07),rgba(255,236,214,.02));box-shadow:inset 0 1px 0 rgba(255,236,214,.10),inset 0 -1px 0 rgba(0,0,0,.25)}
+.revamp-hero{display:flex;flex-direction:column;gap:6px}
+.revamp-hero-top{display:flex;align-items:center;gap:10px;min-width:0}
+.revamp-disc{position:relative;flex:none;width:44px;height:44px;border-radius:50%;
+  background:repeating-radial-gradient(circle at 50% 50%,#1a0d13 0 1.5px,#2a1520 1.5px 3px);
+  box-shadow:0 0 0 2px rgba(255,190,130,.18),0 6px 14px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.05)}
+.revamp-disc::after{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 210deg,transparent 0 40%,rgba(255,220,180,.22) 46%,transparent 52%)}
+.revamp-disc-label{position:absolute;inset:14px;border-radius:50%;background:radial-gradient(circle,#2a1520 0 2px,var(--rv-amber) 2.5px,var(--rv-coral) 70%,var(--rv-rose));box-shadow:0 0 10px rgba(255,140,80,.55)}
+.revamp-hero[data-playing=true] .revamp-disc{animation:revamp-spin 3.2s linear infinite}
+@keyframes revamp-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.revamp-hero[data-playing=true] .revamp-disc{animation:none}}
+.revamp-hero-copy{display:flex;flex-direction:column;flex:1;min-width:0}
+.revamp-kicker{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--rv-amber);opacity:.9}
+.revamp-hero-title{font-size:14px;font-weight:650;line-height:18px;color:var(--rv-cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.revamp-hero-sub{font-size:11px;line-height:14px;color:var(--rv-sand);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.revamp-hero .revamp-track-side{color:var(--rv-sand)}
+.revamp-hero .revamp-track-side button{color:var(--rv-sand)}
+.revamp-hero .revamp-like[aria-pressed=true],.revamp-hero .revamp-track-side [aria-pressed=true]{color:var(--rv-rose)}
+.revamp-hero .revamp-sleep-left{color:var(--rv-amber)}
+.revamp-hero .revamp-wave{height:24px;color:var(--rv-amber);opacity:.5;filter:drop-shadow(0 0 6px rgba(255,150,80,.35))}
+.revamp-hero .revamp-wave[data-active=true]{color:var(--rv-amber);opacity:1}
+/* the console: raised pill keys around a glossy sunset play button */
+.revamp-console{display:flex;flex-direction:column;gap:8px}
+.revamp-keys{display:flex;align-items:center;justify-content:center;gap:6px}
+.revamp-key{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none;height:30px;min-width:38px;padding:0 10px;
+  border-radius:999px;border:1px solid rgba(255,214,176,.16);color:var(--rv-cream);cursor:pointer;font-family:inherit;font-weight:600;font-size:11px;line-height:1;
+  background:linear-gradient(180deg,#4a2533,#2e1620);
+  box-shadow:inset 0 1px 0 rgba(255,230,205,.22),inset 0 -2px 0 rgba(0,0,0,.35),0 3px 0 #1a0b11,0 6px 12px rgba(0,0,0,.35);
+  transition:transform .08s ease,box-shadow .08s ease,filter .15s ease}
+.revamp-key:hover{filter:brightness(1.12)}
+.revamp-key:active{transform:translateY(2px);box-shadow:inset 0 1px 0 rgba(255,230,205,.14),inset 0 -1px 0 rgba(0,0,0,.3),0 1px 0 #1a0b11,0 2px 5px rgba(0,0,0,.35)}
+.revamp-key:focus-visible{outline:2px solid var(--rv-amber);outline-offset:2px}
+.revamp-key[aria-pressed=true]{color:#2a1018;background:linear-gradient(180deg,#ffc982,var(--rv-amber) 55%,#f09443);border-color:rgba(255,220,170,.6)}
+.revamp-key-icon{display:flex;align-items:center;justify-content:center;width:14px;height:14px}
+.revamp-key-icon svg{width:14px;height:14px}
+.revamp-key.revamp-key-sm{height:26px;min-width:30px;padding:0 7px;opacity:.92}
+.revamp-key.revamp-key-sm .revamp-key-icon,.revamp-key.revamp-key-sm .revamp-key-icon svg{width:12px;height:12px}
+.revamp-key[data-big]{width:52px;height:52px;min-width:52px;padding:0;margin:0 4px;border-radius:50%;color:#2a1018;border-color:rgba(255,226,186,.55);
+  background:radial-gradient(120% 120% at 30% 20%,#ffe1b0 0,var(--rv-amber) 34%,var(--rv-coral) 68%,var(--rv-rose) 100%);
+  box-shadow:inset 0 2px 1px rgba(255,255,255,.55),inset 0 -4px 6px rgba(150,30,50,.35),0 4px 0 #8a2a3a,0 10px 22px rgba(255,110,70,.40)}
+.revamp-key[data-big]::before{content:"";position:absolute;top:5px;left:12px;right:12px;height:14px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0));pointer-events:none}
+.revamp-key[data-big] .revamp-key-icon,.revamp-key[data-big] .revamp-key-icon svg{width:20px;height:20px}
+.revamp-key[data-big]:active{transform:translateY(3px);box-shadow:inset 0 2px 1px rgba(255,255,255,.4),inset 0 -2px 4px rgba(150,30,50,.35),0 1px 0 #8a2a3a,0 4px 10px rgba(255,110,70,.35)}
+.revamp-shell[data-playing=true] .revamp-key[data-big]{animation:revamp-glow 2.8s ease-in-out infinite}
+@keyframes revamp-glow{50%{box-shadow:inset 0 2px 1px rgba(255,255,255,.55),inset 0 -4px 6px rgba(150,30,50,.35),0 4px 0 #8a2a3a,0 10px 30px rgba(255,130,70,.62)}}
+@media(prefers-reduced-motion:reduce){.revamp-shell[data-playing=true] .revamp-key[data-big]{animation:none}}
+.revamp-key.revamp-key-flat{height:26px;min-width:26px;padding:0;border:0;background:none;box-shadow:none;color:var(--rv-sand)}
+.revamp-key.revamp-key-flat:active{transform:none}
+.revamp-key.revamp-key-text{min-width:44px;font-family:var(--font-mono,monospace)}
+.revamp-console-row{display:flex;align-items:center;gap:6px}
+.revamp-volume{display:flex;align-items:center;gap:4px;flex:1;min-width:0;height:30px;padding:0 10px 0 4px;border-radius:999px;
+  background:rgba(10,3,7,.35);box-shadow:inset 0 2px 4px rgba(0,0,0,.45),inset 0 -1px 0 rgba(255,220,190,.08)}
+.revamp-volume input{flex:1;min-width:0;height:6px;-webkit-appearance:none;appearance:none;border-radius:999px;cursor:pointer;
+  background:linear-gradient(90deg,var(--rv-amber),var(--rv-coral) var(--revamp-fill,50%),rgba(255,226,198,.14) var(--revamp-fill,50%))}
+.revamp-volume input::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3e0,#ffc27a);box-shadow:0 1px 0 #8a2a3a,0 2px 6px rgba(0,0,0,.45)}
+/* browse: pill tabs, a pill search, warm rows */
+.revamp-shell .revamp-tabs{padding:0 0 6px}
+.revamp-pills{display:flex;gap:3px;padding:3px;border-radius:999px;background:rgba(10,3,7,.38);box-shadow:inset 0 2px 5px rgba(0,0,0,.5),inset 0 -1px 0 rgba(255,220,190,.07)}
+.revamp-pill{flex:1;min-width:0;height:26px;padding:0 6px;border:0;border-radius:999px;background:none;color:var(--rv-dim);font-family:inherit;font-weight:600;font-size:11px;line-height:26px;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color .15s,background .15s}
+.revamp-pill:hover{color:var(--rv-cream)}
+.revamp-pill:focus-visible{outline:2px solid var(--rv-amber);outline-offset:1px}
+.revamp-pill[data-on=true]{color:#2a1018;background:linear-gradient(180deg,#ffd193,var(--rv-amber) 55%,#f2934a);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 0 #9a4a2a,0 4px 10px rgba(255,140,70,.35)}
+.revamp-browse{display:flex;flex-direction:column;min-width:0}
+.revamp-shell .revamp-search{height:34px;padding:0 0 6px}
+.revamp-shell .revamp-search-field{border-radius:999px;background:rgba(10,3,7,.32);box-shadow:inset 0 2px 4px rgba(0,0,0,.4);padding-inline:6px;color:var(--rv-cream)}
+.revamp-shell .revamp-search-field input{color:var(--rv-cream)}
+.revamp-shell .revamp-search-field input::placeholder{color:var(--rv-dim)}
+.revamp-shell .revamp-list{height:184px;border-radius:12px;padding:2px}
+.revamp-shell .revamp-row{border-radius:10px}
+.revamp-shell .revamp-row:hover,.revamp-shell .revamp-row[data-current=true]{background:rgba(255,170,110,.12)}
+.revamp-shell .revamp-row-main{border-radius:10px}
+.revamp-shell .revamp-row-name{color:var(--rv-cream)}
+.revamp-shell .revamp-row-sub,.revamp-shell .revamp-row-icon,.revamp-shell .revamp-num{color:var(--rv-dim)}
+.revamp-shell .revamp-row[data-current=true] .revamp-row-name,.revamp-shell .revamp-row[data-current=true] .revamp-row-icon,.revamp-shell .revamp-row [aria-pressed=true]{color:var(--rv-amber)}
+.revamp-shell .revamp-chip{border-color:var(--rv-line);color:var(--rv-sand)}
+.revamp-shell .revamp-chip:hover,.revamp-shell .revamp-chip[aria-pressed=true]{color:#2a1018;background:var(--rv-amber);border-color:var(--rv-amber)}
+.revamp-shell .revamp-qhead,.revamp-shell .revamp-folders-head,.revamp-shell .revamp-note,.revamp-shell .revamp-focus-row{color:var(--rv-sand)}
+.revamp-shell button:not(.revamp-key):not(.revamp-pill):not(.revamp-place):not(.revamp-version-chip){color:inherit}
+/* places and the small print */
+.revamp-places{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:2px 2px 0}
+.revamp-places-label{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--rv-dim);margin-right:2px}
+.revamp-place{height:22px;padding:0 9px;border-radius:999px;border:1px solid var(--rv-line);background:rgba(255,236,214,.04);color:var(--rv-sand);font-family:inherit;font-weight:500;font-size:10.5px;line-height:20px;cursor:pointer}
+.revamp-place:hover{color:var(--rv-cream);border-color:rgba(255,190,140,.35)}
+.revamp-place[data-active=true]{color:#2a1018;border-color:transparent;background:linear-gradient(180deg,#ffd193,var(--rv-amber));box-shadow:0 2px 6px rgba(255,140,70,.35)}
+.revamp-foot{display:flex;align-items:center;gap:4px;padding-top:6px;border-top:1px solid var(--rv-line)}
+.revamp-shell .revamp-foot button{color:var(--rv-dim);white-space:nowrap;font-size:10.5px}
+.revamp-foot>div:first-child{overflow:hidden}
+.revamp-foot .revamp-version-chip{flex:none}
+.revamp-shell .revamp-foot button:hover{color:var(--rv-cream)}
+.revamp-shell{--revamp-chip-ink:var(--rv-dim);--revamp-chip-line:var(--rv-line);--revamp-chip-accent:var(--rv-amber)}
 `
 
 // ---------------------------------------------------------------- module state
@@ -2573,8 +2681,8 @@ function Picker({ np }) {
   ]
   const local = shown === 'library' || shown === 'books'
   return jsxs('div', { children: [
-    jsx('div', { className: 'revamp-tabs', children: jsx(SegmentedControl, {
-      options, value: shown, sizing: 'equal',
+    jsx('div', { className: 'revamp-tabs', children: jsx(PillTabs, {
+      options, value: shown, label: t('browse'),
       onChange: id => { setSection(id); setText(''); setFoldersOpen(false); ctxRef?.storage.set('section', id) }
     }) }),
     shown === 'focus' ? jsx(FocusPanel, { np }) : foldersOpen && local
@@ -2589,6 +2697,98 @@ function Picker({ np }) {
         ] }),
         jsx('div', { ref: listRef, className: 'revamp-list', children: jsx(SECTIONS[shown], { text: trimmed, np, onPending: setPending, onText: setText }, shown) })
       ] })
+  ] })
+}
+
+// ---------------------------------------------------------------- the status menu ("golden hour")
+// REVamp's own look, warm on purpose: a plum card lit amber and coral, a vinyl disc that turns
+// while music plays, pill tabs, and raised 3D pill keys around a glossy sunset play button.
+// Plain buttons styled by CSS above; every action is the same command the old menu sent.
+
+/** A raised pill key. `big` is the round play button; `pressed` lights it amber. */
+function Key({ label, icon, onClick, pressed, big = false, children, className = '' }) {
+  return jsx(Tip, { label, children: jsx('button', {
+    type: 'button', className: `revamp-key ${className}`, 'data-big': big || undefined,
+    'aria-label': label, title: label, 'aria-pressed': pressed, onClick,
+    children: icon ? jsx('span', { className: 'revamp-key-icon', children: jsx(icon, {}) }) : children
+  }) })
+}
+
+/** Pill tabs: a recessed track, the active pill glowing. */
+function PillTabs({ options, value, onChange, label }) {
+  return jsx('div', { className: 'revamp-pills', role: 'tablist', 'aria-label': label, children: options.map(o => jsx('button', {
+    type: 'button', role: 'tab', className: 'revamp-pill', 'aria-selected': o.id === value, 'data-on': o.id === value,
+    onClick: () => onChange(o.id), children: o.label
+  }, o.id)) })
+}
+
+const KIND_LABEL = { stream: 'radio', audiobook: 'books', focus: 'focus' }
+
+/** Now playing: the disc, the words, the heart and the queue, and the waveform. */
+function Hero({ np }) {
+  const t = usePluginI18n(ID)
+  // Streams: title = station, artist = the ICY "now playing" song.
+  const song = np.kind === 'stream' ? (np.artist && np.artist !== 'Radio' ? np.artist : '') : np.title
+  const from = np.kind === 'stream' ? np.title : np.artist
+  const title = np.status === 'live' ? song || from || t('live') : np.title ? song || from : t('nothing')
+  const sub = np.title ? (song && from ? from : '') : t('nothingHint')
+  const kicker = np.title ? `${np.status === 'live' ? t('nowPlaying') : t(np.status)} · ${t(KIND_LABEL[np.kind] || 'library')}` : t('readyToPlay')
+  return jsxs('div', { className: 'revamp-hero', 'data-playing': np.playing, children: [
+    jsxs('div', { className: 'revamp-hero-top', children: [
+      jsx('div', { className: 'revamp-disc', 'aria-hidden': true, children: jsx('span', { className: 'revamp-disc-label' }) }),
+      jsxs('div', { className: 'revamp-hero-copy', role: 'status', children: [
+        jsx('div', { className: 'revamp-kicker', children: kicker }),
+        jsx(Tip, { label: label(np) || title, children: jsx('div', { className: 'revamp-hero-title', children: title }) }),
+        sub ? jsx('div', { className: 'revamp-hero-sub', children: sub }) : null
+      ] }),
+      jsx(SignalSide, { np })
+    ] }),
+    jsx(Waveform, {})
+  ] })
+}
+
+/** The transport as a console: 3D keys around the play button, then volume and places. */
+function Console({ np }) {
+  const t = usePluginI18n(ID)
+  const where = useValue($where)
+  const winamp = useValue($winampOpen)
+  const desktop = useValue($desktop)
+  const lastVolume = useRef(np.volume || 75)
+  const canPop = where !== 'none' && where !== 'elsewhere'
+  const seek = np.seekable
+  return jsxs('div', { className: 'revamp-console', children: [
+    jsxs('div', { className: 'revamp-keys', children: [
+      jsx(Key, { label: t('shuffle'), icon: ShuffleIcon, pressed: np.shuffle, className: 'revamp-key-sm',
+        onClick: () => { holdNp('shuffle', !np.shuffle); command('shuffle', { on: !np.shuffle }) } }),
+      seek ? jsx(Key, { label: t('back10'), icon: Back10Icon, className: 'revamp-key-sm', onClick: () => command('seek_by', { seconds: -10 }) }) : null,
+      jsx(Key, { label: t('prev'), icon: PrevIcon, onClick: () => command('prev') }),
+      jsx(Key, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, big: true, onClick: toggle }),
+      jsx(Key, { label: t('next'), icon: NextIcon, onClick: () => command('next') }),
+      seek ? jsx(Key, { label: t('fwd10'), icon: Fwd10Icon, className: 'revamp-key-sm', onClick: () => command('seek_by', { seconds: 10 }) }) : null,
+      jsx(Key, { label: t('repeat'), icon: RepeatIcon, pressed: np.repeat, className: 'revamp-key-sm',
+        onClick: () => { holdNp('repeat', !np.repeat); command('repeat', { on: !np.repeat }) } })
+    ] }),
+    jsxs('div', { className: 'revamp-console-row', children: [
+      jsxs('div', { className: 'revamp-volume', children: [
+        jsx(Key, {
+          label: t(np.volume ? 'mute' : 'unmute'), icon: np.volume ? icons.Volume2 : icons.VolumeX, className: 'revamp-key-flat',
+          onClick: () => { if (np.volume) { lastVolume.current = np.volume; setVolume(0) } else setVolume(lastVolume.current || 75) }
+        }),
+        jsx('input', {
+          type: 'range', min: 0, max: 100, step: 1, value: np.volume, 'aria-label': t('volume'),
+          style: { '--revamp-fill': `${np.volume}%` }, onChange: e => setVolume(Number(e.target.value))
+        })
+      ] }),
+      // Books: tap to step the speed (1× → 1.25× … 2.5× → 0.75×); the player keeps it for books.
+      np.book ? jsx(Key, { label: `${t('speed')}: ${np.rate}×`, className: 'revamp-key-text', onClick: () => command('rate', { rate: nextRate(np.rate) }), children: `${np.rate}×` }) : null,
+      desktop
+        ? jsx(Key, { label: t('bringBackDesktop'), icon: icons.AppWindow, pressed: true, onClick: () => void bringBackFromDesktop() })
+        : canPop ? jsx(Key, {
+          label: t(winamp ? 'popIn' : 'popOut'), icon: icons.AppWindow, pressed: winamp,
+          onClick: e => (e?.shiftKey && (e.ctrlKey || e.metaKey)) ? void openOnDesktop() : engine?.setWinamp(!$winampOpen.get())
+        }) : null,
+      jsx(Key, { label: t('openFull'), icon: icons.Maximize, onClick: () => { $open.set(false); host.navigate(ROUTE) } })
+    ] })
   ] })
 }
 
@@ -2692,18 +2892,16 @@ function LocationRow() {
   const location = useValue($playerLocation)
   useValue($dockedPlayerSide); useValue($desktop); useValue($frameHidden)
   const active = loc => loc === location && !$desktop.get()
-  const item = (loc, key, suffix = '') => jsxs(Button, {
-    variant: 'ghost', size: 'micro',
-    'data-active': active(loc),
-    'aria-pressed': active(loc),
-    onClick: () => setPlayerLocation(loc),
-    children: [active(loc) ? '● ' : '', t(key) + suffix]
-  }, loc)
-  const extra = (key, label, on, onClick) => jsxs(Button, {
-    variant: 'ghost', size: 'micro', 'data-active': on, 'aria-pressed': on, onClick,
-    children: [on ? '● ' : '', label]
+  // Pills: the lit one is where the player lives now.
+  const pill = (key, text, on, onClick) => jsx('button', {
+    type: 'button', className: 'revamp-place', 'data-active': on, 'aria-pressed': on, onClick, children: text
   }, key)
-  return jsxs('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '2px 8px' }, 'aria-label': t('location'), children: placeItems(item, extra, t) })
+  const item = (loc, key, suffix = '') => pill(loc, t(key) + suffix, active(loc), () => setPlayerLocation(loc))
+  const extra = (key, label, on, onClick) => pill(key, label, on, onClick)
+  return jsxs('div', { className: 'revamp-places', role: 'group', 'aria-label': t('location'), children: [
+    jsx('span', { className: 'revamp-places-label', children: t('location') }),
+    ...placeItems(item, extra, t)
+  ] })
 }
 
 function LocationRowWithTip() {
@@ -2814,12 +3012,13 @@ function VersionChip({ compact = false }) {
       padding: compact ? '0 5px' : '1px 7px',
       lineHeight: compact ? '13px' : undefined,
       borderRadius: 999,
-      border: '1px solid var(--ui-stroke-secondary)', background: 'transparent',
+      // The status menu's warm card sets --revamp-chip-*; elsewhere the host's colours apply.
+      border: '1px solid var(--revamp-chip-line, var(--ui-stroke-secondary))', background: 'transparent',
       cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       maxWidth: compact ? 140 : undefined,
       color: copyState === 'failed' ? '#e05a5a'
-        : copyState === 'copied' ? 'var(--ui-accent)'
-          : build.dirty ? '#e8a33d' : 'var(--ui-text-tertiary)'
+        : copyState === 'copied' ? 'var(--revamp-chip-accent, var(--ui-accent))'
+          : build.dirty ? '#e8a33d' : 'var(--revamp-chip-ink, var(--ui-text-tertiary))'
     },
     children: label
   })
@@ -2986,17 +3185,18 @@ function RevampBar() {
       }) }),
       jsx(PopoverContent, { side: 'top', align: 'end', className: 'revamp-panel', 'aria-label': t('title'), children:
         np.online
-          ? jsxs('div', { children: [
-              queueOpen ? jsx(QueuePanel, { np }) : jsx(Picker, { np }),
+          ? jsxs('div', { className: 'revamp-shell', 'data-playing': np.playing, children: [
+              // Top: what's playing and the console. Middle: browse or the queue. Bottom: places
+              // and the small print (bug report, recovery, the build chip).
+              jsxs('div', { className: 'revamp-stage', children: [jsx(Hero, { np }), jsx(Console, { np })] }),
+              jsx('div', { className: 'revamp-browse', children: queueOpen ? jsx(QueuePanel, { np }) : jsx(Picker, { np }) }),
               jsx(LocationRowWithTip, {}),
-              jsxs('div', { style: { display: 'flex', alignItems: 'center', gap: 4 }, children: [
+              jsxs('div', { className: 'revamp-foot', children: [
                 jsx('div', { style: { flex: 1, minWidth: 0 }, children: jsx(ReportBugRow, { compact: true }) }),
-                jsx('div', { style: { flex: 'none', paddingRight: 8 }, children: jsx(VersionChip, { compact: true }) })
-              ] }),
-              jsx(Signal, { np }),
-              jsx(Transport, { np, extended: true })
+                jsx(VersionChip, { compact: true })
+              ] })
             ] })
-          : jsxs('div', { style: { padding: 8 }, children: [
+          : jsxs('div', { className: 'revamp-shell', style: { padding: 12 }, children: [
             jsx(EmptyState, { title: t('offline'), description: t('offlineHint') }),
             // The gateway or the player page got stuck: reload the player and look again.
             jsx('div', { style: { display: 'flex', justifyContent: 'center', paddingTop: 6 }, children: jsx(Button, {
