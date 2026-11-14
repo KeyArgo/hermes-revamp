@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in REVamp does not do what it says.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not paste your server token, full file paths containing
+        your username, or personal library details. For a security problem use the private process
+        in SECURITY.md instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what REVamp did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open REVamp from the sidebar
+        2. Pick Radio > Popular
+        3. Click a station
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Settings > REVamp > Copy diagnostics (or the status-bar player menu), pasted here. The token is masked.
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Player (Frame, mini player, pop-out, full screen)
+        - Library (music folders, tags, search)
+        - Audiobooks (resume, chapters, speed)
+        - Radio
+        - Playlists
+        - Skins, Looks or MilkDrop
+        - Agent tools or other agent apps (MCP)
+        - Install or update
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and commit
+      description: Click the version chip (Settings > REVamp, or the player header) to copy it, for example v1.0.0 · 2026-11-14 · 8861640.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS and version, Hermes Agent version, and Hermes Desktop or another agent app.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues.
+          required: true
+        - label: I read Troubleshooting in the README.
+          required: true

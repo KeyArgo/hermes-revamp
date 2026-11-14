@@ -13,6 +13,15 @@ old version.
 
 - The version chip is in Hermes Desktop too: beside the title in Settings → REVamp, and compact in
   the status-bar player menu, built the same way as the player page's chip.
+- **Works well with REVamp:** Settings → REVamp ends with Aura and Music Studio, the maker's other
+  Hermes plugins, each with a copyable install command and a GitHub link. Nothing installs by itself.
+- A long playlist name (up to the 200-character limit) no longer fails on Windows: the file name is
+  capped at 80 characters while the name you typed is kept whole.
+- Programs REVamp starts (ffprobe, the pop-out browser) no longer inherit Hermes's API keys; they get
+  only what they need to run.
+- The repository now has a Code of Conduct, LIMITS.md, VERIFY.md, issue forms and a pull request
+  template, and the whole test suite passes on Windows (it skips, rather than fails, what needs
+  FFmpeg or symlinks).
 - Windows: tracks play again on Python 3.12 and newer (every song answered an error), and CI now
   also runs Windows on Python 3.13 so this cannot slip through again.
 - Ten fixes from a security and robustness bug hunt: saves never follow a planted link, request

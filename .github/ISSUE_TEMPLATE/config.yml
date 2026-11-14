@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Troubleshooting
+    url: https://github.com/KeyArgo/hermes-revamp#troubleshooting
+    about: The usual fixes (offline mini player, missing status bar, missing chapters) before opening an issue.
+  - name: Security report
+    url: https://github.com/KeyArgo/hermes-revamp/blob/main/SECURITY.md
+    about: Report a vulnerability privately; do not open a public issue.
