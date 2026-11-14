@@ -107,6 +107,18 @@ a { color: var(--accent); }
 }
 .brand .accent { color: var(--accent); }
 .brand small { color: var(--txt-dim); font-weight: 400; font-size: 11px; }
+/* The build line. Amber while the tree it came from is dirty, accent for a moment after a
+   copy that actually happened — never colour alone, the text says "copied". */
+.brand-version {
+  background: none; border: 0; padding: 1px 4px; margin-left: 2px;
+  font: inherit; font-size: 11px; font-weight: 400; color: var(--txt-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border-radius: 5px; cursor: pointer; white-space: nowrap;
+}
+.brand-version:hover { color: var(--txt); background: rgba(255, 255, 255, 0.06); }
+.brand-version.dirty { color: var(--warn); }
+.brand-version[data-copied="1"] { color: var(--accent); }
+.brand-version[data-copied="failed"] { color: var(--err); }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav button {

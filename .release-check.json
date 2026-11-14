@@ -1,0 +1,6 @@
+{
+  "mirrors": [
+    "claude-code/revamp/.claude-plugin/plugin.json"
+  ],
+  "dev_base": 256
+}

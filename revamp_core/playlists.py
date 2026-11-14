@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 import threading
 import unicodedata
 from pathlib import Path
@@ -242,10 +243,30 @@ def _write_m3u(path: Path, name: str, items: List[Dict[str, Any]]) -> None:
         ) or str(it.get("title") or "Unknown")
         lines.append(f"#EXTINF:{secs},{label}")
         lines.append(item_path(it))
-    # Write beside, then swap: a failed write (disk full) used to leave the playlist truncated.
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    _replace_text(path, "\n".join(lines) + "\n")
+
+
+def _replace_text(path: Path, text: str) -> None:
+    """Write *text* to a new file, then swap it into *path*.
+
+    The temp name used to be ``<playlist>.tmp``. ``write_text`` follows a symlink, so a
+    name planted there was overwritten, and two saves could tear the same file. A fresh
+    file (created exclusive) is swapped into place; the swap replaces a symlink at *path*
+    instead of writing through it.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(dir=str(path.parent), prefix="." + path.name + ".", suffix=".tmp")
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def _unique_slug(base: str) -> str:
@@ -346,9 +367,12 @@ def import_playlist(name: str, fmt: str, text: str,
     if fmt not in ("m3u", "m3u8", "pls"):
         return None
     with _LOCK:
-        tmp = playlists_dir() / ".import-tmp"
-        tmp.write_text(text, encoding="utf-8")
+        # A fixed ".import-tmp" was followed when it was a symlink (same as the save temp).
+        fd, tmp_name = tempfile.mkstemp(dir=str(playlists_dir()), prefix=".import-", suffix=".tmp")
+        tmp = Path(tmp_name)
         try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(text)
             origin = Path(origin_dir).expanduser() if origin_dir else None
             items = _read_pls(tmp, origin) if fmt == "pls" else _read_m3u(tmp, origin)
         finally:

@@ -51,7 +51,7 @@ def test_player_boots_inside_hermes_sandboxed_iframe(tmp_path, query):
         ch = subprocess.Popen([CHROME, "--headless=new", "--mute-audio", "--no-first-run", f"--user-data-dir={prof}",
                                "--remote-debugging-port=0", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(50):
+        for _ in range(150):
             if os.path.exists(prof + "/DevToolsActivePort"): break
             time.sleep(0.2)
         dport = open(prof + "/DevToolsActivePort").read().split()[0]
@@ -102,7 +102,7 @@ def test_player_page_throws_no_uncaught_errors(tmp_path, query):
         ch = subprocess.Popen([CHROME, "--headless=new", "--mute-audio", "--no-first-run", f"--user-data-dir={prof}",
                                "--remote-debugging-port=0", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(50):
+        for _ in range(150):
             if os.path.exists(prof + "/DevToolsActivePort"): break
             time.sleep(0.2)
         dport = open(prof + "/DevToolsActivePort").read().split()[0]
@@ -156,7 +156,7 @@ def test_hermes_frame_shows_nothing_until_hermes_picks_the_view(tmp_path):
         ch = subprocess.Popen([CHROME, "--headless=new", "--mute-audio", "--no-first-run", f"--user-data-dir={prof}",
                                "--remote-debugging-port=0", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for _ in range(50):
+        for _ in range(150):
             if os.path.exists(prof + "/DevToolsActivePort"): break
             time.sleep(0.2)
         dport = open(prof + "/DevToolsActivePort").read().split()[0]

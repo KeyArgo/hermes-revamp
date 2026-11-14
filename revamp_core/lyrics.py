@@ -9,7 +9,9 @@ on-disk cache is capped at 5000 entries. Network errors are never cached.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -149,10 +151,29 @@ def _load() -> None:
 
 
 def _save() -> None:
+    """Replace the cache file. write_text would follow a symlink planted at the name."""
+    path = _cache_path()
     try:
-        _cache_path().write_text(json.dumps(_CACHE), encoding="utf-8")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(dir=str(path.parent), prefix=".lyrics-", suffix=".tmp")
+        tmp = Path(name)
     except OSError:
-        pass
+        return
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(_CACHE, fh)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def _ts(record: Any) -> float:

@@ -5,3 +5,4 @@ __pycache__/
 logs/
 lanes/
 out/
+BUILD_INFO.json

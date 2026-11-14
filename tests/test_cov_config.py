@@ -156,10 +156,9 @@ def test_folders_roundtrip_and_kinds(isolated):
     assert config.library_dirs() == [] and config.library_dirs_custom()
 
 
-@pytest.mark.xfail(reason="BUG: set_library_folders crashes on non-dict folder entries",
-                   strict=True)
 def test_folders_non_dict_entry(isolated):
     config.set_library_folders(["not-a-dict"])
+    assert config.library_folders() == [{"path": "not-a-dict", "kind": "music"}]
 
 
 def test_folders_legacy_and_corrupt_settings(isolated):

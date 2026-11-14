@@ -37,7 +37,36 @@ from .config import (data_dir, library_dirs, library_dirs_custom, library_folder
 
 logger = logging.getLogger("revamp.server")
 
-VERSION = "1.0.0-alpha.10"
+# One source for the running build: BUILD_INFO.json (installed) -> live git (checkout) ->
+# plugin.yaml (release target). A number typed into this file would drift from the manifest.
+try:
+    from . import version_stamp as _stamp
+except Exception:  # imported outside the package (tests, scripts)
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import version_stamp as _stamp  # type: ignore[no-redef]
+    except Exception:
+        _stamp = None  # type: ignore[assignment]
+
+
+def _stamp_dict() -> Dict[str, Any]:
+    """version, commit, dates, dirty, channel — never a guess."""
+    if _stamp is not None:
+        try:
+            return _stamp.as_dict()
+        except Exception:
+            logger.warning("revamp: version stamp unreadable", exc_info=True)
+    return {"version": "1.0.0", "commit": "", "commit_short": "", "commit_date": "",
+            "built_at": "", "dirty": False, "channel": "release", "source": "manifest"}
+
+
+# VERSION is the release this code declares (plugin.yaml), never the "-dev.N" display string:
+# the update watcher compares it with plugin.yaml on disk, and "1.0.0-dev" sorts below "1.0.0",
+# so a checkout would restart itself forever. The chip shows the full stamp from _stamp_dict().
+try:
+    VERSION = _stamp.as_dict().get("release") or _stamp.version() if _stamp is not None else "1.0.0"
+except Exception:
+    VERSION = "1.0.0"
 APP_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = APP_ROOT / "web"
 
@@ -355,6 +384,10 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlsplit("//" + self.headers.get("Host", ""))
             host, port = parsed.hostname, parsed.port
             expected = int(self.server.server_address[1])
+            # Browsers omit the port when it is the scheme default. This server speaks
+            # plain HTTP, so a missing port means 80, and only a server on 80 accepts it.
+            if port is None:
+                port = 80
             if not host or port != expected:
                 return False
             return host in ("127.0.0.1", "localhost")
@@ -366,11 +399,7 @@ class Handler(BaseHTTPRequestHandler):
         return path.startswith("/api/")
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        # OPTIONS is a route too.  Do not let a hostile web origin use it to
-        # probe a loopback listener with an attacker-controlled Host header.
-        if not self._loopback_host():
-            return self._err(421, "request host must be loopback")
-        self._send(204, b"", "text/plain")
+        self._dispatch("OPTIONS")
 
     def do_GET(self) -> None:
         self._dispatch("GET")
@@ -406,9 +435,15 @@ class Handler(BaseHTTPRequestHandler):
             # Never sent by the player; unread, its body would be parsed as the next request.
             self.close_connection = True
             return self._err(411, "send a Content-Length")
+        lengths = self.headers.get_all("Content-Length", [])
+        if (len(lengths) > 1 or
+                (lengths and (not lengths[0] or not lengths[0].isascii() or
+                              not lengths[0].isdigit()))):
+            self.close_connection = True
+            return self._err(400, "bad Content-Length")
         try:
-            length = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
+            length = int(lengths[0]) if lengths else 0
+        except ValueError:  # Python limits conversion of exceptionally long integers
             self.close_connection = True
             return self._err(400, "bad Content-Length")
         limit = self.MAX_BODY
@@ -438,6 +473,9 @@ class Handler(BaseHTTPRequestHandler):
     def _route_dispatch(self, method: str) -> None:
         path = urllib.parse.urlsplit(self.path).path
         qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+
+        if method == "OPTIONS":
+            return self._send(204, b"", "text/plain")
 
         if path == "/api/health" and method in ("GET", "HEAD"):
             payload = _health_payload(self.server)
@@ -486,6 +524,9 @@ class Handler(BaseHTTPRequestHandler):
     # -- API GET routes ---------------------------------------------------------
 
     def _api_get(self, path: str, qs: Dict[str, List[str]]) -> None:
+        if path in ("/api/version", "/api/about"):
+            # The chip's only source: version · commit date · short commit, plus dirty/channel.
+            return self._send_json(_stamp_dict())
         if path == "/api/events":
             return self._sse()
         if path == "/api/sources" or path.startswith("/api/sources/"):
@@ -1015,9 +1056,11 @@ class Handler(BaseHTTPRequestHandler):
                 ok = False
             if not ok:
                 return self._err(404, "not an audio file")
-            if hasattr(os, "set_blocking"):
+            if getattr(os, "O_NONBLOCK", 0):
                 # Non-blocking was only for the open: a read on a network share (Samba,
                 # FUSE) that has to wait must not look like the end of the file.
+                # Windows has no O_NONBLOCK, so the file was never non-blocking there, and
+                # os.set_blocking (Python 3.12+ on Windows) rejects a regular file outright.
                 os.set_blocking(fd, True)
             return self._send_open_file(fh, path, st.st_size)
 
@@ -1294,10 +1337,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(404, "bad path")
         # Strictly inside the served folder: its parent can hold the token
         # (data dir for /skins/user/) or source files (repo for /web/).
+        if target.is_dir():
+            try:
+                target = (target / "index.html").resolve()
+            except (ValueError, OSError):
+                return self._err(404, "bad path")
         if not target.is_relative_to(root):
             return self._err(404, "bad path")
-        if target.is_dir():
-            target = target / "index.html"
         if not target.is_file():
             return self._err(404, "not found")
         # Skin folders hold downloaded/dropped files: only skins and previews are served from
@@ -1969,7 +2015,9 @@ def _watch_owner(port: int, owner: Optional[str] = None, ours: Optional[bool] = 
                 if _owned:
                     logger.info("revamp: took over port %s after its owner went away", port)
                 return  # we serve it now, or a fresh watcher took over the watching
-            with _lock:  # lost a bind race; keep watching
+            with _lock:  # lost a bind race; keep watching (unless retired meanwhile)
+                if gen != _watch_gen:
+                    return  # a retired watcher must not claim the watching flag for a new one
                 _watching = True
 
     threading.Thread(target=run, name="revamp-watch", daemon=True).start()

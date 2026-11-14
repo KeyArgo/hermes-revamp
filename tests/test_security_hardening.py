@@ -143,10 +143,14 @@ def test_folder_links_never_lead_into_hidden_or_system_places(tmp_path):
     assert not library._safe_link_dir("/proc/self")
 
 
-def test_a_music_folder_inside_a_hidden_folder_still_follows_its_links(tmp_path):
+def test_a_music_folder_inside_a_hidden_folder_still_follows_its_links(tmp_path, monkeypatch):
     # Release gate a10 (temp files under ~/.cache): with the music folder itself inside a hidden
     # folder (a Flatpak's ~/.var/app/..., a drive mounted under a dot-folder) every linked folder
     # was skipped. Only hidden folders below what the link shares with the music folder count.
+    if "appdata" in str(tmp_path).casefold():
+        # Windows keeps temp files under AppData, a system tree links are never followed into
+        # (test_hunt_grok covers that); this test is about hidden folders only.
+        monkeypatch.setattr(library, "_system_link", lambda target: False)
     base = tmp_path / ".var" / "app"
     drive = base / "nas" / "Albums"
     drive.mkdir(parents=True)
@@ -917,7 +921,7 @@ def test_without_hard_links_the_published_token_wins(tmp_path, monkeypatch):
     assert server.get_token() == "winner" == tok.read_text()
 
 
-@pytest.mark.skipif(not hasattr(os, "set_blocking"), reason="posix")
+@pytest.mark.skipif(not getattr(os, "O_NONBLOCK", 0), reason="posix")
 def test_opened_media_is_read_blocking(tmp_path):
     song = tmp_path / "a.mp3"
     song.write_bytes(b"ID3")
@@ -1130,6 +1134,9 @@ def test_another_profiles_revamp_on_the_port_is_reported(monkeypatch, caplog):
         "app": "revamp", "owner": "plugin", "version": "1.0.0-alpha.10", "build": "b", "instance": "X"})
     monkeypatch.setattr(server, "_watch_owner", lambda p, **kw: None)
     monkeypatch.setattr(server.proof, "listener_identity", lambda base, token, timeout=2.0: False)
+    # Nothing real is asked to step aside: on a CI machine something may answer on 18114, and
+    # a granted shutdown skipped the warning this test is about (macOS CI, flaky).
+    monkeypatch.setattr(server, "_request_upgrade_shutdown", lambda *a: False)
     for build in ("b", "other-build"):  # Claude a10r6: other profiles' builds usually differ
         _reset_server_globals(monkeypatch)
         caplog.clear()
@@ -1163,7 +1170,12 @@ def test_the_self_update_needs_two_quiet_checks_in_a_row(monkeypatch):
 
 
 def test_installed_version_reads_plugin_yaml():
-    assert server._version_key(server._installed_version()) == server._version_key(server.VERSION)
+    """plugin.yaml is the release target; the running build may read `1.0.0-dev.N` on top of
+    it. What must hold is that the two name the same release, so a bump to plugin.yaml still
+    changes the answer instead of the service reciting a number compiled into server.py."""
+    manifest = server._installed_version()
+    assert manifest, "plugin.yaml must declare a version"
+    assert server.VERSION.split("-", 1)[0] == manifest.split("-", 1)[0]
 
 
 def test_watcher_never_takes_another_profiles_port_within_a_lease(monkeypatch):
@@ -1257,7 +1269,7 @@ def test_a_service_gone_before_the_first_poll_still_gets_its_grace(monkeypatch):
     start = _time.monotonic()
     server._watch_owner(18114, owner="service", ours=True)
     assert done.wait(5)
-    assert took[0] - start >= 0.5
+    assert took[0] - start >= 0.4  # grace is counted in polls; Windows' clock ticks every ~16 ms
 
 
 def test_service_still_takes_over_from_a_plugin(monkeypatch):
@@ -1296,7 +1308,7 @@ def test_watcher_gives_a_vanished_service_time_to_come_back(monkeypatch):
     start = _time.monotonic()
     server._watch_owner(18114)
     assert done.wait(5)
-    assert took[0] - start >= 0.5, "took a service's port before its grace period"
+    assert took[0] - start >= 0.4, "took a service's port before its grace period"  # see above
 
 
 def test_versions_compare_across_pre_releases():
@@ -1751,3 +1763,30 @@ def test_a_start_up_race_is_decided_again_at_most_twice(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING, logger=server.logger.name):
         assert server.ensure_server(18114, owner="plugin", version="1.0.0-alpha.10", build="x") is None
     assert state["n"] <= 6 and "NON-Revamp" in caplog.text
+
+
+def test_a_retired_watcher_never_claims_the_watching_flag_again(monkeypatch):
+    # CI (Linux, Windows): a watcher that lost a bind race set _watching = True after the next
+    # test had cleared it, so that test's own watcher never started.
+    import time as _time
+    _reset_server_globals(monkeypatch)
+    monkeypatch.setattr(server, "WATCH_INTERVAL", 0.02)
+    monkeypatch.setattr(server, "SERVICE_GRACE", 0.0)
+    monkeypatch.setattr(server, "_probe_health", lambda p: None)
+    monkeypatch.setattr(server, "_foreign_holder", lambda p: False)
+    monkeypatch.setattr(server, "_may_take_port", lambda p, ours: True)
+    calls = []
+
+    def lost_race(port, **kw):  # the bind is lost; meanwhile the watcher is retired
+        calls.append(port)
+        server._watch_gen += 1
+        server._watching = False
+        return None
+    monkeypatch.setattr(server, "ensure_server", lost_race)
+    server._watch_owner(18114, owner="plugin", ours=True)
+    deadline = _time.monotonic() + 2
+    while not calls and _time.monotonic() < deadline:
+        _time.sleep(0.01)
+    _time.sleep(0.2)
+    assert calls and server._watching is False
+

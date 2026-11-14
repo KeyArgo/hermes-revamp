@@ -82,13 +82,30 @@ def tool_and_preview(p: dict) -> tuple[str, str]:
     return str(tool)[:40], mask_secrets(" ".join(preview.split()))[:80]
 
 
+# revampctl looks the server up from these. A harness environment also holds API keys
+# and cloud tokens; copying all of it into the child would hand those to revampctl.
+_CHILD_ENV = (
+    "PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "WINDIR", "COMSPEC",
+    "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+    "LANG", "LC_ALL", "LC_CTYPE", "LANGUAGE",
+    "TMPDIR", "TMP", "TEMP",
+    "REVAMP_HOME", "HERMES_HOME", "REVAMP_PORT",
+)
+
+
+def child_env(source: str) -> dict:
+    env = {key: os.environ[key] for key in _CHILD_ENV if os.environ.get(key)}
+    env["REVAMP_SOURCE"] = source
+    return env
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2 or argv[1] not in EVENTS:
         return 0
     source, kind = argv[0][:32], EVENTS[argv[1]]
     tool, preview = tool_and_preview(read_payload())
     cmd = ["revampctl", "event", kind, tool or "-", preview]
-    env = dict(os.environ, REVAMP_SOURCE=source)
+    env = child_env(source)
     try:
         subprocess.Popen(cmd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)

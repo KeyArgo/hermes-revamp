@@ -1,0 +1,20 @@
+name: version guard
+# Every push and pull request: plugin.yaml, its mirrors, the CHANGELOG and the docs agree.
+# Releases are not made here. A version is released when the Hermes plugin catalog merges its pin,
+# by `suite-release --catalog` (inovinlabs-suite/bin), which tags exactly the merged commit.
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: version, changelog, mirrors and docs agree
+        run: python3 tools/release_check.py
