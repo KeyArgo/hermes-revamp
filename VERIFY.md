@@ -9,8 +9,9 @@ and Windows). The suite is offline: no model, no network.
 
 | # | Claim | Command | Result |
 |---|---|---|---|
-| 1 | The Python suite passes, one process per test file (as CI runs it) | `python tools/run_tests_per_file.py --ignore tests/test_control_mode_play_e2e.py --ignore tests/test_nav_rail_e2e.py --ignore tests/test_hermes_radio.py` | **87/87 files, 894 passed, 80 skipped, 0 failed** (166 s), 2026-11-14, `release/1.0.0` |
-| 2 | The browser-side logic passes | `for t in tests/*.test.mjs; do node --test "$t"; done` | **23/23 files pass** |
+| 1 | The Python suite passes, one process per test file (as CI runs it) | `python tools/run_tests_per_file.py --ignore tests/test_control_mode_play_e2e.py --ignore tests/test_nav_rail_e2e.py --ignore tests/test_hermes_radio.py` | **89/89 files, 907 passed, 0 failed**, 2026-11-14, `release/1.0.0` |
+| 2 | The browser-side logic passes | `for t in tests/*.test.mjs; do node --test "$t"; done` | **24/24 files pass** |
+| 2b | Shuffle deals every song once per pass, Previous retraces, the audio is the song shown, a pass that plays out stops at its end | `python -m pytest tests/test_shuffle_e2e.py -q` (real player, headless Chrome or Edge) and `node --test tests/shuffle.test.mjs` | passed (38 s); 9/9 deck tests |
 | 3 | Tags and durations are read without FFmpeg (ID3v2.3 latin-1 and UTF-16, ID3v2.4 UTF-8) | `python -m pytest tests/test_tags_without_ffmpeg.py -q` | passed, on a machine with no FFmpeg |
 | 4 | Every `/api/*` route except `/api/health` needs the token | `python -m pytest tests/test_server_security.py tests/test_security_hardening.py -q` | passed |
 | 5 | Programs REVamp starts (ffprobe, ps, the pop-out browser) never receive Hermes's keys | `python -m pytest tests/test_child_env.py -q` | passed; the test also fails any new subprocess call without `env=` |

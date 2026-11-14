@@ -10,7 +10,7 @@ _Applies to REVamp 1.0.0 · last revised 2026-11-14_
 
 <p align="center">
   <a href="https://github.com/KeyArgo/hermes-revamp/actions/workflows/tests.yml"><img src="https://github.com/KeyArgo/hermes-revamp/actions/workflows/tests.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="VERIFY.md"><img src="https://img.shields.io/badge/tests-894%20passing-2ea44f?style=flat-square" alt="Tests: 894 passing"></a>
+  <a href="VERIFY.md"><img src="https://img.shields.io/badge/tests-907%20passing-2ea44f?style=flat-square" alt="Tests: 907 passing"></a>
   <a href="https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/revamp.yaml"><img alt="Hermes plugin catalog: listed" src="https://img.shields.io/badge/plugin%20catalog-listed-2ea44f?style=flat-square"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f6bff?style=flat-square" alt="Licence: MIT"></a>
   <a href="https://github.com/NousResearch/hermes-agent"><img src="https://img.shields.io/badge/Hermes%20Agent-%E2%89%A5%200.22.5-7c3aed?style=flat-square" alt="Hermes Agent 0.22.5 or later"></a>

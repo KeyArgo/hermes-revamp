@@ -22,7 +22,8 @@ function harness() {
   };
   vm.createContext(ctx);
   vm.runInContext(slice('  const seekVersions = new Map();', '  const seekInternally =') + '\nglobalThis.noteSeek = noteSeek;', ctx);
-  vm.runInContext('let actSeq = 0, internalSeekDepth = 0; const options = {\n' + slice('    __customMiddlewares:', '    initialTracks:') + '\n}; globalThis.dispatch = options.__customMiddlewares[0]()(() => {});', ctx);
+  // The middleware also runs shuffle (web/shuffle.js, tested on its own): pass actions through here.
+  vm.runInContext('let actSeq = 0, internalSeekDepth = 0; const shuffleStep = (a) => a; const options = {\n' + slice('    __customMiddlewares:', '    initialTracks:') + '\n}; globalThis.dispatch = options.__customMiddlewares[0]()(() => {});', ctx);
   vm.runInContext(slice('  function saveBookPlace(', '  // The file played before'), ctx);
   vm.runInContext(slice('  try {\n    webamp.store.subscribe(() => {', '\n\n  // ---- MilkDrop'), ctx);
   const flush = async () => { while (timers.length) timers.shift()(); await ctx.saveChain; };

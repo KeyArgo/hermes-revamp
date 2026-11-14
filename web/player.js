@@ -4,6 +4,7 @@ import Webamp from "/vendor/webamp.butterchurn-bundle.min.mjs";
 import { normalizeItem, normalizeItems, legacyKind, legacyUrl } from "./items.js";
 import { createMiniVis } from "./minivis.mjs";
 import { getFocus } from "./focus/adapter.js";
+import { createDeck } from "./shuffle.js";
 import {
   MAIN_VIS_MODES, mainVisPrefs, mainVisFalloff, mainVisPeakFalloff, mainVisModePatch,
 } from "./main-vis.js";
@@ -28,7 +29,14 @@ const BAND_KEYS = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
 function setTrackIndex(webamp, i) {
   const order = webamp.store?.getState?.().playlist?.trackOrder;
   const id = Array.isArray(order) ? order[Math.max(0, Math.min(i, order.length - 1))] : i;
-  if (id !== undefined) webamp.setCurrentTrack(id);
+  if (id !== undefined) ownPick(() => webamp.setCurrentTrack(id));
+}
+
+// A track REVamp itself chose (a queue pick, a restore): shuffle must not swap it for the deck's.
+let ownPickDepth = 0;
+function ownPick(fn) {
+  ownPickDepth++;
+  try { return fn(); } finally { ownPickDepth--; }
 }
 
 // Insert items right after the current queue index (the "Play next" command).
@@ -122,10 +130,86 @@ export async function initPlayer(ctx) {
     internalSeekDepth++;
     try { webamp.seekToTime(seconds); } finally { internalSeekDepth--; }
   };
+  // ---- shuffle (a dealt deck; see shuffle.js)
+  // Webamp's own shuffle flag stays off, so its Next / Previous / end-of-track step through the
+  // queue in order; the middleware below sees that step (the neighbour's PLAY_TRACK, or
+  // IS_STOPPED at an end) and deals the deck's song instead. Every route goes through it: our
+  // commands, Webamp's buttons and keys, and a song ending by itself.
+  let shuffleOn = false;
+  const deck = createDeck();
+  let lastTrackClickAt = 0; // a playlist double-click is a click, then PLAY_TRACK: the person's pick
+  const shuffleStep = (action) => {
+    const type = action?.type;
+    if (type === "CLICKED_TRACK" || type === "CTRL_CLICKED_TRACK" || type === "SHIFT_CLICKED_TRACK") {
+      lastTrackClickAt = Date.now();
+      return action;
+    }
+    // Webamp's shuffle button, its menu item and the (S) key: REVamp's shuffle, not Webamp's.
+    if (type === "TOGGLE_SHUFFLE") {
+      queueMicrotask(() => api.setShuffle(!shuffleOn));
+      return null;
+    }
+    if (!shuffleOn) return action;
+    const st = storeState();
+    const order = st?.playlist?.trackOrder || [];
+    const cur = st?.playlist?.currentTrack ?? null;
+    if (type !== "PLAY_TRACK" && type !== "BUFFER_TRACK" && type !== "IS_STOPPED") return action;
+    if (ownPickDepth || Date.now() - lastTrackClickAt < 1500) {
+      if (type !== "IS_STOPPED") deck.jump(order, action.id);
+      return action;
+    }
+    const i = order.indexOf(cur), n = order.length, repeat = !!st?.media?.repeat;
+    // A song that finished by itself ends the pass with Repeat off (playback stops, as ever);
+    // a Next pressed after the last card deals a fresh pass, so Next is never a dead button.
+    const ended = (() => {
+      const len = Number(st?.media?.length) || Number(st?.tracks?.[cur]?.duration) || 0;
+      return len > 0 && Number(st?.media?.timeElapsed) >= len - 1.5;
+    })();
+    const deal = () => deck.next(order, { repeat: repeat || !ended });
+    // Change the action IN PLACE. Webamp's media middleware runs before this one: it passes the
+    // action down, then loads audio from `action.type` / `action.id` of that same object. A new
+    // object would change what the state shows while the old song played (mid-queue) or nothing
+    // played at all (an IS_STOPPED turned into a play): the stall measured on 2026-11-14.
+    const become = (newType, id) => {
+      action.type = newType;
+      if (id === undefined) delete action.id; else action.id = id;
+      return action;
+    };
+    if (type === "IS_STOPPED") {
+      // Webamp's step ran off an end: past the last song (Next, or the song ended), or before
+      // the first (Previous). Both mean "keep playing" here, so PLAY_TRACK, never a bare load.
+      if (i === 0 && n > 1 && !ended) { const id = deck.prev(order); return id == null ? action : become("PLAY_TRACK", id); }
+      const id = deal();
+      return id == null ? action : become("PLAY_TRACK", id);
+    }
+    if (i >= 0) {
+      const seqNext = i < n - 1 ? order[i + 1] : repeat ? order[0] : undefined;
+      const seqPrev = i > 0 ? order[i - 1] : repeat ? order[n - 1] : undefined;
+      if (action.id === seqNext) {
+        const id = deal();
+        return id == null ? become("IS_STOPPED") : become(type, id);
+      }
+      if (action.id === seqPrev) {
+        const id = deck.prev(order);
+        return id == null ? action : become(type, id);
+      }
+    }
+    deck.jump(order, action.id); // any other pick: it plays, the deck carries on from it
+    return action;
+  };
+  // Webamp lights its shuffle button from its own flag, which stays off: light it from ours.
+  // The button is memoised on that flag, so React leaves the class alone; a skin change that
+  // rebuilds it is repainted by the heartbeat.
+  const paintShuffle = () => {
+    document.querySelectorAll("#webamp #shuffle").forEach((el) => el.classList.toggle("selected", shuffleOn));
+  };
+
   const options = {
     // Webamp 2.3.1 emits this action for the native seek bar and seek keys.
     // Our own synchronous dispatches are scoped so they don't cancel themselves.
-    __customMiddlewares: [() => (next) => (action) => {
+    __customMiddlewares: [() => (next) => (raw) => {
+      const action = shuffleStep(raw);
+      if (action === null) return undefined; // taken over (Webamp's shuffle toggle)
       if (action?.type === "PLAY_TRACK") zeroSeekTrack = null;
       if (action?.type === "SEEK_TO_PERCENT_COMPLETE" && !internalSeekDepth) { actSeq++; noteSeek(action.percent); }
       return next(action);
@@ -201,7 +285,11 @@ export async function initPlayer(ctx) {
   }
   try { webamp.setVolume(clamp(saved.volume ?? 75)); } catch { /* guard */ }
   if (typeof saved.balance === "number") dispatchStore({ type: "SET_BALANCE", balance: clamp(saved.balance, -100, 100) });
-  if (saved.shuffle) try { webamp.toggleShuffle(); } catch { /* guard */ }
+  if (saved.shuffle) {
+    shuffleOn = true;
+    deck.start(storeState()?.playlist?.trackOrder || [], curTrack());
+    paintShuffle();
+  }
   if (saved.repeat) try { webamp.toggleRepeat(); } catch { /* guard */ }
   if (saved.eq) applySavedEq(saved.eq);
   // Moving between Hermes and the desktop window: carry on where the other player was.
@@ -584,10 +672,15 @@ export async function initPlayer(ctx) {
     // Through setOutputVolume: during a handoff's silent start a command sets the level to
     // restore, so the track's first moments still don't play before the seek lands.
     setVolume(v) { setOutputVolume(clamp(v)); stagePersist({ volume: clamp(v) }); },
+    /** Read-only view of the shuffle deck (tests, bug reports). */
+    shuffleState() { return { on: shuffleOn, order: deck.order, pos: deck.pos }; },
     setShuffle(on) {
-      const cur = !!safe(() => webamp.isShuffleEnabled());
-      if (cur !== !!on) try { webamp.toggleShuffle(); } catch { /* guard */ }
-      stagePersist({ shuffle: !!on });
+      shuffleOn = !!on;
+      // A new pass starts from the song playing now. (Webamp's own shuffle flag is never turned
+      // on: its random pick is what this replaces.)
+      if (shuffleOn) deck.start(storeState()?.playlist?.trackOrder || [], curTrack());
+      paintShuffle();
+      stagePersist({ shuffle: shuffleOn });
       setTimeout(beat, 50); // the Hermes mini player shows the toggle from the heartbeat
     },
     setRepeat(on) {
@@ -1085,10 +1178,11 @@ export async function initPlayer(ctx) {
         backend, resume_key: resumeKeyOf(it), capabilities: caps,
         // For the Hermes mini player: queue position, toggles, sleep timer, the heart.
         index: info.index, track_id: localTid(it),
-        shuffle: !!safe(() => webamp.isShuffleEnabled()), repeat: !!safe(() => webamp.isRepeatEnabled()),
+        shuffle: shuffleOn, repeat: !!safe(() => webamp.isRepeatEnabled()),
         sleep: sleepStatus(), rate: api.rate,
       },
     }).catch(() => {});
+    if (shuffleOn) paintShuffle(); // a skin change may have rebuilt the button
   }
   // heartbeat (2 s) — fire and forget
   setInterval(() => {
@@ -1110,7 +1204,7 @@ export async function initPlayer(ctx) {
     const sliders = equalizer?.sliders;
     const patch = {
       balance: Number.isFinite(st?.media?.balance) ? clamp(st.media.balance, -100, 100) : undefined,
-      shuffle: !!safe(() => webamp.isShuffleEnabled()),
+      shuffle: shuffleOn, // REVamp's deck; Webamp's own shuffle flag always reads false now
       repeat: !!safe(() => webamp.isRepeatEnabled()),
     };
     // Not during a dip, and not during a handoff's silent start: its 0 is temporary, and a
@@ -1926,7 +2020,7 @@ export async function initPlayer(ctx) {
         curId = order[Math.min(i, order.length - 1)];
         try {
           if (curId === undefined) webamp.stop();
-          else { webamp.setCurrentTrack(curId); if (wasPlaying) webamp.play(); else webamp.stop(); }
+          else { ownPick(() => webamp.setCurrentTrack(curId)); if (wasPlaying) webamp.play(); else webamp.stop(); }
         } catch { /* guard */ }
       }
       this.commit(list, order, curId);

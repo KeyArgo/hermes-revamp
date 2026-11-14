@@ -17,6 +17,15 @@ old version.
   Hermes plugins. **Find in Plugins** opens Hermes's Capabilities → Plugins, **Marketplace** opens
   the plugin's Hermes Marketplace page (GitHub until it is listed), and the install command can be
   copied. Nothing installs by itself.
+- **Shuffle works like a music player's.** It used Webamp's random pick on every Next: a 12-song
+  queue played 6 different songs in 12 Nexts, and Previous jumped somewhere random. Shuffle now
+  deals the queue once (Fisher–Yates): every song plays once per pass, Previous walks back through
+  what you heard (across passes too), Next after the last song deals a fresh pass, a pass that
+  plays out by itself stops at its end (Repeat off) or deals another (Repeat on), and songs added
+  to the queue join the part not yet played. Webamp's own shuffle button and its (S) key now
+  toggle REVamp's shuffle and light up while it is on.
+- **The status menu is REVamp's own:** a warm "golden hour" card with a spinning disc, 3D pill
+  keys around a glossy play button, pill tabs and pill places.
 - A long playlist name (up to the 200-character limit) no longer fails on Windows: the file name is
   capped at 80 characters while the name you typed is kept whole.
 - Programs REVamp starts (ffprobe, the pop-out browser) no longer inherit Hermes's API keys; they get
