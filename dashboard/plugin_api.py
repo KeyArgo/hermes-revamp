@@ -153,6 +153,14 @@ def info() -> dict:
     }
 
 
+@router.get("/version")
+def version() -> Response:
+    """The running build for the Desktop version chip: the server's own stamp (version, commit,
+    date, dirty, and ``line``, the suite's chip text). 503 while the server is down, so the chip
+    shows nothing rather than a guess."""
+    return _proxied(*_request("GET", "/api/version", timeout=2.0))
+
+
 def _proxied(status: int, payload: dict) -> Response:
     """503 when the server is down; otherwise the server's own status and body."""
     if status == 0:

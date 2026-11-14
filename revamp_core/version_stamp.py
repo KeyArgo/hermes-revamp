@@ -26,7 +26,7 @@ Usage in a plugin:
 
     @plugin.command("version")
     def version_command(ctx):
-        return describe()            # "1.0.0 · bfeb655 · 2026-11-05"
+        return describe()            # "v1.0.0 · bfeb6555 · 2026-11-05"
 
     def health():
         return as_dict()             # {"version": ..., "commit": ..., "dirty": ...}
@@ -179,16 +179,24 @@ def commit(short: bool = True) -> str:
     return info["commit_short"] if short else info["commit"]
 
 
+def chip_line(info: dict) -> str:
+    """The suite's one version line (VERSION-CHIP.md): "v1.0.0-dev.342 · 1a2b3c4d · 2026-11-13".
+
+    The /version command prints it and every plugin's on-screen chip renders exactly this, so a
+    pasted bug report means the same thing whichever surface it was copied from."""
+    parts = ["v" + str(info.get("version") or "unknown")]
+    if info.get("commit"):
+        parts.append(str(info["commit"])[:8])       # short, always, even with a full hash
+    if info.get("commit_date"):
+        parts.append(str(info["commit_date"])[:10])
+    if info.get("dirty"):
+        parts.append("modified")
+    return " · ".join(parts)
+
+
 def describe() -> str:
-    """"1.0.0 · bfeb655 · 2026-11-05" — one line, safe to show a user."""
-    info = as_dict()
-    parts = [info["version"]]
-    if info["commit"]:
-        parts.append(info["commit"][:8])       # short, always, even with a full hash
-    if info["commit_date"]:
-        parts.append(info["commit_date"][:10])
-    line = " · ".join(parts)
-    return line + (" (modified)" if info["dirty"] else "")
+    """"v1.0.0 · bfeb6555 · 2026-11-05" — one line, safe to show a user."""
+    return chip_line(as_dict())
 
 
 if __name__ == "__main__":

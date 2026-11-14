@@ -6,10 +6,18 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 The first stable release, following 1.0.0-alpha.6 in the Hermes plugin catalog. It is released when
 the catalog accepts its pin. The version chip in the header now reads the running build from the
-server's own stamp — `v1.0.0-dev.N · date · short sha`, amber while the tree it came from is
-dirty — and clicking it copies that line for a bug report. A number is no longer typed into the
-page, so the chip cannot announce an old version.
+server's own stamp — `v1.0.0-dev.N · short sha · date`, the same line Aura and Music Studio show,
+amber and ending in "modified" while the tree it came from is dirty — and clicking it copies that
+line for a bug report. A number is no longer typed into the page, so the chip cannot announce an
+old version.
 
+- The version chip is in Hermes Desktop too: beside the title in Settings → REVamp, and compact in
+  the status-bar player menu. The server writes the line once and every surface shows that text.
+- Windows: tracks play again on Python 3.12 and newer (every song answered an error), and CI now
+  also runs Windows on Python 3.13 so this cannot slip through again.
+- Ten fixes from a security and robustness bug hunt: saves never follow a planted link, request
+  sizes and bodies are checked, a browser Host on port 80 is accepted, library folders match with
+  the platform's case rules, and the scan never walks into system folders.
 - A checkout no longer restarts itself in a loop: the update watcher compares the release the
   code declares with `plugin.yaml`, not the `-dev.N` string the chip shows.
 - A stale `BUILD_INFO.json` no longer pairs an old commit with a live version.

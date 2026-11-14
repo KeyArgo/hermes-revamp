@@ -2706,6 +2706,84 @@ function LocationRowWithTip() {
   ] })
 }
 
+// ---------------------------------------------------------------- version chip
+// The suite's one version line (VERSION-CHIP.md): "v1.0.0-dev.342 · 1a2b3c4d · 2026-11-13".
+// Filled from the server's own stamp (ctx.rest('/version') → /api/version), never from a number
+// compiled into this bundle, and the server builds the text (version_stamp.chip_line) so the
+// Desktop chip, the player page and a pasted bug report all say the same thing.
+const $build = atom(null)
+
+function buildLine(build) {
+  if (!build || !build.version) return ''
+  if (typeof build.line === 'string' && build.line) return build.line
+  const parts = ['v' + build.version]
+  const sha = build.commit_short || build.commit
+  if (sha) parts.push(String(sha).slice(0, 8))
+  if (build.commit_date) parts.push(String(build.commit_date).slice(0, 10))
+  if (build.dirty) parts.push('modified')
+  return parts.join(' · ')
+}
+
+function buildTitle(build) {
+  return [
+    'REVamp ' + build.version,
+    build.commit ? 'commit ' + build.commit : 'no commit (installed copy)',
+    build.commit_date ? 'committed ' + build.commit_date : '',
+    build.built_at ? 'installed ' + build.built_at : '',
+    build.channel ? 'channel ' + build.channel : '',
+    'click to copy this line'
+  ].filter(Boolean).join('\n')
+}
+
+/** `compact` is the status-menu variant: version + short commit only, small enough for the popover. */
+function VersionChip({ compact = false }) {
+  const build = useValue($build)
+  const live = useValue($live)
+  const [copyState, setCopyState] = useState('') // '' | 'copied' | 'failed'
+  // Keyed on the server answering, so a chip that rendered before it was up asks again.
+  const online = Boolean(live)
+  useEffect(() => {
+    if ($build.get() || !ctxRef) return undefined
+    let alive = true
+    Promise.resolve(ctxRef.rest('/version', { timeoutMs: 4000 }))
+      .then(info => { if (alive && info && info.version) $build.set(info) })
+      .catch(() => {}) // no guess beats a wrong number
+    return () => { alive = false }
+  }, [online])
+  if (!build || !build.version) return null
+  const sha = build.commit_short || build.commit || ''
+  const line = compact ? ['v' + build.version].concat(sha ? [String(sha).slice(0, 8)] : []).join(' · ') : buildLine(build)
+  const label = copyState === 'copied' ? 'copied ✓' : copyState === 'failed' ? 'copy failed' : line
+  return jsx('button', {
+    type: 'button',
+    className: 'revamp-version-chip',
+    'data-dirty': build.dirty ? 'true' : undefined,
+    title: buildTitle(build),
+    'aria-label': 'Copy version ' + buildLine(build),
+    onClick: async () => {
+      // Say "copied" only when something was copied: a badge that lies is worse than no badge.
+      let ok = false
+      try { await ctxRef?.os.writeClipboard('REVamp ' + buildLine(build)); ok = Boolean(ctxRef) } catch { ok = false }
+      setCopyState(ok ? 'copied' : 'failed')
+      setTimeout(() => setCopyState(''), 1400)
+    },
+    style: {
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: compact ? 9 : 10.5,
+      padding: compact ? '0 5px' : '1px 7px',
+      lineHeight: compact ? '13px' : undefined,
+      borderRadius: 999,
+      border: '1px solid var(--ui-stroke-secondary)', background: 'transparent',
+      cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      maxWidth: compact ? 140 : undefined,
+      color: copyState === 'failed' ? '#e05a5a'
+        : copyState === 'copied' ? 'var(--ui-accent)'
+          : build.dirty ? '#e8a33d' : 'var(--ui-text-tertiary)'
+    },
+    children: label
+  })
+}
+
 function ReportBugRow({ compact = false }) {
   const t = usePluginI18n(ID)
   return jsxs('div', {
@@ -2796,7 +2874,10 @@ function RevampBar() {
           ? jsxs('div', { children: [
               queueOpen ? jsx(QueuePanel, { np }) : jsx(Picker, { np }),
               jsx(LocationRowWithTip, {}),
-              jsx(ReportBugRow, { compact: true }),
+              jsxs('div', { style: { display: 'flex', alignItems: 'center', gap: 4 }, children: [
+                jsx('div', { style: { flex: 1, minWidth: 0 }, children: jsx(ReportBugRow, { compact: true }) }),
+                jsx('div', { style: { flex: 'none', paddingRight: 8 }, children: jsx(VersionChip, { compact: true }) })
+              ] }),
               jsx(Signal, { np }),
               jsx(Transport, { np, extended: true })
             ] })
@@ -2992,7 +3073,11 @@ function RevampSettings() {
   }, loc)
   const extra = (key, label, on, onClick) => jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': on, onClick, children: label }, key)
   return jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, padding: 12, alignItems: 'flex-start' }, children: [
-    jsx('h3', { style: { margin: 0, fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('location') }),
+    jsxs('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10 }, children: [
+      jsx('h2', { style: { margin: 0, fontSize: 15, color: 'var(--ui-text-primary)' }, children: 'REVamp' }),
+      jsx(VersionChip, {})
+    ] }),
+    jsx('h3', { style: { margin: '4px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('location') }),
     jsx('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 }, role: 'group', 'aria-label': t('location'), children: placeItems(item, extra, t) }),
     jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('dockedPlayerSide') }),
     jsxs('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('dockedPlayerSide'), children: [
@@ -3124,6 +3209,7 @@ export default {
     $winampOpen.set($playerLocation.get() === 'floating')
     $desktop.set(false)
     $live.set(null)
+    $build.set(null) // a hot reload may be a new build: ask the server again
     $open.set(false)
     $libVersion.set(0)
     $scanning.set(false)
