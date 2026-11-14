@@ -249,6 +249,10 @@ const EN = {
   reportBugHint: 'Opens GitHub with your environment filled in. Nothing is sent until you submit the issue.',
   copyBugDetails: 'Copy details',
   bugCopied: 'Bug details copied',
+  bugCopyFailed: 'Could not copy the bug details',
+  bugOpenedCopied: 'Bug form opened in your browser. The details are copied: paste them into Diagnostics.',
+  bugOpened: 'Bug form opened in your browser.',
+  bugOpenFailed: 'Could not open your browser. Use Copy details and open github.com/KeyArgo/hermes-revamp/issues.',
   recoverPlayer: 'Recover player',
   copyDiagnostics: 'Copy diagnostics',
   recoveryStarted: 'REVamp is reloading. Your queue is kept.',
@@ -509,12 +513,17 @@ function saveDiagnostic(record) {
   ctxRef.storage.set('diagnostics', [...savedDiagnostics(), entry].slice(-12))
 }
 
-function buildBugReportUrl(env, options = {}) {
-  const title = options.title ?? '[REVamp] '
-  const body = options.body ?? formatBugReportBody(env)
+// The issue form (.github/ISSUE_TEMPLATE/bug_report.yml), prefilled by field id. The full report
+// never rides in the URL: Windows drops an external URL past ~2,000 characters without a word, and
+// with blank issues off GitHub ignores a `body` for the form. The details go to the clipboard
+// instead, for the form's Diagnostics box.
+function buildBugReportUrl(env) {
   const u = new URL(BUG_ISSUE_NEW_URL)
-  u.searchParams.set('title', title)
-  u.searchParams.set('body', body)
+  u.searchParams.set('template', 'bug_report.yml')
+  u.searchParams.set('title', '[bug]: ')
+  u.searchParams.set('version', String(env.revampVersion ?? 'unknown').slice(0, 120))
+  const platform = [env.os, env.hermesVersion ? `Hermes ${env.hermesVersion}` : '', 'Hermes Desktop'].filter(Boolean).join(', ')
+  u.searchParams.set('platform', platform.slice(0, 160))
   return u.toString()
 }
 
@@ -575,12 +584,16 @@ async function recoverPlayer() {
 async function openBugReport(copyOnly = false) {
   if (!ctxRef) return
   const env = await collectPluginBugEnv()
+  let copied = false
+  try { await ctxRef.os.writeClipboard(formatBugReportBody(env)); copied = true } catch { copied = false }
   if (copyOnly) {
-    await ctxRef.os.writeClipboard(formatBugReportBody(env))
-    host.notify({ kind: 'success', message: EN.bugCopied })
-  } else {
-    await ctxRef.os.openExternal(buildBugReportUrl(env))
+    if (copied) host.notify({ kind: 'success', message: EN.bugCopied })
+    else notifyError(EN.bugCopyFailed, { always: true })
+    return
   }
+  const opened = await ctxRef.os.openExternal(buildBugReportUrl(env)).catch(() => false)
+  if (opened === false) notifyError(EN.bugOpenFailed, { always: true })
+  else host.notify({ kind: 'success', message: copied ? EN.bugOpenedCopied : EN.bugOpened })
 }
 
 function readPlaceMenuTipSeen() {
@@ -1189,6 +1202,12 @@ function createEngine(ctx, url, bridgeKey = '') {
         ctx.storage.set('themeBg', themeBg)
         for (const w of others) themeTo(w)
       }
+      return
+    }
+    // The page's "Open GitHub issue": its frame is sandboxed without popups, so it asks the host.
+    // The message carries no URL; the host builds the short issue-form link itself.
+    if (fromPage && e.data.type === 'revamp:open-bug-report') {
+      void openBugReport(false)
       return
     }
     // The server refused a page's key (it restarted with a new one). Its notice may sit outside
@@ -2722,6 +2741,17 @@ function buildLine(build) {
   return parts.join(' · ') + (build.dirty ? ' · modified' : '')
 }
 
+// The live player first (it talks to the REVamp server directly), then the gateway route. The
+// gateway is a separate long-lived process: after a plugin update it can still be the old code,
+// without a /version route, until Hermes itself restarts; the chip must not vanish meanwhile.
+async function readBuild() {
+  const ok = info => (info && typeof info === 'object' && info.version ? info : null)
+  if (bridge?.ready) {
+    try { const info = ok(await bridge.request('/api/version', { timeoutMs: 4000 })); if (info) return info } catch { /* fall through */ }
+  }
+  try { return ok(await ctxRef?.rest('/version', { timeoutMs: 4000 })) } catch { return null } // no guess beats a wrong number
+}
+
 function buildTitle(build) {
   return [
     'REVamp ' + build.version,
@@ -2743,10 +2773,18 @@ function VersionChip({ compact = false }) {
   useEffect(() => {
     if ($build.get() || !ctxRef) return undefined
     let alive = true
-    Promise.resolve(ctxRef.rest('/version', { timeoutMs: 4000 }))
-      .then(info => { if (alive && info && info.version) $build.set(info) })
-      .catch(() => {}) // no guess beats a wrong number
-    return () => { alive = false }
+    let tries = 0
+    let timer = null
+    // The player may still be loading when this first renders: try a few times, then stop.
+    const attempt = () => {
+      void readBuild().then(info => {
+        if (!alive) return
+        if (info) $build.set(info)
+        else if (++tries < 6) timer = setTimeout(attempt, 3000)
+      })
+    }
+    attempt()
+    return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [online])
   if (!build || !build.version) return null
   const sha = build.commit_short || build.commit || ''

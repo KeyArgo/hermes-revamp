@@ -21,6 +21,35 @@ def test_plugin_bug_url_base_matches_web():
     assert "github.com/KeyArgo/hermes-revamp/issues/new" in WEB
 
 
+def test_the_page_asks_the_host_to_open_the_issue_form():
+    """The page's "Open GitHub issue" called window.open inside a frame sandboxed without popups,
+    so it did nothing in Hermes. Embedded, it now posts a URL-less request; the host (which trusts
+    only its own frames) copies the details and opens the form."""
+    agent = (REPO / "web" / "views" / "agent.js").read_text(encoding="utf-8")
+    assert "embeddedInHost()" in agent
+    assert 'postMessage({ type: "revamp:open-bug-report" }, "*")' in agent
+    handler = PLUGIN[PLUGIN.index("if (fromPage && e.data.type === 'revamp:open-bug-report')"):][:200]
+    assert "openBugReport(false)" in handler
+    assert "e.data.url" not in handler, "the host must never open a URL a page message names"
+
+
+def test_the_host_opens_the_short_form_and_copies_the_details():
+    open_fn = PLUGIN[PLUGIN.index("async function openBugReport("):]
+    open_fn = open_fn[:open_fn.index("\n}\n")]
+    assert "writeClipboard(formatBugReportBody(env))" in open_fn
+    assert "openExternal(buildBugReportUrl(env))" in open_fn
+    build = PLUGIN[PLUGIN.index("function buildBugReportUrl("):]
+    build = build[:build.index("\n}\n")]
+    assert "'template', 'bug_report.yml'" in build
+    assert "'body'" not in build, "the report never rides in the URL (Windows drops long ones)"
+
+
+def test_the_desktop_chip_reads_the_build_through_the_player_first():
+    read = PLUGIN[PLUGIN.index("async function readBuild("):]
+    read = read[:read.index("\n}\n")]
+    assert read.index("bridge.request('/api/version'") < read.index("ctxRef?.rest('/version'")
+
+
 def test_place_menu_first_run_tip():
     assert "placeMenuTip" in PLUGIN
     assert "LocationRowWithTip" in PLUGIN

@@ -30,19 +30,35 @@ test("bug report body matches the GitHub template sections", () => {
   assert.match(body, /Please remove library paths/);
 });
 
-test("buildBugReportUrl encodes title and body for GitHub", () => {
+test("buildBugReportUrl opens the bug form, prefilled, with no report in the URL", () => {
   const url = buildBugReportUrl({
-    revampVersion: "2",
+    revampVersion: "v1.0.0-dev.304 · 2026-11-14 · ac8db746",
     revampBuild: "b",
+    os: "Windows",
+    hermesVersion: "0.23.1",
+    browser: "Chrome/146",
     playerPlace: "Mini player",
-    skin: "nous",
-    theme: "paper",
   });
   assert.ok(url.startsWith(ISSUE_NEW_URL));
   const u = new URL(url);
-  assert.equal(u.searchParams.get("title"), defaultBugTitle());
-  const body = u.searchParams.get("body");
-  assert.ok(body.includes("## What happened?"));
-  assert.ok(body.includes("- REVamp build: b"));
-  assert.ok(body.includes("- Player place: Mini player"));
+  // .github/ISSUE_TEMPLATE/bug_report.yml, filled by field id
+  assert.equal(u.searchParams.get("template"), "bug_report.yml");
+  assert.equal(u.searchParams.get("version"), "v1.0.0-dev.304 · 2026-11-14 · ac8db746");
+  assert.match(u.searchParams.get("platform"), /Windows, Hermes 0\.23\.1/);
+  // GitHub ignores body for a form (blank issues are off), and the details go to the clipboard
+  assert.equal(u.searchParams.get("body"), null);
+  assert.equal(typeof defaultBugTitle(), "string");
+});
+
+test("the bug form URL stays short even with long diagnostics", () => {
+  // Windows silently fails to open an external URL past ~2,000 characters: the old URL carried the
+  // whole report (diagnostics, stacks, user agent) and "Open GitHub issue" did nothing.
+  const url = buildBugReportUrl({
+    revampVersion: "v" + "9".repeat(500),
+    os: "Windows ".repeat(100),
+    browser: "Mozilla/5.0 ".repeat(100),
+    logs: "x".repeat(20000),
+    diagnostics: "stack ".repeat(5000),
+  });
+  assert.ok(url.length < 1000, `URL is ${url.length} characters`);
 });

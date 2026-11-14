@@ -1,5 +1,5 @@
 // agent.js — Hermes event log + settings: duck on approval, duck level, ticker on/off.
-import { buildBugReportUrl, collectWebBugEnv, formatBugReportBody } from "../bug-report.js";
+import { buildBugReportUrl, collectWebBugEnv, embeddedInHost, formatBugReportBody } from "../bug-report.js";
 import { getHostPlayerPlace } from "../host-place.js";
 import { getThemeSnapshot } from "../theme.js";
 import { toast } from "./modal.js";
@@ -108,7 +108,17 @@ export async function render(root, api) {
       getPlace: getHostPlayerPlace,
     });
   openBug.addEventListener("click", async () => {
+    // Inside Hermes the page is sandboxed without popups: window.open did nothing. The host
+    // copies the details and opens the issue form itself (the message carries no URL).
+    if (embeddedInHost()) {
+      window.parent.postMessage({ type: "revamp:open-bug-report" }, "*");
+      return;
+    }
     const env = await envForBug();
+    try {
+      await navigator.clipboard.writeText(formatBugReportBody(env));
+      toast("Details copied: paste them into the form's Diagnostics box", { kind: "ok" });
+    } catch { /* the form still opens; Copy details is beside it */ }
     window.open(buildBugReportUrl(env), "_blank", "noopener,noreferrer");
   });
   copyBug.addEventListener("click", async () => {

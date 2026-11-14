@@ -43,14 +43,26 @@ export function formatBugReportBody(env) {
   return lines.join("\n");
 }
 
-/** @param {Record<string, string | undefined>} env */
-export function buildBugReportUrl(env, options = {}) {
-  const title = options.title ?? defaultBugTitle();
-  const body = options.body ?? formatBugReportBody(env);
+/**
+ * The issue form (.github/ISSUE_TEMPLATE/bug_report.yml), prefilled by field id. The full report
+ * never rides in the URL: Windows drops an external URL past ~2,000 characters, and with blank
+ * issues off GitHub ignores a `body` for the form. Copy the details for its Diagnostics box instead.
+ * @param {Record<string, string | undefined>} env
+ */
+export function buildBugReportUrl(env) {
   const u = new URL(ISSUE_NEW_URL);
-  u.searchParams.set("title", title);
-  u.searchParams.set("body", body);
+  u.searchParams.set("template", "bug_report.yml");
+  u.searchParams.set("title", "[bug]: ");
+  u.searchParams.set("version", String(env.revampVersion ?? "unknown").slice(0, 120));
+  const platform = [env.os, env.hermesVersion ? `Hermes ${env.hermesVersion}` : "", env.browser]
+    .filter(Boolean).join(", ");
+  u.searchParams.set("platform", platform.slice(0, 160));
   return u.toString();
+}
+
+/** True inside Hermes Desktop, where the page is a sandboxed frame that may not open windows. */
+export function embeddedInHost() {
+  try { return window.parent !== window; } catch { return true; }
 }
 
 export async function fetchRevampHealth() {

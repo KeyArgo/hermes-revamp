@@ -44,7 +44,7 @@ def test_the_chip_never_shows_a_compiled_in_version():
     page = _src("web/app.js")
     desktop = _src("desktop/plugin.js")
     assert 'apiGet("/api/version")' in page
-    assert "ctxRef.rest('/version'" in desktop
+    assert "bridge.request('/api/version'" in desktop and "ctxRef?.rest('/version'" in desktop
     assert not re.search(r"['\"]v?1\.0\.0(-dev[.\d]*)?['\"]", _function(desktop, "VersionChip"))
 
 

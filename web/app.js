@@ -189,10 +189,13 @@ export function setNowPlaying({ title, artist, art, isStream, time, duration, st
 }
 
 // ---------------------------------------------------------------- connection pill
+// While connected the pill shows the build line (the logo's chip is hidden inside Hermes, where
+// the pill's old "v1.0.0" was the only version anyone saw, and it was the release, not the build).
+let connBuildLine = "";
 function setConn(ok, text) {
   const el = document.getElementById("conn-pill");
   el.classList.toggle("on", !!ok);
-  el.textContent = text || (ok ? "connected" : "offline");
+  el.textContent = text || (ok ? connBuildLine || "connected" : "offline");
 }
 
 // ---------------------------------------------------------------- build line
@@ -237,6 +240,9 @@ async function showVersion() {
   try { build = await apiGet("/api/version"); } catch { return; }   // no guess beats a wrong number
   if (!build || !build.version) return;
   const line = buildLine(build);
+  connBuildLine = line;
+  const pill = document.getElementById("conn-pill");
+  if (pill?.classList.contains("on")) pill.textContent = line;
   chip.textContent = line;
   chip.classList.toggle("dirty", !!build.dirty);
   chip.title = [
@@ -948,8 +954,8 @@ async function boot() {
     globalKeys();
     mountControlStage();
     try {
-      const h = await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
-      setConn(true, `v${h.version || "?"}`);
+      await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
+      setConn(true);
     } catch { setConn(false, "server down"); }
     showStartView();
     if (hosted) window.parent.postMessage({ type: "revamp:ready", bridge: Boolean(BRIDGE_KEY), control: true }, "*");
@@ -963,8 +969,8 @@ async function boot() {
 
   // health check (no token needed)
   try {
-    const h = await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
-    setConn(true, `v${h.version || "?"}`);
+    await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
+    setConn(true);
   } catch {
     setConn(false, "server down");
     toast("Cannot reach the REVamp server. Is the plugin running?", { kind: "error", ttl: 8000 });
