@@ -102,7 +102,7 @@ def test_folder_kind_overrides_the_guess(server, tmp_path):
     assert kinds == {"Book": "music", "Song": "audiobook"}
 
 
-def test_a_folder_cannot_be_both(server, tmp_path):
+def test_a_folder_cannot_be_both(server, tmp_path, symlinks_allowed):
     d = tmp_path / "shared"
     d.mkdir()
     for folders in ([{"path": str(d), "kind": "music"}, {"path": str(d), "kind": "books"}],

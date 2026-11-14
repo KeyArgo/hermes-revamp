@@ -70,34 +70,63 @@ def _make_track(lib: Path, name: str, title: str, artist: str, album: str, ext: 
     return out
 
 
+@pytest.fixture()
+def symlinks_allowed(tmp_path):
+    """Skip a test that builds symlinks where this machine refuses them (Windows without Developer
+    Mode or admin rights: WinError 1314). CI's runners allow them, so the tests still run there."""
+    try:
+        (tmp_path / ".symlink-probe").symlink_to(tmp_path)
+    except (OSError, NotImplementedError):
+        pytest.skip("this machine cannot create symlinks")
+    (tmp_path / ".symlink-probe").unlink()
+
+
+def _syncsafe(n: int) -> bytes:
+    return bytes([(n >> 21) & 0x7F, (n >> 14) & 0x7F, (n >> 7) & 0x7F, n & 0x7F])
+
+
+def id3_mp3(title: str, artist: str, album: str = "", *, version: int = 3, encoding: int = 0,
+            frames: int = 20) -> bytes:
+    """A small, valid MP3 with an ID3v2 tag, written without ffmpeg.
+
+    REVamp reads tags in Python (no FFmpeg needed), so a library built from these must show real
+    titles and artists. ``encoding``: 0 latin-1, 1 UTF-16 (v2.3), 3 UTF-8 (v2.4)."""
+    def frame(fid: str, text: str) -> bytes:
+        raw = {0: lambda s: s.encode("latin-1"), 1: lambda s: s.encode("utf-16"),
+               3: lambda s: s.encode("utf-8")}[encoding](text)
+        data = bytes([encoding]) + raw
+        size = _syncsafe(len(data)) if version == 4 else len(data).to_bytes(4, "big")
+        return fid.encode("ascii") + size + b"\x00\x00" + data
+    body = frame("TIT2", title) + frame("TPE1", artist) + (frame("TALB", album) if album else b"")
+    tag = b"ID3" + bytes([version, 0, 0]) + _syncsafe(len(body)) + body
+    silent = b"\xff\xfb\x90\x64" + b"\x00" * 413   # one MPEG-1 Layer III frame, 128 kbps 44.1 kHz
+    return tag + silent * frames
+
+
+def _fallback_track(lib: Path, name: str, title: str, artist: str, album: str, ext: str) -> None:
+    """Without ffmpeg (or an encoder): an MP3 still gets real tags; other formats are bare files,
+    which the scanner indexes by extension."""
+    if ext == "mp3":
+        (lib / name).write_bytes(id3_mp3(title, artist, album))
+    else:
+        (lib / name).write_bytes(b"\x00" * 256)
+
+
 def make_library(tmp_path: Path) -> Path:
     lib = tmp_path / "music"
     lib.mkdir()
-    if HAVE_FFMPEG:
-        for name, title, artist, album, ext in TRACKS:
+    sub = lib / "nested"
+    sub.mkdir()
+    deep = (sub, "Deep Cut.mp3", "Deep Cut", "The Artists", "Great Album", "mp3")
+    for where, name, title, artist, album, ext in [(lib, *t) for t in TRACKS] + [deep]:
+        if HAVE_FFMPEG:
             try:
-                _make_track(lib, name, title, artist, album, ext)
+                _make_track(where, name, title, artist, album, ext)
+                continue
             except Exception:
-                # An installed ffmpeg can still lack an encoder (notably in
-                # minimal CI packages). The scanner deliberately accepts
-                # extension-valid files, so retain the fixture's contract.
-                (lib / name).write_bytes(b"\x00" * 256)
-        sub = lib / "nested"
-        sub.mkdir()
-        try:
-            _make_track(sub, "Deep Cut.mp3", "Deep Cut", "The Artists",
-                        "Great Album", "mp3")
-        except Exception:
-            (sub / "Deep Cut.mp3").write_bytes(b"\x00" * 128)
-    else:
-        # Tiny fake files; the scanner indexes by extension regardless of
-        # decodability, which is enough for API tests (tags fall back to
-        # filename heuristics).
-        for name, title, artist, album, ext in TRACKS:
-            (lib / name).write_bytes(b"\x00" * 256)
-        sub = lib / "nested"
-        sub.mkdir()
-        (sub / "Deep Cut.mp3").write_bytes(b"\x00" * 128)
+                # An installed ffmpeg can still lack an encoder (notably in minimal CI packages).
+                pass
+        _fallback_track(where, name, title, artist, album, ext)
     (lib / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fakejpgdata")
     return lib
 

@@ -340,7 +340,7 @@ def test_same_second_snapshots_list_newest_first_and_dedupe_against_the_newest(e
     assert bk.list_backups(root)[0]["id"] == last["id"]
 
 
-def test_symlinked_files_are_never_backed_up_or_exported(env):
+def test_symlinked_files_are_never_backed_up_or_exported(env, symlinks_allowed):
     data, root = env
     (data / "playlists" / "leak.m3u8").symlink_to(data / "token")
     m = bk.snapshot(data, root=root)

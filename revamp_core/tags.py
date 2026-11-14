@@ -19,6 +19,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from .childenv import child_env
+
 try:  # optional, per SPEC
     import mutagen  # type: ignore
     _HAVE_MUTAGEN = True
@@ -92,7 +94,7 @@ def _probe_ffprobe(path: str) -> Dict[str, Any]:
     ]
     try:
         out = subprocess.run(
-            cmd, capture_output=True, timeout=FFPROBE_TIMEOUT, check=False
+            cmd, capture_output=True, timeout=FFPROBE_TIMEOUT, check=False, env=child_env()
         ).stdout
         data = json.loads(out or b"{}")
     except (OSError, ValueError, subprocess.SubprocessError):

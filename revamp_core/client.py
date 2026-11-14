@@ -9,7 +9,6 @@ only. Used by the Hermes tools in ``__init__.py``.
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.parse
 import urllib.request

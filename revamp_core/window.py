@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import store
+from .childenv import child_env
 from .config import data_dir
 
 BROWSERS = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser",
@@ -235,7 +236,7 @@ def reap_orphan() -> bool:
         try:
             result = subprocess.run(
                 ["ps", "-p", str(pid), "-o", "command="],
-                capture_output=True, text=True, check=False, timeout=1,
+                capture_output=True, text=True, check=False, timeout=1, env=child_env(),
             )
             cmd = result.stdout if result.returncode == 0 else ""
         except (OSError, subprocess.SubprocessError):
@@ -362,9 +363,10 @@ def open_window(port: int, position: float = 0.0, playing: bool = False) -> Dict
         else:
             args[1:1] = ["--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"]
         try:
+            # The browser gets the display, session and locale it needs, not Hermes's keys.
             proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL, start_new_session=True,
-                                    pass_fds=pipe_ends)
+                                    pass_fds=pipe_ends, env=child_env())
         except OSError as exc:
             for fd in pipe_ends + ((to_chrome_w, from_chrome_r) if pipe_ends else ()):
                 _close_fd(fd)

@@ -15,6 +15,7 @@ from collections import OrderedDict
 from typing import Any, Dict, List
 
 from . import tags
+from .childenv import child_env
 
 FFPROBE_TIMEOUT = 20.0
 MAX_CACHE = 512
@@ -97,7 +98,7 @@ def chapters_for(path: str) -> List[Dict[str, Any]]:
                    "-show_chapters", real]
             try:
                 proc = subprocess.run(cmd, capture_output=True,
-                                      timeout=FFPROBE_TIMEOUT, check=False)
+                                      timeout=FFPROBE_TIMEOUT, check=False, env=child_env())
             except (OSError, ValueError, subprocess.SubprocessError):
                 proc = None
             if proc is None or proc.returncode != 0:

@@ -116,6 +116,25 @@ def test_proxy_route_exists():
 
 # ---- from the Codex review round 1 (each one a concrete failure it found)
 
+@pytest.fixture(autouse=True)
+def _ffprobe_is_found(monkeypatch):
+    """The tests below fake ffprobe's *output* (subprocess.run). chapters_for first asks
+    shutil.which("ffprobe") and returns [] when it is missing, so on a machine without FFmpeg
+    (most Windows installs) they never reached the fake: two failed and two passed vacuously.
+    A real ffprobe is kept when installed; otherwise the lookup finds a stand-in name."""
+    real = shutil.which("ffprobe")
+    which = chapters.shutil.which
+    monkeypatch.setattr(chapters.shutil, "which",
+                        lambda name, *a, **k: (real or "ffprobe") if name == "ffprobe" else which(name, *a, **k))
+
+
+def _can_symlink(tmp_path) -> bool:
+    try:
+        (tmp_path / ".probe-link").symlink_to(tmp_path)
+        return True
+    except (OSError, NotImplementedError):   # Windows without Developer Mode or admin rights
+        return False
+
 def _fake_run(stdout, returncode=0):
     class R:
         pass
@@ -178,6 +197,8 @@ def test_concurrent_first_calls_run_ffprobe_once(tmp_path, monkeypatch):
 
 
 def test_ffprobe_reads_the_resolved_file(tmp_path, monkeypatch):
+    if not _can_symlink(tmp_path):
+        pytest.skip("this machine cannot create symlinks")
     real = tmp_path / "real.m4b"; real.write_bytes(b"\0" * 64)
     link = tmp_path / "link.m4b"; link.symlink_to(real); _fresh()
     seen = []

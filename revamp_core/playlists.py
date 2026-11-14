@@ -43,9 +43,21 @@ def playlists_dir() -> Path:
     return d
 
 
+# A playlist's file is "<slug>.m3u8", saved through ".<slug>.m3u8.<random>.tmp". Names may be 200
+# characters, and an uncapped slug made that temp path pass Windows' 260-character limit (on by
+# default), so creating or importing a long-named playlist answered 500. The name itself is kept
+# whole inside the file; only the file name is short.
+SLUG_MAX = 80
+
+
 def slugify(name: str) -> str:
     s = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
     s = re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+    if len(s) > SLUG_MAX:
+        cut = s[:SLUG_MAX]
+        # End on a whole word when one ends reasonably close to the cap.
+        cut = cut.rsplit("-", 1)[0] if "-" in cut[SLUG_MAX // 2:] else cut
+        s = cut.strip("-")
     return s or "playlist"
 
 

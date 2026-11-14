@@ -51,7 +51,6 @@ def _boot() -> None:
 
 def _client():
     RevampClient = _core_client.RevampClient
-    RevampUnavailable = _core_client.RevampUnavailable
     _ensure()
     return RevampClient()
 
