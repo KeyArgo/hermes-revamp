@@ -2707,21 +2707,19 @@ function LocationRowWithTip() {
 }
 
 // ---------------------------------------------------------------- version chip
-// The suite's one version line (VERSION-CHIP.md): "v1.0.0-dev.342 · 1a2b3c4d · 2026-11-13".
+// The suite's version chip, as Aura and Game Center show it:
+// "v1.0.0-dev.342 · 2026-11-13 · 1a2b3c4d", plus " · modified" for an uncommitted tree.
 // Filled from the server's own stamp (ctx.rest('/version') → /api/version), never from a number
-// compiled into this bundle, and the server builds the text (version_stamp.chip_line) so the
-// Desktop chip, the player page and a pasted bug report all say the same thing.
+// compiled into this bundle; the player page builds the same line the same way.
 const $build = atom(null)
 
 function buildLine(build) {
   if (!build || !build.version) return ''
-  if (typeof build.line === 'string' && build.line) return build.line
   const parts = ['v' + build.version]
+  if (build.commit_date) parts.push(String(build.commit_date).slice(0, 10))
   const sha = build.commit_short || build.commit
   if (sha) parts.push(String(sha).slice(0, 8))
-  if (build.commit_date) parts.push(String(build.commit_date).slice(0, 10))
-  if (build.dirty) parts.push('modified')
-  return parts.join(' · ')
+  return parts.join(' · ') + (build.dirty ? ' · modified' : '')
 }
 
 function buildTitle(build) {

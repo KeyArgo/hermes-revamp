@@ -50,18 +50,14 @@ except Exception:  # imported outside the package (tests, scripts)
 
 
 def _stamp_dict() -> Dict[str, Any]:
-    """version, commit, dates, dirty, channel — never a guess — plus ``line``, the suite's one
-    chip text ("v1.0.0-dev.342 · 1a2b3c4d · 2026-11-13"), so every surface shows the same words."""
+    """version, commit, dates, dirty, channel — never a guess."""
     if _stamp is not None:
         try:
-            info = _stamp.as_dict()
-            info["line"] = _stamp.chip_line(info)
-            return info
+            return _stamp.as_dict()
         except Exception:
             logger.warning("revamp: version stamp unreadable", exc_info=True)
     return {"version": "1.0.0", "commit": "", "commit_short": "", "commit_date": "",
-            "built_at": "", "dirty": False, "channel": "release", "source": "manifest",
-            "line": "v1.0.0"}
+            "built_at": "", "dirty": False, "channel": "release", "source": "manifest"}
 
 
 # VERSION is the release this code declares (plugin.yaml), never the "-dev.N" display string:

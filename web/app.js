@@ -219,18 +219,15 @@ async function copyText(t) {
   } catch { return false; }
 }
 
-// The suite's one version line (VERSION-CHIP.md): "v1.0.0-dev.342 · 1a2b3c4d · 2026-11-13".
-// The server builds it (version_stamp.chip_line); this fallback, for an older server, uses the
-// same order: version, short commit, commit date, then "modified" for an uncommitted tree.
+// The suite's version chip, as Aura and Game Center show it:
+// "v1.0.0-dev.342 · 2026-11-13 · 1a2b3c4d", plus " · modified" for an uncommitted tree.
 export function buildLine(build) {
   if (!build || !build.version) return "";
-  if (typeof build.line === "string" && build.line) return build.line;
   const parts = ["v" + build.version];
+  if (build.commit_date) parts.push(String(build.commit_date).slice(0, 10));
   const sha = build.commit_short || build.commit;
   if (sha) parts.push(String(sha).slice(0, 8));
-  if (build.commit_date) parts.push(String(build.commit_date).slice(0, 10));
-  if (build.dirty) parts.push("modified");
-  return parts.join(" · ");
+  return parts.join(" · ") + (build.dirty ? " · modified" : "");
 }
 
 async function showVersion() {
