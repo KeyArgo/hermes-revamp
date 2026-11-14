@@ -2782,6 +2782,65 @@ function VersionChip({ compact = false }) {
   })
 }
 
+// ---------------------------------------------------------------- the suite
+// One quiet card at the bottom of Settings > REVamp, nowhere else: the maker's other Hermes
+// plugins that work with REVamp. SDK only (ctx.os.openExternal / writeClipboard), nothing
+// installs by itself. Install commands use owner/repo until each plugin is in the catalog.
+const SUITE = [
+  {
+    id: 'aura',
+    name: 'Aura',
+    pitch: 'A MilkDrop visualiser behind all of Hermes that moves with whatever plays, REVamp included, and a film pane for watching while you work. Linux first.',
+    repo: 'https://github.com/KeyArgo/hermes-aura',
+    install: 'hermes plugins install KeyArgo/hermes-aura'
+  },
+  {
+    id: 'music-studio',
+    name: 'Music Studio',
+    pitch: 'Describe a song and approve the lyrics; it renders on your own GPU. Send the songs you like to a "Music Studio" playlist here in REVamp.',
+    repo: 'https://github.com/KeyArgo/hermes-music-studio',
+    install: 'hermes plugins install KeyArgo/hermes-music-studio'
+  }
+]
+
+function SuiteCard() {
+  const [copied, setCopied] = useState('')
+  const copy = async item => {
+    let ok = false
+    try { await ctxRef?.os.writeClipboard(item.install); ok = Boolean(ctxRef) } catch { ok = false }
+    setCopied(ok ? item.id : '')
+    if (ok) setTimeout(() => setCopied(''), 1600)
+  }
+  const open = url => { try { void ctxRef?.os.openExternal(url) } catch { /* a host without it: no-op */ } }
+  return jsxs('div', {
+    className: 'revamp-suite',
+    style: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--ui-stroke-secondary)', alignSelf: 'stretch' },
+    children: [
+      jsx('h3', { style: { margin: 0, fontSize: 13, color: 'var(--ui-text-primary)' }, children: 'Works well with REVamp' }),
+      ...SUITE.map(item => jsxs('div', {
+        'data-suite': item.id,
+        style: { display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' },
+        children: [
+          jsxs('div', { style: { flex: '1 1 240px', minWidth: 0 }, children: [
+            jsx('div', { style: { fontSize: 12, fontWeight: 600, color: 'var(--ui-text-primary)' }, children: item.name }),
+            jsx('div', { style: { fontSize: 11, lineHeight: 1.4, color: 'var(--ui-text-tertiary)' }, children: item.pitch })
+          ] }),
+          jsxs('div', { style: { display: 'flex', gap: 4, flex: 'none' }, children: [
+            jsx(Button, {
+              variant: 'ghost', size: 'micro', title: item.install, 'aria-label': `Copy the ${item.name} install command`,
+              onClick: () => void copy(item), children: copied === item.id ? 'Copied ✓' : 'Copy install command'
+            }),
+            jsx(Button, {
+              variant: 'ghost', size: 'micro', 'aria-label': `${item.name} on GitHub`,
+              onClick: () => open(item.repo), children: 'GitHub'
+            })
+          ] })
+        ]
+      }, item.id))
+    ]
+  })
+}
+
 function ReportBugRow({ compact = false }) {
   const t = usePluginI18n(ID)
   return jsxs('div', {
@@ -3089,7 +3148,8 @@ function RevampSettings() {
     jsx('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('crispScale'), children: [
       jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': crisp, onClick: () => setCrispScale(true), children: t('on') }),
       jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': !crisp, onClick: () => setCrispScale(false), children: t('off') })
-    ] })
+    ] }),
+    jsx(SuiteCard, {})
   ] })
 }
 
