@@ -2,6 +2,11 @@
 
 Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets a new number that is never reused, so you can tell which one you have: the header chip shows it, and clicking copies the line.
 
+## Unreleased
+
+- REVamp no longer uses CPU in the terminal plugin while you aren't playing music. Each terminal session with the plugin used to start a small Python program every 4 seconds to check what was playing; with a dozen sessions open that took about two thirds of a CPU core all the time. Now the REVamp server keeps a tiny `now.json` file up to date while a player is open, and sessions just glance at it: no programs, no requests. Agent activity is only sent while a player is open to show it.
+- **If your REVamp server is older than this release:** sessions fall back to asking it once a minute until it is updated.
+
 ## 1.0.0 — next catalog version
 
 The first stable release, following 1.0.0-alpha.6 in the Hermes plugin catalog. It is released when

@@ -308,6 +308,40 @@ def run_locked(fn):
             _STATE = None  # also after a failed restore: the disk may have changed
 
 
+# now.json: a few bytes next to the token that harness plugins (the terminal now-playing band) glance at
+# instead of starting a process to ask the server. Written only while a player reports: on a
+# change, else at most every NOW_FILE_REFRESH seconds so its age says "still connected". With no
+# player nothing writes it, and readers treat a file older than NOW_FILE_STALE as disconnected.
+NOW_FILE_REFRESH = 5.0
+NOW_FILE_STALE = 15.0  # readers' rule, kept here so the two numbers live together
+_now_written: tuple = (None, 0.0)  # (content written, when)
+
+
+def _now_path() -> Path:
+    return data_dir() / "now.json"
+
+
+def _publish_now(live: Dict[str, Any]) -> None:
+    global _now_written
+    np = live.get("now_playing") or {}
+    pb = live.get("playback") or {}
+    content = {"connected": bool(live.get("player_connected")),
+               "title": np.get("title") or pb.get("title"),
+               "artist": np.get("artist") or pb.get("artist"),
+               "status": str(np.get("status") or pb.get("status") or "stopped").lower()}
+    now = time.time()
+    if content == _now_written[0] and now - _now_written[1] < NOW_FILE_REFRESH:
+        return
+    _now_written = (content, now)
+    try:
+        path = _now_path()
+        tmp = path.with_name(f".now.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(dict(content, updated=now)), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass  # cosmetic: readers fall back to asking the server
+
+
 def heartbeat(now_playing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Record a player heartbeat (live now_playing + connected flag)."""
     global _STATE
@@ -320,6 +354,7 @@ def heartbeat(now_playing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         live["playback"] = _playback_from(live["now_playing"])
         st["live"] = live
         _STATE = st
+        _publish_now(live)
         return get_state()
 
 
@@ -334,6 +369,7 @@ def report_playback(playback: Dict[str, Any]) -> None:
         live["playback"] = dict(playback, updated=time.time())
         st["live"] = live
         _STATE = st
+        _publish_now(live)
 
 
 # ---------------------------------------------------------------------------

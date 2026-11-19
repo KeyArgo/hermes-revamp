@@ -23,8 +23,10 @@ async function ctl($: EngineInterface, args: readonly string[], timeoutMs = 8000
   }
 }
 
-// Fire and forget: agent activity must never slow a tool call down.
+// Fire and forget: agent activity must never slow a tool call down. Each event is a process,
+// so none go out while no player is open to show them (the ticker has no one to tell).
 function emit($: EngineInterface, args: readonly string[]) {
+  if (!connected) return
   $.process.run(['revampctl', 'event', ...args], { timeoutMs: 2000 }).catch(() => {})
 }
 
@@ -64,7 +66,69 @@ export function isPlayingStatus(status: unknown): boolean {
   return String(status ?? '').toLowerCase() === 'playing'
 }
 
-async function refresh($: EngineInterface) {
+// Now playing, without a process per glance. The server writes <data dir>/now.json while a
+// player reports (revamp_core/store.py: on a change, else every 5 s), so a file older than
+// NOW_STALE_MS means no player. Each session only stats it every CHECK_MS and reads it when it
+// changed: no process, no request, nothing at all while REVamp sits unused. A server from
+// before now.json is asked with `revampctl state`, at most once per FALLBACK_MS.
+const CHECK_MS = 5000
+const NOW_STALE_MS = 15000 // store.NOW_FILE_STALE
+const FALLBACK_MS = 60000
+
+let nowPath: string | null = null
+let seenFile = false // this server writes now.json: never fall back again
+let lastMtime = -1
+let lastAsk = -Infinity
+let connected = false // last known; agent events go out only while a player can show them
+
+export async function nowFilePath($: EngineInterface): Promise<string | null> {
+  const home = await $.env.get('HOME')
+  const tilde = (p: string) => (home && (p === '~' || p.startsWith('~/')) ? home + p.slice(1) : p)
+  const revamp = await $.env.get('REVAMP_HOME')
+  if (revamp) return `${tilde(revamp)}/now.json`
+  const hermes = await $.env.get('HERMES_HOME')
+  if (hermes) return `${tilde(hermes)}/revamp/now.json`
+  return home ? `${home}/.hermes/revamp/now.json` : null
+}
+
+export function fromNowFile(text: string): NowPlaying | null {
+  const s = JSON.parse(text)
+  if (!s || typeof s !== 'object' || !s.connected) return null
+  const title = s.title ? `${s.title}${s.artist ? ` — ${s.artist}` : ''}` : 'nothing queued'
+  return { line: title, isPlaying: isPlayingStatus(s.status), isConnected: true }
+}
+
+async function set($: EngineInterface, next: NowPlaying | null) {
+  connected = Boolean(next?.isConnected)
+  const prev = await read($, now)
+  if (JSON.stringify(prev) !== JSON.stringify(next)) await update($, now, () => next)
+}
+
+// `force`: the person just did something; look now, and ask an old server even inside FALLBACK_MS.
+async function refresh($: EngineInterface, force = false) {
+  if (nowPath === null) nowPath = await nowFilePath($).catch(() => null)
+  const stat = nowPath ? await $.fs.stat(nowPath).catch(() => undefined) : undefined
+  if (stat) {
+    seenFile = true
+    if ((await $.clock.now()) - stat.mtimeMs > NOW_STALE_MS) {
+      lastMtime = -1
+      return set($, null)
+    }
+    if (stat.mtimeMs === lastMtime && !force) return
+    lastMtime = stat.mtimeMs
+    let next: NowPlaying | null = null
+    try {
+      next = fromNowFile(await $.fs.read(nowPath!))
+    } catch {
+      lastMtime = -1 // caught mid-replace: read it again next time
+      return
+    }
+    return set($, next)
+  }
+  if (seenFile) return set($, null) // the file went away with its server
+  const t = await $.clock.now()
+  if (!force && t - lastAsk < FALLBACK_MS) return
+  lastAsk = t
   const r = await ctl($, ['state'], 4000)
   let next: NowPlaying | null = null
   if (r.ok) {
@@ -78,8 +142,13 @@ async function refresh($: EngineInterface) {
       next = null
     }
   }
-  const prev = await read($, now)
-  if (JSON.stringify(prev) !== JSON.stringify(next)) await update($, now, () => next)
+  return set($, next)
+}
+
+// After a button or command the player reports within a heartbeat or two.
+function refreshSoon($: EngineInterface) {
+  refresh($, true).catch(() => {})
+  $.clock.after(1500, () => refresh($, true).catch(() => {}))
 }
 
 export const register: Register = on => {
@@ -104,8 +173,8 @@ export const register: Register = on => {
         required: ['action'],
       },
     })
-    $.clock.every(4000, () => refresh($))
-    await refresh($)
+    $.clock.every(CHECK_MS, () => refresh($))
+    await refresh($, true)
     return next(e)
   })
 
@@ -116,7 +185,7 @@ export const register: Register = on => {
     if (input.action === 'volume') args.push(String(input.percent ?? 50))
     if (input.query) args.push(input.query)
     const r = await ctl($, args, 15000)
-    refresh($).catch(() => {})
+    refreshSoon($)
     return r.ok ? { result: r.out, text: r.out } : { isError: true as const, result: r.out, text: r.out }
   }).catch(() => ({ isError: true as const, result: 'Revamp tool failed', text: 'Revamp tool failed' }))
 
@@ -166,7 +235,7 @@ export const register: Register = on => {
       return { text: sub === 'hide' ? 'Revamp band hidden.' : 'Revamp band shown.' }
     }
     const r = await ctl($, sub === 'radio' || sub === 'queue' ? [sub, words.slice(1).join(' ')] : words.length ? words : ['status'], 15000)
-    await refresh($)
+    await refresh($, true)
     return { text: r.out || (r.ok ? 'ok' : 'Revamp did not answer.') }
   })
 
@@ -176,7 +245,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || np === null || !np.isConnected || (await read($, isHidden))) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const press = (action: string) => () => {
-      ctl($, [action]).then(() => refresh($))
+      ctl($, [action]).then(() => refreshSoon($))
     }
     return (
       <Box flexDirection="row" gap={1}>
