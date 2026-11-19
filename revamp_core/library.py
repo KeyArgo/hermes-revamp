@@ -193,7 +193,7 @@ def _entry_for(path: str, cached: Optional[Dict[str, Any]]) -> Optional[Dict[str
         "artist": meta.get("artist"),
         "album": meta.get("album"),
         # True when the album is only the folder's name (tags.probe's fallback): the numbers
-        # beside it are guesses too, so _book_continue must not trust them (grok a10r19).
+        # beside it are guesses too, so _book_continue must not trust them (review a10r19).
         "album_from_folder": bool(meta.get("album_from_folder")),
         "album_artist": meta.get("album_artist"),
         "track_no": meta.get("track_no"),

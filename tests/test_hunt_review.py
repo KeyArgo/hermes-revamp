@@ -1,4 +1,4 @@
-"""Bugs found in the grok review pass."""
+"""Bugs found in the review pass."""
 
 from __future__ import annotations
 

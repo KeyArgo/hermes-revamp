@@ -223,7 +223,7 @@ def test_proxy_forwards_a_url_encoded_id(monkeypatch):
     assert seen == [("GET", "/api/library/lyrics?id=track+%2F+%26+%3F")]
 
 
-# ---- from the Codex review round 1
+# ---- from the review round 1
 
 def test_cache_hit_keeps_source(fake_net):
     calls, answers = fake_net
@@ -248,7 +248,7 @@ def test_offset_applies_to_lines_before_it():
     assert lyrics.parse_lrc("[00:02.00]line\n[offset:+500]\n") == [{"t": 1.5, "line": "line"}]
 
 
-# ---- from the Codex review round 2
+# ---- from the review round 2
 
 def test_cached_miss_expires_from_memory_too(fake_net, monkeypatch):
     calls, answers = fake_net

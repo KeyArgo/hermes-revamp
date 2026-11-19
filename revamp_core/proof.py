@@ -53,7 +53,7 @@ def listener_identity(base: str, token: str, timeout: float = 2.0) -> Optional[b
     if not isinstance(got, str):
         return None
     # As bytes: compare_digest raises TypeError on a str that isn't ASCII, and a stranger's garbage
-    # must read as "not ours", not kill the caller (claude + grok a10r21).
+    # must read as "not ours", not kill the caller (review a10r21).
     return hmac.compare_digest(got.encode("utf-8", "replace"), health_proof(token, nonce, port).encode())
 
 

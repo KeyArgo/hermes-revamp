@@ -755,7 +755,7 @@ class Handler(BaseHTTPRequestHandler):
             if pos is None and isinstance(raw, (int, float)) and not isinstance(raw, bool) \
                     and _keeps_finished_mark(key, 0):
                 # A page floors its place, so 0.4 s in a replay of a finished part is a plain 0
-                # (grok a10r16). It means "still in the opening second", not "forget this book".
+                # (review a10r16). It means "still in the opening second", not "forget this book".
                 return self._send_json({"ok": True, "kept": "finished"})
             try:
                 sources.set_progress(key, pos)
@@ -1665,7 +1665,7 @@ def _keeps_finished_mark(key: str, pos: Any) -> bool:
     """A part listened to the end keeps that mark when it is played again from the start: the
     first seconds of a replay must not make continue forget that this part was finished.
 
-    ``pos`` 0 is "still in the opening second", not a clear (grok a10r16: a replay saved
+    ``pos`` 0 is "still in the opening second", not a clear (review a10r16: a replay saved
     ``0`` and erased the finished mark of the part)."""
     if not (isinstance(key, str) and key.startswith("local:track:")) or pos is None or pos > BOOK_PLACE_MIN:
         return False
@@ -1675,7 +1675,7 @@ def _keeps_finished_mark(key: str, pos: Any) -> bool:
         return False
     # A report that is itself the end of the file is a fresh finish: store it (with a new time),
     # or a short part replayed and finished again never becomes the newest mark and continue goes
-    # back to an older part (codex a10r18).
+    # back to an older part (review a10r18).
     return not _finished_place(t, pos)
 
 
@@ -1685,8 +1685,8 @@ def _finished_place(track: Any, pos: Any) -> bool:
     The margin must be the same 30 s the page refuses to seek into (player.js: ``pos >= dur - 30``
     starts the file from the top), or the two disagree: a place the server calls real but the page
     calls "the end" is dropped the moment the person replays that part. Only a file shorter than
-    30 s gets a smaller window, so a place 10 s into a 20 s part is not "finished" (codex a10r16,
-    grok a10r17)."""
+    30 s gets a smaller window, so a place 10 s into a 20 s part is not "finished" (review a10r16,
+    review a10r17)."""
     dur = float((track or {}).get("duration") or 0)
     margin = BOOK_PLACE_MIN if dur > BOOK_PLACE_MIN else max(2.0, dur * 0.1)
     return library.near_end(pos, dur, margin)
@@ -1711,11 +1711,11 @@ def _book_continue(track_id: str, came_from: str = "") -> dict:
         # side ("Dune.m4b", "Foundation.m4b"; "1984", "Fahrenheit 451") never are.
         # Distinct track numbers on every file prove the order on their own -- but only when the
         # album is a real tag: when it is just the folder's name, the scanner also invented the
-        # numbers, so "01 Dune" / "02 Foundation" would look like one book (grok a10r18/a10r19).
+        # numbers, so "01 Dune" / "02 Foundation" would look like one book (review a10r18/a10r19).
         nos = [x.get("track_no") for x in same]
         # A missing marker means an index older than alpha.10 (cached entries are not re-read when
         # size+mtime match), so treat it as the folder-name fallback too: an upgraded library must
-        # not start merging separate books again (claude a10r20).
+        # not start merging separate books again (review a10r20).
         tagged_album = all(x.get("album_from_folder") is False for x in same)
         numbered = tagged_album and all(isinstance(n, int) and not isinstance(n, bool) and n > 0
                                         for n in nos) and len(set(nos)) == len(nos)
@@ -1882,7 +1882,7 @@ def _lock_fh(fh: Any) -> None:
     """Take an exclusive lock on *fh*; raises OSError when it could not (never silently unlocked).
 
     ``msvcrt.locking`` cannot lock a byte of an empty file (errno 13), which is what the lock
-    file used to be on Windows, so the port check ran unprotected (grok a10r16)."""
+    file used to be on Windows, so the port check ran unprotected (review a10r16)."""
     try:
         fh.seek(0, os.SEEK_END)
         if fh.tell() == 0:
@@ -2148,7 +2148,7 @@ def _shutdown_for_upgrade(srv: ThreadingHTTPServer) -> None:
 
     Giving the port away used to leave ``_started``/``_owned`` set and start no watcher, so if the
     new owner later stopped (systemd stop, a crash) nothing served the port again until Hermes
-    restarted (claude a10r19)."""
+    restarted (review a10r19)."""
     global _started, _owned
     owner = "service" if getattr(srv, "revamp_owner", "plugin") == "service" else "plugin"
     port = srv.server_address[1]
@@ -2279,9 +2279,9 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     if lost_bind is not None:
         # Two profiles passed the check together (a platform whose file lock failed, or a lease
         # written a moment after the bind): the loser used to give up and show the winner's
-        # library. Decide again by the usual ownership rules instead (grok a10r16) -- but only
+        # library. Decide again by the usual ownership rules instead (review a10r16) -- but only
         # after leaving the lock, since the retry takes it again and flock is not re-entrant
-        # (codex a10r17).
+        # (review a10r17).
         if _raced < 2 and (_probe_health(port) or {}).get("app") == "revamp":
             logger.info("revamp: lost the bind race for port %s (%s); deciding again", port, lost_bind)
             return ensure_server(port, owner=owner, version=version, build=build, _raced=_raced + 1)
@@ -2356,7 +2356,7 @@ def _reenter_install_dir(start_dir: str) -> None:
 
     Hermes updates a plugin by swapping the folder (old one renamed aside or deleted), so a
     process whose working folder follows the old inode sits in a folder that is gone, and
-    ``python -m`` finds no package there: the service dies on restart (claude a10r16). The name
+    ``python -m`` finds no package there: the service dies on restart (review a10r16). The name
     now points at the new copy, so re-entering it is enough. No-op when it is the same folder."""
     if not start_dir:
         return

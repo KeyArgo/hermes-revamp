@@ -1,4 +1,4 @@
-"""Filenames: a leading chapter number is a track number, not an artist (grok a10r19)."""
+"""Filenames: a leading chapter number is a track number, not an artist (review a10r19)."""
 from revamp_core import tags
 
 
@@ -19,11 +19,11 @@ def test_a_number_in_front_of_the_title_still_reads_as_a_track():
 
 
 def test_a_band_name_that_is_a_number_is_not_a_track_number():
-    # Claude a10r20: "311 - Amber" lost its artist to the chapter rule.
+    # review a10r20: "311 - Amber" lost its artist to the chapter rule.
     assert tags._humanise("311 - Amber") == ("Amber", "311", None)
     assert tags._humanise("702 - Steelo") == ("Steelo", "702", None)
 
 
 def test_a_track_prefix_leaves_a_title_that_starts_with_a_number_alone():
-    # Claude a10r21: the second number overwrote the first and was cut from the title.
+    # review a10r21: the second number overwrote the first and was cut from the title.
     assert tags._humanise("01 - 2 Fast 2 Furious") == ("2 Fast 2 Furious", "", 1)

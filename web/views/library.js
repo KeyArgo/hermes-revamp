@@ -486,7 +486,7 @@ export async function render(root, api, kind = "music") {
     const startIdx = order.indexOf(tracks[i]);
     // One call that loads, then plays the chosen row (like Playlists): from the Hermes library
     // these were two server commands that could land in either order, so a book's continue
-    // was dropped, or undone by the late "play row" (Grok a10r14).
+    // was dropped, or undone by the late "play row" (review a10r14).
     const p = window.revampPlayerApi;
     if (p.playItemsAt) return p.playItemsAt(Math.max(0, startIdx), items);
     p.loadTracks(items, { mode: "replace", play: false }).then(() => p.playIndex(Math.max(0, startIdx)));

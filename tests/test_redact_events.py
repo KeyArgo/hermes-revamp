@@ -1,4 +1,4 @@
-"""Release blocker found by Codex (2026-10-25): credentials in agent previews reached the
+"""Release blocker found in review (2026-10-25): credentials in agent previews reached the
 state file and the ticker from some harness paths. The server now masks every event."""
 from revamp_core import redact, store
 

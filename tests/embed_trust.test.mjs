@@ -36,7 +36,7 @@ test("the app refuses before reading the token; diagnostics check it before post
 });
 
 test("framed with no way to tell the parent (hidden referrer, no ancestorOrigins): refused", async () => {
-  // Audit round 2 (Codex): this used to fail open.
+  // Audit round 2 (review): this used to fail open.
   assert.equal(await check({ ancestors: null, referrer: "" }), true);
   assert.equal(await check({ ancestors: [], referrer: "" }), true);
 });

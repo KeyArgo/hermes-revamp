@@ -174,7 +174,7 @@ def test_api_routes_end_to_end(server, tmp_path, monkeypatch):
     assert c.get("/api/backups", headers={"X-Revamp-Token": "wrong"})[0] == 401
 
 
-# ---- review round 1 (Codex) ----
+# ---- review round 1 (review) ----
 
 def _sha(p: Path) -> str:
     import hashlib
@@ -268,7 +268,7 @@ def test_api_restore_is_seen_by_the_running_server_and_not_overwritten(server):
     assert tid in (Path(server.data_dir) / "state.json").read_text()
 
 
-# ---- review round 2 (Codex) ----
+# ---- review round 2 (review) ----
 
 def test_import_does_not_write_the_manifest_into_the_data_dir(env, tmp_path):
     data, root = env
@@ -325,7 +325,7 @@ def test_a_state_write_during_a_restore_cannot_undo_it(server, monkeypatch):
     assert tid in (Path(server.data_dir) / "state.json").read_text()
 
 
-# ---- review round 3 (Codex) ----
+# ---- review round 3 (review) ----
 
 def test_same_second_snapshots_list_newest_first_and_dedupe_against_the_newest(env):
     data, root = env
@@ -378,7 +378,7 @@ def test_a_tampered_manifest_file_path_cannot_escape_on_restore(env, tmp_path):
     assert not outside.exists()
 
 
-# ---- review round 4 (Codex) ----
+# ---- review round 4 (review) ----
 
 @pytest.mark.parametrize("damage", ["delete", "alter"])
 def test_a_damaged_backup_is_refused_whole(env, damage):

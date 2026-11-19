@@ -63,7 +63,7 @@ NP_CACHE_TTL = 15.0
 BROWSE_PAGE = 50            # endless-scroll page size (~ what the UI asks for)
 
 # Quality bar for the curated "Popular" list (raw clickcount alone is full of
-# spam and vote-stuffed entries — see RADIO-codex.md for the live evidence).
+# spam and vote-stuffed entries).
 POPULAR_LIMIT = 40
 POPULAR_WINDOW = 150        # raw stations fetched per extension round
 POPULAR_WINDOWS_MAX = 6     # …and at most this many rounds per cache fill

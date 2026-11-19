@@ -176,7 +176,7 @@ def test_finds_edge_and_chrome_where_windows_and_macos_install_them(monkeypatch,
 
 
 def test_windows_skips_the_windowsapps_alias_for_a_real_install(monkeypatch, tmp_path):
-    # Grok a10r7: PATH on Windows holds WindowsApps app-execution aliases (msedge.exe), stubs that
+    # review a10r7: PATH on Windows holds WindowsApps app-execution aliases (msedge.exe), stubs that
     # hand off and exit at once ("exited immediately"); the real install must win.
     monkeypatch.delenv("REVAMP_FLOAT_BROWSER", raising=False)
     alias = r"C:\Users\e\AppData\Local\Microsoft\WindowsApps\msedge.exe"
