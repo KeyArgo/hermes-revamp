@@ -149,6 +149,70 @@ def test_sampler_thread_is_daemon_and_started_once(isolated_diaglog):
     assert len([t for t in threading.enumerate() if t.name == "revamp-health"]) == 1
 
 
+def test_stop_ends_the_sampler_and_closes_the_handler(isolated_diaglog):
+    """An upgrade hand-over keeps the process alive as the port watcher: it must
+    stop writing health lines and let go of the rotating file, so the new server's
+    rotator can rename it."""
+    diaglog.setup()
+    logging.getLogger("revamp").info("before stop")
+    diaglog.start_sampler()
+    assert [t for t in threading.enumerate() if t.name == "revamp-health"]
+
+    diaglog.stop()
+
+    assert not [t for t in threading.enumerate() if t.name == "revamp-health"]
+    assert diaglog._sampler_thread is None
+    assert _file_handlers() == []
+    logging.getLogger("revamp").info("after stop")
+    text = (isolated_diaglog / "logs" / "revamp.log").read_text(encoding="utf-8")
+    assert "before stop" in text
+    assert "after stop" not in text
+
+
+def test_setup_after_stop_reattaches_the_log(isolated_diaglog):
+    """The watcher may take the port back: setup()/start_sampler() must work again."""
+    diaglog.setup()
+    diaglog.stop()
+    diaglog.setup()
+    diaglog.start_sampler()
+    assert len(_file_handlers()) == 1
+    assert [t for t in threading.enumerate() if t.name == "revamp-health"]
+    logging.getLogger("revamp").info("serving again")
+    for h in _file_handlers():
+        h.flush()
+    assert "serving again" in (isolated_diaglog / "logs" / "revamp.log").read_text(encoding="utf-8")
+
+
+def test_upgrade_shutdown_stops_the_health_sampler_and_the_log(isolated_diaglog, monkeypatch):
+    """The process stays alive as the port watcher after giving the port away; its
+    sampler and rotator must stop with the server (a second rotator on the same
+    file renames one the old process still has open)."""
+    from revamp_core import server as srv_mod
+
+    class FakeSrv:
+        revamp_owner = "plugin"
+        server_address = ("127.0.0.1", 59999)
+
+        def shutdown(self):
+            self.stopped = True
+
+        def server_close(self):
+            self.closed = True
+
+    monkeypatch.setattr(srv_mod, "_watch_owner", lambda *args, **kwargs: None)
+    monkeypatch.setattr(srv_mod, "_started", True)
+    monkeypatch.setattr(srv_mod, "_owned", True)
+    diaglog.setup()
+    diaglog.start_sampler()
+    fake = FakeSrv()
+
+    srv_mod._shutdown_for_upgrade(fake)
+
+    assert fake.stopped and fake.closed
+    assert not [t for t in threading.enumerate() if t.name == "revamp-health"]
+    assert _file_handlers() == []
+
+
 def test_tick_logs_one_line_and_updates_latest(isolated_diaglog):
     diaglog.setup()
     diaglog._tick()

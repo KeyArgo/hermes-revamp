@@ -1877,6 +1877,9 @@ export async function initPlayer(ctx) {
           if (typeof cmd.duck_toast === "boolean") patch.duck_toast = cmd.duck_toast;
           if (cmd.duck_approval_scope === "app" || cmd.duck_approval_scope === "all") patch.duck_approval_scope = cmd.duck_approval_scope;
           if (typeof cmd.milkdropOn === "boolean") patch.milkdropOn = cmd.milkdropOn;
+          // The place-menu tip is dismissed through this command too: keep the flag
+          // the desktop half sends, or a new profile shows the tip again.
+          if (typeof cmd.place_menu_tip_seen === "boolean") patch.place_menu_tip_seen = cmd.place_menu_tip_seen;
           if (Object.keys(patch).length) {
             api.setSavedSettings(patch);
             // The switch must really stop (or start) the renderer, not just remember

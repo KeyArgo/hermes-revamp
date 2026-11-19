@@ -565,6 +565,7 @@ class Handler(BaseHTTPRequestHandler):
                 q=(qs.get("q") or [""])[0],
                 artist=(qs.get("artist") or [""])[0],
                 album=(qs.get("album") or [""])[0],
+                album_artist=(qs.get("album_artist") or [""])[0],
                 kind=(qs.get("kind") or [""])[0],
                 limit=limit, offset=offset, sort=sort))
         if path == "/api/library/folders":
@@ -2156,6 +2157,11 @@ def _shutdown_for_upgrade(srv: ThreadingHTTPServer) -> None:
     time.sleep(0.05)
     srv.shutdown()
     srv.server_close()
+    # This process stays alive as the port watcher, but it no longer serves: its
+    # sampler and its rotator on revamp.log must go, or the new server's rotator
+    # renames a file this one still has open (upgrade hand-over). A later
+    # ensure_server() reattaches both.
+    diaglog.stop()
     with _lock:
         _started = False
         _owned = False

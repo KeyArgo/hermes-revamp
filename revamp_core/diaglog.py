@@ -254,3 +254,37 @@ def start_sampler() -> None:
 def latest() -> Optional[Dict[str, Any]]:
     """The most recent sample, or None before the first tick."""
     return _last
+
+
+def stop() -> None:
+    """Stop the health sampler and close the private log handler.
+
+    Called when this process gives the port away (an upgrade hand-over) but stays
+    alive as the port watcher: the sampler would keep writing lines for a server
+    that no longer serves, and a second rotator on the same file would rename one
+    this process still holds open. A later ``setup()``/``start_sampler()`` (the
+    watcher taking the port back) reattaches both. Never raises.
+    """
+    global _handler, _sampler_thread
+    try:
+        _stop.set()
+        t = _sampler_thread
+        _sampler_thread = None
+        if t is not None and t.is_alive() and t is not threading.current_thread():
+            t.join(3)
+    except Exception:
+        pass
+    try:
+        with _lock:
+            h, _handler = _handler, None
+        if h is not None:
+            try:
+                logging.getLogger("revamp").removeHandler(h)
+            except Exception:
+                pass
+            try:
+                h.close()
+            except Exception:
+                pass
+    except Exception:
+        pass
