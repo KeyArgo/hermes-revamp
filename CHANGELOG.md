@@ -5,6 +5,7 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 ## Unreleased
 
 - REVamp no longer uses CPU in the terminal plugin while you aren't playing music. Each terminal session with the plugin used to start a small Python program every 4 seconds to check what was playing; with a dozen sessions open that took about two thirds of a CPU core all the time. Now the REVamp server keeps a tiny `now.json` file up to date while a player is open, and sessions just glance at it: no programs, no requests. Agent activity is only sent while a player is open to show it.
+- The version chip now reads like every other InovinLabs plugin, `v1.0.0-dev.N · commit · date`, and you can always see it: under the REVamp name, sideways in the narrow rail, and under the nav icons inside Hermes Desktop, where it used to be hidden. Click it to copy the line for a bug report.
 - **If your REVamp server is older than this release:** sessions fall back to asking it once a minute until it is updated.
 
 ## 1.0.0 — next catalog version
