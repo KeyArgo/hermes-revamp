@@ -150,6 +150,13 @@ One tap in **Theme** sets the colours, the gradient, an illustrated scene and an
 
 The ticker shows what the agent is doing. Optional chime and dip alerts flag approvals you can act on. Turn those on under **Settings → REVamp → Music and approvals**. Four Hermes tools (`revamp_player`, `revamp_library`, `revamp_playlist`, `revamp_radio`) let the agent control playback, and `revampctl mcp` serves other agent apps.
 
+## Works well with
+
+Two sibling plugins that pair naturally with a music player. Neither is required; REVamp works alone.
+
+- **Aura** — plays films and MilkDrop-style scenes in its own page or pane and listens to the system audio loopback, so the visuals react to whatever REVamp plays with no configuration. A quiet hint in REVamp's Settings (only when the visualizer is switched off) points to it in Capabilities → Plugins.
+- **Music Studio** — turns a song idea into lyrics and a style you approve, then renders the audio locally (ACE-Step, or MiniMax via ComfyUI). Finished takes are plain `.wav` files; when REVamp finds that folder it offers one click to add it to your library, and empty-library / empty-playlist screens mention where it lives.
+
 ## Settings and shortcuts
 
 Player settings live under **Settings → REVamp** in Hermes Desktop. That page holds the approval chime and dip controls, recovery backup actions and the event log. The player menu holds the five places, the EQ, skins and the named Visualizer control.

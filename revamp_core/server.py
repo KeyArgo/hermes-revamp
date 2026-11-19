@@ -32,8 +32,8 @@ import re
 from . import proof
 from . import backup, chapters, diaglog, items, library, lyrics, museum, playback, playlists, radio, sources, store, window
 import base64
-from .config import (data_dir, library_dirs, library_dirs_custom, library_folders,
-                     set_library_folders, setting)
+from .config import (current_hermes_home, data_dir, library_dirs, library_dirs_custom,
+                     library_folders, set_library_folders, setting)
 
 logger = logging.getLogger("revamp.server")
 
@@ -569,6 +569,8 @@ class Handler(BaseHTTPRequestHandler):
                 limit=limit, offset=offset, sort=sort))
         if path == "/api/library/folders":
             return self._send_json(_library_folders_payload())
+        if path == "/api/siblings":
+            return self._send_json({"studio_songs_dir": _studio_songs_dir()})
         if path == "/api/fs/dirs":
             return self._fs_dirs((qs.get("path") or [""])[0])
         if path == "/api/library/artists":
@@ -1588,6 +1590,39 @@ def _library_folders_payload() -> Dict[str, Any]:
         folders.append({"path": p, "kind": f.get("kind") or "music",
                         "exists": os.path.isdir(p), "tracks": counts.get(p, 0)})
     return {"custom": library_dirs_custom(), "folders": folders}
+
+
+# -- sibling plugins ---------------------------------------------------------
+# Music Studio saves finished takes (.wav) in its plugin data dir, or wherever
+# its library.json pointer aims. When that folder exists, the UI may offer to
+# add it with the ordinary library-folder setting; when it does not, there is
+# nothing to offer and /api/siblings simply omits the path. No plugin is
+# detected here — only the folder a button would need.
+
+def _studio_songs_dir(home: Optional[str] = None) -> Optional[str]:
+    studio_env = os.environ.get("HEWN_STUDIO_DATA_DIR")  # Music Studio's own escape hatch
+    root = Path(studio_env).expanduser() if studio_env else None
+    if root is None:
+        home = home or current_hermes_home()
+        if not home:
+            return None
+        root = Path(home).expanduser() / "plugin-data" / "hermes-music-studio"
+    try:
+        pointer = root / "library.json"  # the library this Studio profile points at instead
+        if pointer.is_file():
+            data = json.loads(pointer.read_text(encoding="utf-8"))
+            p = data.get("path") if isinstance(data, dict) else None
+            if isinstance(p, str) and p.strip():
+                alt = Path(p).expanduser()
+                if alt.is_dir():
+                    root = alt
+        if not root.is_dir():
+            return None
+        if not any(root.glob("*.wav")):  # no finished takes, nothing to add
+            return None
+        return str(root)
+    except (OSError, ValueError):
+        return None
 
 
 def _fs_dirs_handler(request: "Handler", raw_path: str) -> None:

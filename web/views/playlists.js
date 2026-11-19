@@ -43,6 +43,14 @@ export async function render(root, api) {
       d.className = "empty";
       d.innerHTML = `<span class="big">≡</span>No playlists yet. Save the current queue or import an .m3u/.pls file.`;
       listEl.appendChild(d);
+      // Nothing to play yet is where a song-maker belongs. One card, once.
+      try {
+        listEl.__sib = null; // the refresh above wiped any previous card
+        mountHint({
+          holder: listEl, key: "hermes-music-studio", name: "Music Studio",
+          line: STUDIO_LINE, pApi: window.revampPlayerApi,
+        });
+      } catch { /* a failed hint must never break the list */ }
       return;
     }
     for (const pl of pls) {

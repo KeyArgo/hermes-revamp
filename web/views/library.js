@@ -2,6 +2,7 @@
 // folders, rescan. Exposes requestLibraryPick(cb) for the webamp file-picker integration.
 import { mountFolders } from "./folders.js";
 import { openModal, textPrompt, toast } from "./modal.js";
+import { mountHint, STUDIO_LINE, studioFolderButton } from "./siblings.js";
 
 let pickMode = false;
 let pickCb = null;
@@ -100,6 +101,38 @@ export async function render(root, api, kind = "music") {
     }, () => mine === foldersSeq);
   }
   foldersBtn.addEventListener("click", () => showFolders(foldersBtn.getAttribute("aria-expanded") !== "true"));
+
+  // Music Studio, where someone looking at an empty library can use it: one
+  // card, passively on the empty state, on demand from the ⋯ menu. Dismissed
+  // is remembered; the menu item always answers when asked directly.
+  const sibEl = document.createElement("div");
+  sibEl.className = "lib-sib";
+  root.appendChild(sibEl);
+  let sibBusy = false; // one attempt at a time; the empty state retries on the next poll
+  let sibTried = false;
+  async function showStudioHint(force) {
+    if (sibBusy || sibEl.children.length) return;
+    if (!force && sibTried) return;
+    sibBusy = true;
+    sibTried = true;
+    let extra = null;
+    try { extra = await studioFolderButton(api, () => { lastSig = "folders changed"; offset = 0; loadTracksAppend(); }); } catch { /* no folder offer then */ }
+    mountHint({
+      holder: sibEl, key: "hermes-music-studio", name: "Music Studio",
+      line: STUDIO_LINE, pApi: window.revampPlayerApi, extra, force,
+    });
+    sibBusy = false;
+  }
+  if (!books) {
+    const moreMenu = actions.querySelector(".lib-more-menu");
+    const studioBtn = document.createElement("button");
+    studioBtn.className = "btn sm";
+    studioBtn.id = "lib-studio";
+    studioBtn.textContent = "♪ Make your own songs…";
+    studioBtn.setAttribute("aria-label", "Make your own songs with Music Studio");
+    studioBtn.addEventListener("click", () => showStudioHint(true));
+    moreMenu.appendChild(studioBtn);
+  }
 
   const listEl = document.createElement("div");
   listEl.id = "lib-list";
@@ -209,6 +242,7 @@ export async function render(root, api, kind = "music") {
         books ? "No audiobooks yet. Click 📁 Folders to choose the folder that holds them."
           : "No music yet. Click 📁 Folders to choose where your music is.",
         "📂");
+      if (!query && !books) showStudioHint(false); // an empty library is where a song-maker fits
       return;
     }
     const tbl = document.createElement("table");
