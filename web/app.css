@@ -101,7 +101,7 @@ a { color: var(--accent); }
    last resort for absurdly short panes). Declared after the card so it wins. */
 
 .brand {
-  display: flex; align-items: baseline; gap: 6px;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px;
   font-weight: 700; font-size: 18px; letter-spacing: 0.5px;
   padding: 2px 4px 8px;
 }
@@ -110,13 +110,17 @@ a { color: var(--accent); }
 /* The build line. Amber while the tree it came from is dirty, accent for a moment after a
    copy that actually happened — never colour alone, the text says "copied". */
 .brand-version {
-  background: none; border: 0; padding: 1px 4px; margin-left: 2px;
-  font: inherit; font-size: 11px; font-weight: 400; color: var(--txt-dim);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  border-radius: 5px; cursor: pointer; white-space: nowrap;
+  background: none; padding: 1px 8px; margin-left: 2px;
+  font: 400 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--txt-dim); cursor: pointer; white-space: nowrap;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 999px;
 }
+/* The wide sidebar is narrower than the whole line: the chip takes its own row under the name,
+   and wraps at its separators rather than running past the edge. */
+.sidebar .brand-version { margin-left: 0; font-size: 9.5px; white-space: normal; text-align: left; max-width: 100%; }
 .brand-version:hover { color: var(--txt); background: rgba(255, 255, 255, 0.06); }
-.brand-version.dirty { color: var(--warn); }
+.brand-version.dirty { color: #e8a33d; }
 .brand-version[data-copied="1"] { color: var(--accent); }
 .brand-version[data-copied="failed"] { color: var(--err); }
 
@@ -481,6 +485,10 @@ body.approval-wait .approval-banner { display: inline-flex; }
 @media (max-width: 1099px) and (min-width: 900px) {
   .shell { grid-template-columns: 56px 1fr minmax(300px, 400px); }
   .brand span.txt, .nav button .label, .np-meta, .np-sleep, .np-sleep-left { display: none; }
+  /* The chip never hides: in the 56px rail it wraps rather than losing the commit. */
+  /* The 56px rail: the chip reads sideways, bottom to top, whole. */
+  .brand { justify-content: center; padding: 2px 0 8px; }
+  .sidebar .brand-version { font-size: 9px; white-space: nowrap; writing-mode: vertical-rl; transform: rotate(180deg); padding: 8px 1px; }
   .nowplaying-card { justify-content: center; padding: 6px; }
   .nav button { justify-content: center; }
   /* Same overflow guard as the narrow band: card internals would spill past 56px. */
@@ -494,11 +502,15 @@ body.approval-wait .approval-banner { display: inline-flex; }
    stage the full width. */
 @media (max-width: 899px) {
   .shell { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; overflow-y: auto; padding: 8px; gap: 8px; }
-  .brand, .nav button .label, .np-meta, .np-sleep, .np-sleep-left,
+  .nav button .label, .np-meta, .np-sleep, .np-sleep-left,
   .np-extras, .np-book, .np-art, .nowplaying-card { display: none; }
+  /* The chip stays, right-aligned on its own line under the nav icons; only the wordmark goes. */
+  .brand { display: flex; flex-basis: 100%; order: 2; justify-content: flex-end; align-items: center; padding: 0; }
+  .brand span.txt { display: none; }
+  .sidebar .brand-version { font-size: 9px; white-space: nowrap; }
   /* min-height:auto, not the base 0: when the page is taller than the window (queue open) the
      grid squeezes rows down to their minimum, and 0 let the bar collapse under its buttons. */
-  .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; gap: 6px; overflow: visible; min-height: auto; }
+  .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; flex-wrap: wrap; padding: 4px; gap: 2px 6px; overflow: visible; min-height: auto; }
   .nav { flex-direction: row; flex: 1; justify-content: space-around; gap: 2px; }
   .nav button { justify-content: center; padding: 8px 4px; flex: 1; min-width: 0; }
   .nav .icon { width: auto; }
@@ -513,10 +525,13 @@ body.approval-wait .approval-banner { display: inline-flex; }
   .ticker { margin: 0 8px 6px; }
 }
 body.embed .shell { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; overflow-y: auto; padding: 8px; gap: 8px; }
-body.embed .brand, body.embed .nav button .label, body.embed .np-meta,
+body.embed .nav button .label, body.embed .np-meta,
 body.embed .np-sleep, body.embed .np-sleep-left,
 body.embed .np-extras, body.embed .np-book, body.embed .np-art, body.embed .nowplaying-card { display: none; }
-body.embed .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; padding: 4px; gap: 6px; overflow: visible; min-height: auto; }
+body.embed .brand { display: flex; flex-basis: 100%; order: 2; justify-content: flex-end; align-items: center; padding: 0; }
+body.embed .brand span.txt { display: none; }
+body.embed .sidebar .brand-version { font-size: 9px; white-space: nowrap; writing-mode: horizontal-tb; transform: none; padding: 1px 8px; }
+body.embed .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; flex-wrap: wrap; padding: 4px; gap: 2px 6px; overflow: visible; min-height: auto; }
 body.embed .nav { flex-direction: row; flex: 1; justify-content: space-around; gap: 2px; }
 body.embed .nav button { justify-content: center; padding: 8px 4px; flex: 1; min-width: 0; }
 body.embed .nav .icon { width: auto; }

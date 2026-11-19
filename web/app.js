@@ -189,10 +189,13 @@ export function setNowPlaying({ title, artist, art, isStream, time, duration, st
 }
 
 // ---------------------------------------------------------------- connection pill
+let wasConnected = false;
 function setConn(ok, text) {
   const el = document.getElementById("conn-pill");
   el.classList.toggle("on", !!ok);
   el.textContent = text || (ok ? "connected" : "offline");
+  if (ok && !wasConnected) window.dispatchEvent(new Event("revamp:connected"));  // only on the way up
+  wasConnected = !!ok;
 }
 
 // ---------------------------------------------------------------- build line
@@ -219,34 +222,48 @@ async function copyText(t) {
   } catch { return false; }
 }
 
+let versionLine = "";
+let versionWired = false;
+
 async function showVersion() {
   const chip = document.getElementById("app-version");
   if (!chip) return;
-  let build;
-  try { build = await apiGet("/api/version"); } catch { return; }   // no guess beats a wrong number
-  if (!build || !build.version) return;
-  const parts = ["v" + build.version];
-  if (build.commit_date) parts.push(String(build.commit_date).slice(0, 10));
-  const sha = build.commit_short || build.commit;
-  if (sha) parts.push(String(sha).slice(0, 8));
-  const line = parts.join(" · ") + (build.dirty ? " · modified" : "");
-  chip.textContent = line;
-  chip.classList.toggle("dirty", !!build.dirty);
-  chip.title = [
-    "REVamp " + build.version,
-    build.commit ? "commit " + build.commit : "no commit (installed copy)",
-    build.commit_date ? "committed " + build.commit_date : "",
-    build.built_at ? "installed " + build.built_at : "",
-    build.channel ? "channel " + build.channel : "",
-    "click to copy this line",
-  ].filter(Boolean).join("\n");
-  chip.addEventListener("click", async () => {
-    const copied = await copyText("REVamp " + line);
-    // Say "copied" only when something was copied: a badge that lies is worse than no badge.
-    chip.dataset.copied = copied ? "1" : "failed";
-    chip.textContent = copied ? "copied ✓" : "copy failed";
-    setTimeout(() => { delete chip.dataset.copied; chip.textContent = line; }, 1400);
-  });
+  if (!versionLine) chip.hidden = true;   // no guess beats a wrong number
+  const paint = (build) => {
+    if (!build?.line) return;
+    versionLine = String(build.line);
+    chip.textContent = versionLine;
+    chip.classList.toggle("dirty", !!build.dirty);
+    chip.title = [
+      "REVamp " + build.version,
+      build.commit ? "commit " + build.commit : "",
+      build.commit_date ? "committed " + build.commit_date : "",
+      build.built_at ? "installed " + build.built_at : "",
+      build.channel ? "channel " + build.channel : "",
+      build.source ? "read from " + build.source : "",
+      "Click to copy",
+    ].filter(Boolean).join("\n");
+    chip.setAttribute("aria-label", "Copy version " + versionLine);
+    chip.hidden = false;
+  };
+  const load = async () => {
+    try { paint(await apiGet("/api/version")); } catch { /* show nothing; retry when connected */ }
+  };
+  if (!versionWired) {
+    versionWired = true;
+    chip.addEventListener("click", async () => {
+      if (!versionLine) return;
+      const copied = await copyText("REVamp " + versionLine);
+      // Say "copied" only when something was copied: a badge that lies is worse than no badge.
+      chip.dataset.copied = copied ? "1" : "failed";
+      chip.textContent = copied ? "copied ✓" : "copy failed";
+      setTimeout(() => { delete chip.dataset.copied; chip.textContent = versionLine; }, 1400);
+    });
+    window.addEventListener("revamp:connected", load);
+    setInterval(() => { if (!document.hidden) load(); }, 60000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+  }
+  await load();
 }
 
 // ---------------------------------------------------------------- ticker

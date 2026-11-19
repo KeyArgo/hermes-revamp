@@ -17,8 +17,10 @@ Release or dev (VERSIONING-STANDARD.md §1): a build reads the bare ``X.Y.Z`` on
 that release — HEAD is exactly the ``vX.Y.Z`` tag, or Hermes installed this exact commit from
 the plugin catalog (its install record carries the catalog pin). Anything else reads
 ``X.Y.Z-dev.N`` (``N`` = commit count; plain ``-dev`` in a shallow clone, where the count is
-meaningless). A catalog install has no tags, so the install record is what proves it is the
-reviewed release; ``release_check.py`` makes sure only a tagged release commit is ever pinned.
+meaningless). Once ``vX.Y.Z`` is tagged, later builds bump the patch to ``X.Y.(Z+1)-dev.N`` so
+they sort after the release they follow. A catalog install has no tags, so the install record
+is what proves it is the reviewed release; ``release_check.py`` makes sure only a tagged release
+commit is ever pinned.
 
 Usage in a plugin:
 
@@ -26,7 +28,7 @@ Usage in a plugin:
 
     @plugin.command("version")
     def version_command(ctx):
-        return describe()            # "1.0.0 · bfeb655 · 2026-11-05"
+        return describe()            # "v1.0.0 · bfeb6555 · 2026-11-05"
 
     def health():
         return as_dict()             # {"version": ..., "commit": ..., "dirty": ...}
@@ -137,6 +139,19 @@ def _dev_suffix() -> str:
     return f"-dev.{_dev_base() + int(count)}" if count.isdigit() else "-dev"
 
 
+def _release_is_tagged(release: str) -> bool:
+    """True when ``v<release>`` or ``<release>`` exists as a tag in the repo."""
+    return bool(_git("tag", "--list", f"v{release}", release).splitlines())
+
+
+def _bump_patch(release: str) -> str:
+    """``1.0.0`` -> ``1.0.1``; anything that is not a plain ``X.Y.Z`` is returned unchanged."""
+    parts = release.split(".")
+    if len(parts) == 3 and all(part.isdigit() for part in parts):
+        return f"{parts[0]}.{parts[1]}.{int(parts[2]) + 1}"
+    return release
+
+
 def as_dict() -> dict:
     """Everything a status line, a bug report or a support question needs."""
     build = _find_build_info()
@@ -156,7 +171,10 @@ def as_dict() -> dict:
         version = release
         # Without git or a commit there is nothing to compare, so the manifest is all we can say.
         if release != "unknown" and "-" not in release and commit and not _is_release(release, commit):
-            version = release + _dev_suffix()
+            # Dev builds must sort after the release they follow: once v1.0.0 is tagged, a plain
+            # "1.0.0-dev.N" reads older than 1.0.0, so start the patch one higher.
+            base = _bump_patch(release) if _release_is_tagged(release) else release
+            version = base + _dev_suffix()
     return {
         "version": version,
         "release": release,
@@ -179,16 +197,24 @@ def commit(short: bool = True) -> str:
     return info["commit_short"] if short else info["commit"]
 
 
+def chip_line(info: dict) -> str:
+    """The suite's one version line (VERSION-CHIP.md): "v1.0.0-dev.342 · 1a2b3c4d · 2026-11-13".
+
+    The /version command prints it and every plugin's on-screen chip renders exactly this, so a
+    pasted bug report means the same thing whichever surface it was copied from."""
+    parts = ["v" + str(info.get("version") or "unknown")]
+    if info.get("commit"):
+        parts.append(str(info["commit"])[:8])       # short, always, even with a full hash
+    if info.get("commit_date"):
+        parts.append(str(info["commit_date"])[:10])
+    if info.get("dirty"):
+        parts.append("modified")
+    return " · ".join(parts)
+
+
 def describe() -> str:
-    """"1.0.0 · bfeb655 · 2026-11-05" — one line, safe to show a user."""
-    info = as_dict()
-    parts = [info["version"]]
-    if info["commit"]:
-        parts.append(info["commit"][:8])       # short, always, even with a full hash
-    if info["commit_date"]:
-        parts.append(info["commit_date"][:10])
-    line = " · ".join(parts)
-    return line + (" (modified)" if info["dirty"] else "")
+    """"v1.0.0 · bfeb6555 · 2026-11-05" — one line, safe to show a user."""
+    return chip_line(as_dict())
 
 
 if __name__ == "__main__":

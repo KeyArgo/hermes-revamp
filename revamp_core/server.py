@@ -525,8 +525,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_get(self, path: str, qs: Dict[str, List[str]]) -> None:
         if path in ("/api/version", "/api/about"):
-            # The chip's only source: version · commit date · short commit, plus dirty/channel.
-            return self._send_json(_stamp_dict())
+            # The chip's only source: the stamp plus the one line every plugin shows.
+            info = _stamp_dict()
+            if _stamp is not None:
+                try:
+                    info["line"] = _stamp.chip_line(info)
+                except Exception:
+                    logger.warning("revamp: version chip line unreadable", exc_info=True)
+            info.setdefault("line", "v" + str(info.get("version") or "unknown"))
+            return self._send_json(info)
         if path == "/api/events":
             return self._sse()
         if path == "/api/sources" or path.startswith("/api/sources/"):
