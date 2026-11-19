@@ -327,9 +327,35 @@ def presets() -> List[Dict[str, Any]]:
     return [dict(s) for s in PRESETS]
 
 
+# Hermes Agent Radio (hermesagentradio.com): a 24/7 station about Hermes Agent and open-source agents,
+# with community music on six channels. Streams and taglines from its public /stations.json
+# (checked 2026-11-19: every stream is https audio/mpeg). Listed first in Hermes Radio and in the
+# status-bar radio list.
+AGENT_RADIO_SITE = "https://hermesagentradio.com/"
+_AGENT_RADIO = "https://hermesagentradio.com/stream"
+AGENT_RADIO: List[Dict[str, Any]] = [
+    {"id": f"hermes-agent-radio-{cid}", "name": name, "description": tagline,
+     "provider": "Hermes Agent Radio", "url": _AGENT_RADIO + path,
+     "homepage": AGENT_RADIO_SITE, "tags": tags, "codec": "MP3", "bitrate": None,
+     "favicon": "", "country": "", "source": "hermes-agent-radio"}
+    for cid, name, tagline, path, tags in (
+        ("main", "Hermes Agent Radio", "Everything we play, one stream", "", ["hermes", "talk", "community"]),
+        ("hiphop", "Hermes Agent Radio Hip-Hop", "Bars, beats and agents with something to say", "/hiphop", ["hermes", "hiphop"]),
+        ("dance", "Hermes Agent Radio Dance", "Four on the floor, all night", "/dance", ["hermes", "dance"]),
+        ("rock", "Hermes Agent Radio Rock", "Guitars, grit and volume", "/rock", ["hermes", "rock"]),
+        ("smooth", "Hermes Agent Radio Smooth", "Slow it down and stay a while", "/smooth", ["hermes", "smooth"]),
+        ("techno", "Hermes Agent Radio Techno", "Machines, bass and no brakes", "/techno", ["hermes", "techno"]),
+    )
+]
+
+
+def agent_radio() -> List[Dict[str, Any]]:
+    return [dict(s) for s in AGENT_RADIO]
+
+
 def hermes_lineup() -> List[Dict[str, Any]]:
-    """The Hermes Radio hero. No placeholder station: Hermes FM has no stream yet."""
-    return [dict(s) for s in HERMES_LINEUP]
+    """The Hermes Radio hero: Hermes Agent Radio's six channels, then Hermes Desktop's own lineup."""
+    return agent_radio() + [dict(s) for s in HERMES_LINEUP]
 
 
 # Windows reports the WSA codes, not the C library ones.

@@ -96,7 +96,7 @@ export function authedUrl(path, extra = {}) {
 
 // ---------------------------------------------------------------- shell: nav + views
 const VIEWS = [
-  { id: "hermes-radio", icon: "✦", label: "Hermes Radio", render: renderRadio },
+  { id: "hermes-radio", icon: "✦", label: "Hermes Radio", render: (root, api) => renderRadio(root, api, { tab: "hermes" }) },
   { id: "library", icon: "♬", label: "Music", render: renderMusic }, // id kept: the file picker opens it
   { id: "books", icon: "📖", label: "Books", render: renderBooks },
   { id: "focus", icon: "◎", label: "Focus", render: renderFocus },

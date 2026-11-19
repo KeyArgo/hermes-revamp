@@ -835,6 +835,7 @@ body.revamp-idle #webamp #visualizer { visibility: hidden; }
 .hermes-hero-intro { min-width: 0; flex: 1 1 160px; }
 .hermes-hero h2 { font-size: 20px; letter-spacing: 0.2px; }
 .hermes-hero-lead { color: var(--txt-dim); font-size: 13px; margin-top: 4px; max-width: 46ch; }
+.hermes-web-link { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--accent, inherit); }
 .hermes-ask { flex: 0 1 auto; max-width: 100%; }
 .hermes-stations {
   display: grid;

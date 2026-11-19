@@ -79,9 +79,50 @@ def _plugin_presets() -> list[tuple]:
     return rows
 
 
+_SITE = "https://hermesagentradio.com/"
+AGENT_RADIO_ROWS = [
+    ("hermes-agent-radio-main", "Hermes Agent Radio", "Everything we play, one stream", "Hermes Agent Radio",
+     "https://hermesagentradio.com/stream", _SITE),
+    ("hermes-agent-radio-hiphop", "Hermes Agent Radio Hip-Hop", "Bars, beats and agents with something to say",
+     "Hermes Agent Radio", "https://hermesagentradio.com/stream/hiphop", _SITE),
+    ("hermes-agent-radio-dance", "Hermes Agent Radio Dance", "Four on the floor, all night", "Hermes Agent Radio",
+     "https://hermesagentradio.com/stream/dance", _SITE),
+    ("hermes-agent-radio-rock", "Hermes Agent Radio Rock", "Guitars, grit and volume", "Hermes Agent Radio",
+     "https://hermesagentradio.com/stream/rock", _SITE),
+    ("hermes-agent-radio-smooth", "Hermes Agent Radio Smooth", "Slow it down and stay a while", "Hermes Agent Radio",
+     "https://hermesagentradio.com/stream/smooth", _SITE),
+    ("hermes-agent-radio-techno", "Hermes Agent Radio Techno", "Machines, bass and no brakes", "Hermes Agent Radio",
+     "https://hermesagentradio.com/stream/techno", _SITE),
+]
+
+
+def test_agent_radio_channels_are_https_and_listed_first():
+    rows = [_row(s) for s in radio.agent_radio()]
+    assert rows == AGENT_RADIO_ROWS
+    assert all(s["url"].startswith("https://") for s in radio.agent_radio())
+    assert radio.hermes_lineup()[0]["name"] == "Hermes Agent Radio"
+
+
+def test_agent_radio_endpoint(server):
+    status, _, body = server.client.get("/api/radio/agent-radio")
+    assert status == 200
+    assert [_row(s) for s in body] == AGENT_RADIO_ROWS
+
+
+def test_status_bar_radio_list_leads_with_agent_radio_and_links_the_site():
+    plugin = (REPO / "desktop" / "plugin.js").read_text(encoding="utf-8")
+    assert "rest('/radio/agent-radio')" in plugin
+    assert "const rows = [...leading, ...pinned," in plugin
+    assert "openExternal?.(AGENT_RADIO_SITE)" in plugin
+    assert "const AGENT_RADIO_SITE = 'https://hermesagentradio.com/'" in plugin
+    api = (REPO / "dashboard" / "plugin_api.py").read_text(encoding="utf-8")
+    assert '@router.get("/radio/agent-radio")' in api
+
+
 def test_hermes_lineup_matches_the_desktop_plugin():
     assert [_row(s) for s in radio.HERMES_LINEUP] == EXPECTED
-    assert [_row(s) for s in radio.hermes_lineup()] == EXPECTED
+    # Hermes Agent Radio's six channels lead the hero, then the desktop lineup.
+    assert [_row(s) for s in radio.hermes_lineup()] == AGENT_RADIO_ROWS + EXPECTED
     assert all(s["url"].startswith("https://") for s in radio.HERMES_LINEUP)
     assert all(s["source"] == "hermes" for s in radio.HERMES_LINEUP)
     # Hermes FM is a placeholder in the page, not a stream we can hand to the player.
@@ -101,7 +142,7 @@ def test_hermes_lineup_is_its_own_list():
 def test_hermes_lineup_endpoint(server):
     status, _, body = server.client.get("/api/radio/hermes")
     assert status == 200
-    assert [_row(s) for s in body] == EXPECTED
+    assert [_row(s) for s in body] == AGENT_RADIO_ROWS + EXPECTED
     assert all("url" in s and s["url"] for s in body)
 
 
@@ -111,7 +152,7 @@ def test_tool_lists_and_plays_a_hermes_station(server):
     importlib.reload(plugin_root)
     listed = json.loads(plugin_root._tool_radio({"action": "hermes"}))
     assert listed["ok"] is True
-    assert [s["id"] for s in listed["stations"]] == [row[0] for row in EXPECTED]
+    assert [s["id"] for s in listed["stations"]] == [row[0] for row in AGENT_RADIO_ROWS + EXPECTED]
     assert "not on the air" in listed["coming_soon"]
     played = json.loads(plugin_root._tool_radio({"action": "play", "station_id": "spacesynth"}))
     assert played["ok"] is True and played["station"] == "Spacesynth"
@@ -120,16 +161,18 @@ def test_tool_lists_and_plays_a_hermes_station(server):
     assert preset["ok"] is True and preset["station"] == "SomaFM Groove Salad"
 
 
-def test_radio_page_defaults_to_hermes_and_does_not_autoplay():
+def test_radio_opens_on_popular_and_the_hermes_entry_opens_hermes_radio():
     text = RADIO_JS.read_text(encoding="utf-8")
-    assert 'let tab = "hermes"' in text
-    assert 'data-t="hermes" class="active"' in text
+    assert 'let tab = opts.tab === "hermes" ? "hermes" : "popular";' in text
+    # Popular is the first tab, Hermes Radio right after it.
+    assert text.index('data-t="popular"') < text.index('data-t="hermes"') < text.index('data-t="browse"')
     assert "loadHermes();" in text
     assert "autoplay" not in text
     assert ASK in text
     assert "Hermes FM — coming soon" in text
     app = (REPO / "web" / "app.js").read_text(encoding="utf-8")
     assert app.index('id: "hermes-radio"') < app.index('id: "library"')
+    assert 'renderRadio(root, api, { tab: "hermes" })' in app
 
 
 NODE_SMOKE = r"""
@@ -390,7 +433,7 @@ window.revampPlayerApi = global.revampPlayerApi;
     if (String(path).includes('nowplaying')) return { title: 'Synthetic Calm' };
     return [];
   };
-  await mod.render(root, api);
+  await mod.render(root, api, { tab: 'hermes' });
   const fail = (msg) => { throw new Error(msg + '\n' + root.textContent.slice(0, 500)); };
   if (!root.querySelector('#hermes-radio-heading')) fail('missing heading');
   if (root.querySelector('.tabs button.active')?.getAttribute('data-t') !== 'hermes' &&
@@ -415,6 +458,8 @@ window.revampPlayerApi = global.revampPlayerApi;
   if (soon.querySelector('button') || soon.querySelector('audio') || soon.querySelector('a')) fail('coming soon has a control');
   if (/https?:/i.test(soon.textContent)) fail('coming soon looks like a stream');
   if (root.querySelector('audio')) fail('audio element on first paint');
+  const web = root.querySelector('.hermes-web-link');
+  if (!web || web.getAttribute('href') !== 'https://hermesagentradio.com/' || web.getAttribute('target') !== '_blank') fail('web listening link');
   if (state.plays !== 0 || calls.some((p) => p.includes('nowplaying') || p.includes('/stream'))) fail('autoplay ' + JSON.stringify(calls));
   const search = root.querySelector('input');
   if (!search) fail('search field missing');
@@ -625,7 +670,7 @@ def test_hermes_radio_screenshots(server, width):
         assert info["ask"] == "Ask Hermes to pick", info
         assert "Hermes FM" in info["soon"] and "coming soon" in info["soon"].lower(), info
         assert info["soonControls"] is False, info
-        assert info["count"] == 7, info
+        assert info["count"] == 13, info
         assert info["playing"] is False, info
         assert info["status"] != "PLAYING", info
         assert info["overflow"] is False, info

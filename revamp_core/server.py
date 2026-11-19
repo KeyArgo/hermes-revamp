@@ -636,6 +636,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(radio.presets())
         if path == "/api/radio/hermes":
             return self._send_json(radio.hermes_lineup())
+        if path == "/api/radio/agent-radio":
+            return self._send_json(radio.agent_radio())
         if path == "/api/radio/popular":
             return self._send_json(radio.popular(
                 limit=_int_qs(qs, "limit", radio.POPULAR_LIMIT, 1, 200),
