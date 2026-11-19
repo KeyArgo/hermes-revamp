@@ -6,10 +6,14 @@
  * as Hermes is open, and moves that same player between three places without
  * reloading it (Element.moveBefore keeps an iframe's state):
  *
- *   dock    — off-screen; music keeps playing, status-bar controls work
+ *   dock    — parked in a hidden holder inside the status bar; music keeps
+ *             playing, status-bar controls work
  *   page    — the full Revamp UI on the /revamp page (sidebar → Revamp)
- *   winamp  — "pop out": just the classic Winamp windows, floating over
- *             Hermes, draggable, everything else stays clickable
+ *   winamp  — "pop out": just the classic Winamp windows in a Hermes
+ *             floating pane, draggable, everything else stays clickable
+ *
+ * Everything the plugin draws lives in nodes Hermes gives it (panes, slots,
+ * routes): nothing is ever appended to the host page's document.body.
  *
  * The status bar is the everyday surface, laid out like the bundled Radio
  * plugin so Revamp can replace it: an audio-reactive braille waveform, a
@@ -669,6 +673,21 @@ function setCrispScale(on) {
   refitPane()
 }
 let disposeDockedPlayerPane = null
+// The pop-out is a Hermes floating pane (placement: 'floating'): the host
+// draws the card, drags it by its header and remembers where it was put.
+// REVamp only fills the body. One id, so a size change re-registers in place
+// (the registry replaces the same id with one notification) and the card
+// follows the classic windows without remounting the player.
+const FLOAT_PANE_ID = 'classic-float'
+let disposeFloatingPlayerPane = null
+let floatPaneSize = { w: 275, h: 348 }
+let floatResizeTimer = 0
+let floatResizeWant = null
+// The status bar's zero-size holder (set by RevampBar): the hidden dock's
+// home. The bar is always mounted in Hermes, so the dock never needs the
+// host page's body. Null until the bar mounts; the iframes stay detached
+// until then and moveInto reattaches them when it appears.
+let barDockHolder = null
 // Hiding Frame unregisters its UI pane, but it does not change the selected
 // player location: that would silently move the live player into the mini bar.
 function placementLocation() {
@@ -768,6 +787,60 @@ function applyDockedPlayerSide(side) {
     try { host.revealPane?.(scopedPaneId(side)) } catch { /* older hosts: no revealPane */ }
     engine?.place()
   }
+}
+
+// The pop-out's pane contribution. The host's floating card spawns in the
+// bottom-right corner (the old overlay's default home), drags by its header
+// and persists its position per pane id. lifecycleKeepAlive keeps the body —
+// and the live iframe inside it — mounted while the card is collapsed.
+// render is one stable function: re-registering for a size change must
+// reconcile the same body component, never remount it around the iframe.
+function renderFloatPane() {
+  return jsx(FloatPane, {})
+}
+function floatingPlayerPane() {
+  return {
+    id: FLOAT_PANE_ID,
+    area: PANES_AREA,
+    title: 'REVamp',
+    data: {
+      placement: 'floating',
+      anchor: 'bottom-right',
+      // The grip bar plus a hair of slack so the clip box never scrolls.
+      width: `${floatPaneSize.w + 2}px`,
+      height: `${floatPaneSize.h + 18}px`,
+      lifecycleKeepAlive: true
+    },
+    render: renderFloatPane
+  }
+}
+// The floating pane exists only while this window runs the player and the
+// chosen home is 'floating' — the same windows that showed the old overlay.
+function syncFloatingPane() {
+  const want = Boolean(ctxRef) && Boolean(engine) && $playerLocation.get() === 'floating'
+  if (want && !disposeFloatingPlayerPane) {
+    disposeFloatingPlayerPane = ctxRef.register(floatingPlayerPane())
+  } else if (!want && disposeFloatingPlayerPane) {
+    disposeFloatingPlayerPane()
+    disposeFloatingPlayerPane = null
+  }
+}
+// The classic windows changed size (a skin, MilkDrop opening): let the card
+// follow once the new size has held for a beat, the same patience fitPane
+// gives a scale. Re-registering the same id replaces the contribution in
+// place, so the body — and the iframe — are never remounted.
+function resizeFloatPane(w, h) {
+  if (!disposeFloatingPlayerPane) return
+  floatResizeWant = { w, h }
+  if (floatResizeTimer) return
+  floatResizeTimer = setTimeout(() => {
+    floatResizeTimer = 0
+    const want = floatResizeWant
+    if (!want || !disposeFloatingPlayerPane || !ctxRef) return
+    if (want.w === floatPaneSize.w && want.h === floatPaneSize.h) return
+    floatPaneSize = want
+    disposeFloatingPlayerPane = ctxRef.register(floatingPlayerPane())
+  }, 400)
 }
 
 // A status the user just clicked, held until the server agrees or 4 s pass,
@@ -1020,15 +1093,24 @@ function createEngine(ctx, url, bridgeKey = '') {
   controlFrame.setAttribute('allow', 'autoplay; fullscreen')
   controlFrame.style.cssText = 'border:0;display:none;width:100%;height:100%;background:transparent'
 
+  // The hidden dock: parked inside the status bar's zero-size holder (a node
+  // REVamp owns, always mounted in Hermes), never on the host page's body.
+  // Off-screen inside the holder's clip, so the iframe keeps drawing exactly
+  // as it did before. Until the bar mounts, the dock stays detached.
   const dock = document.createElement('div')
   dock.setAttribute('aria-hidden', 'true')
-  dock.style.cssText = `position:fixed;left:-${DOCK_W + 4000}px;top:0;width:${DOCK_W}px;height:${DOCK_H}px;overflow:hidden;pointer-events:none`
+  dock.style.cssText = `position:absolute;left:-${DOCK_W + 4000}px;top:0;width:${DOCK_W}px;height:${DOCK_H}px;overflow:hidden;pointer-events:none`
   dock.append(frame, controlFrame)
-  document.body.append(dock)
+  function mountDock() {
+    if (barDockHolder && barDockHolder.isConnected) moveInto(barDockHolder, dock)
+    else dock.remove()
+  }
+  mountDock()
 
   const overlay = buildOverlay(ctx)
   let pageHost = null
   let paneHost = null
+  let floatHost = null
   let box = { x: 0, y: 0, w: 275, h: 348 }
 
   const send = msg => frame.contentWindow?.postMessage(msg, '*')
@@ -1069,6 +1151,7 @@ function createEngine(ctx, url, bridgeKey = '') {
     frame.style.width = `${Math.min(DOCK_W, box.x + box.w + POP_SLACK)}px`
     frame.style.height = `${Math.min(DOCK_H, box.y + box.h + POP_SLACK)}px`
     frame.style.transform = `translate(${-box.x}px, ${-box.y}px)`
+    resizeFloatPane(box.w, box.h) // the Hermes card follows the classic windows
   }
   // The docked pane's clip box hugs the classic windows exactly (any skin/size).
   // Fractional scale fills the frame on the limiting side. Whole numbers are opt-in.
@@ -1161,7 +1244,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       overlay.root.style.display = 'none'
       send({ type: 'revamp:mode', mode: 'winamp', placement: 'docked' })
       $where.set('pane')
-    } else if (loc === 'floating') {
+    } else if (loc === 'floating' && floatHost) {
       frame.style.transformOrigin = ''
       frame.style.width = `${DOCK_W}px`
       frame.style.height = `${DOCK_H}px`
@@ -1333,8 +1416,10 @@ function createEngine(ctx, url, bridgeKey = '') {
     paneWatch = null
     if (scaleTimer) { clearTimeout(scaleTimer); scaleTimer = 0 }
     refitPane = () => {}
+    floatHost = null
     dock.remove()
     overlay.root.remove()
+    syncFloatingPane()
   }
   ctx.onDispose(remove)
 
@@ -1363,6 +1448,20 @@ function createEngine(ctx, url, bridgeKey = '') {
       place()
     },
     hidePane(el) { if (paneHost === el) { paneWatch?.disconnect(); paneWatch = null; paneHost = null; place() } },
+    // The floating pane's body adopts the overlay (plain DOM, not React, so
+    // the iframe survives every re-render). hideFloat runs as a layout-effect
+    // cleanup, while the pane is still connected: place() moves the iframe
+    // out with moveBefore before React takes the mount point away.
+    showFloat(el) {
+      floatHost = el
+      moveInto(el, overlay.root)
+      place()
+    },
+    hideFloat(el) { if (floatHost === el) { floatHost = null; place() } },
+    // The status bar's holder mounted / went away: park the dock in it, or
+    // keep the dock detached. Never the host page's body.
+    dockMounted() { mountDock() },
+    dockGone() { dock.remove() },
     // Thin wrapper over the locations: the floating overlay or no player at all.
     // $winampOpen stays in sync as a derived value (see setPlayerLocation listeners).
     setWinamp(open) { setPlayerLocation(open ? 'floating' : 'mini') },
@@ -1394,26 +1493,22 @@ function createEngine(ctx, url, bridgeKey = '') {
   }
 }
 
-// The floating Winamp window: a thin grip bar (drag, full player, close) over
+// The floating Winamp window: a thin grip bar (full player, dock, close) over
 // a clip box sized to the classic windows. Plain DOM: it lives outside the
-// React tree so it survives every navigation. Colors are theme tokens.
+// React tree so it survives every navigation. It is mounted INSIDE a Hermes
+// floating pane (FloatPane adopts it) — never on the host page's body. The
+// host's pane header drags the card and remembers where it was put; pressing
+// the grip hands the pointer to that header so the strip still drags it too.
+// Colors are theme tokens.
 function buildOverlay(ctx) {
   const root = document.createElement('div')
   root.setAttribute('role', 'dialog')
   root.setAttribute('aria-label', 'REVamp classic player')
-  const pos = ctx.storage.get('winampPos', { right: 24, bottom: 48 })
   root.style.cssText =
     // No soft drop shadow: under software graphics (Hermes on many NVIDIA hosts) a 32px blur
     // around a box whose player redraws all the time was recomputed on every frame.
-    'position:fixed;z-index:60;display:none;border-radius:4px;overflow:hidden;' +
+    'position:relative;width:100%;height:100%;display:none;border-radius:4px;overflow:hidden;' +
     'border:1px solid var(--ui-stroke-secondary)'
-  const placeAt = p => {
-    root.style.left = p.left != null ? `${p.left}px` : ''
-    root.style.top = p.top != null ? `${p.top}px` : ''
-    root.style.right = p.left == null ? `${p.right ?? 24}px` : ''
-    root.style.bottom = p.top == null ? `${p.bottom ?? 48}px` : ''
-  }
-  placeAt(pos)
 
   const grip = document.createElement('div')
   grip.style.cssText =
@@ -1439,90 +1534,34 @@ function buildOverlay(ctx) {
     mkBtn('✕', EN.popIn, () => setPlayerLocation('mini'))
   )
 
-  // Drag by the grip, or by a classic title bar inside the player (the page streams
-  // those drags to us as screen coordinates); remember where it was dropped.
-  // While dragging, the box slides with a GPU transform, at most once per frame: moving a
-  // box that holds an out-of-process iframe by left/top relaid the page, repainted the
-  // shadow and resynced the iframe on every pointer event, and the drag crawled.
-  // left/top are written once, when the drag ends.
-  const clampPos = (left, top) => ({
-    left: Math.max(0, Math.min(innerWidth - 60, left)),
-    top: Math.max(0, Math.min(innerHeight - 20, top))
-  })
-  let slide = null // { left, top } where the drag started; the transform is relative to it
-  let want = null
-  let frameReq = 0
-  const paintSlide = () => {
-    frameReq = 0
-    if (!slide || !want) return
-    root.style.transform = `translate3d(${want.left - slide.left}px, ${want.top - slide.top}px, 0)`
-  }
-  const beginSlide = () => {
-    const r = root.getBoundingClientRect()
-    placeAt({ left: r.left, top: r.top })
-    slide = { left: r.left, top: r.top }
-    want = null
-    root.style.willChange = 'transform'
-  }
-  const moveTo = (left, top) => {
-    want = clampPos(left, top)
-    if (!slide) { placeAt(want); return }
-    if (!frameReq) frameReq = requestAnimationFrame(paintSlide)
-  }
-  const endSlide = () => {
-    if (frameReq) { cancelAnimationFrame(frameReq); frameReq = 0 }
-    if (slide && want) placeAt(want)
-    root.style.transform = ''
-    root.style.willChange = ''
-    slide = null
-    want = null
-  }
-  const savePos = () => {
-    const r = root.getBoundingClientRect()
-    ctx.storage.set('winampPos', { left: Math.round(r.left), top: Math.round(r.top) })
-  }
-  let drag = null
+  // Drag by the grip: the card belongs to Hermes, so its header is the drag
+  // handle. Replaying the press on that header makes the host capture the
+  // real pointer; every following move/up then goes to it natively, and the
+  // host persists the drop position. No per-move forwarding, no second
+  // position store.
+  const paneHeader = () => root.closest('[data-floating-pane]')?.querySelector('header') ?? null
   ctx.addEventListener(grip, 'pointerdown', e => {
-    // A press on the strip's buttons (⤢ ⇲ ✕) is a click, not a drag: capturing the pointer here
-    // sent the click to the strip and the buttons never fired.
+    // A press on the strip's buttons (⤢ ⇲ ✕) is a click, not a drag.
     if (e.button !== 0 || e.target?.closest?.('button')) return
-    const r = root.getBoundingClientRect()
-    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }
-    beginSlide()
-    grip.setPointerCapture(e.pointerId)
-    grip.style.cursor = 'grabbing'
+    const header = paneHeader()
+    if (!header) return
+    try {
+      header.dispatchEvent(new PointerEvent('pointerdown', {
+        pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY,
+        button: 0, buttons: 1, bubbles: true, cancelable: true
+      }))
+      grip.style.cursor = 'grabbing'
+      window.addEventListener('pointerup', () => { grip.style.cursor = 'grab' }, { once: true, capture: true })
+    } catch { /* older host: the pane header itself still drags the card */ }
   })
-  ctx.addEventListener(grip, 'pointermove', e => {
-    if (drag) moveTo(e.clientX - drag.dx, e.clientY - drag.dy)
-  })
-  ctx.addEventListener(grip, 'pointerup', () => {
-    if (!drag) return
-    drag = null
-    grip.style.cursor = 'grab'
-    endSlide()
-    savePos()
-  })
-  let pageDrag = null
-  const dragFromPage = (phase, x, y) => {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return
-    if (phase === 'start') {
-      const r = root.getBoundingClientRect()
-      pageDrag = { left: r.left, top: r.top, x, y }
-      beginSlide()
-    } else if (pageDrag && phase === 'move') {
-      moveTo(pageDrag.left + x - pageDrag.x, pageDrag.top + y - pageDrag.y)
-    } else if (pageDrag && phase === 'end') {
-      moveTo(pageDrag.left + x - pageDrag.x, pageDrag.top + y - pageDrag.y)
-      pageDrag = null
-      endSlide()
-      savePos()
-    }
-  }
+  // The classic title bars inside the player stream their drags here. Only
+  // the host can move its floating card now, so these are heard but not
+  // acted on: the grip and the pane header drag it instead.
+  const dragFromPage = () => {}
 
   const clip = document.createElement('div')
   clip.style.cssText = 'position:relative;overflow:hidden;width:275px;height:348px'
   root.append(grip, clip)
-  document.body.append(root)
   return { root, clip, dragFromPage }
 }
 
@@ -1594,6 +1633,7 @@ async function runEngine(ctx, signal) {
         }
         if (engine || signal.aborted || ctxRef !== ctx) { created.remove(); return }
         engine = created
+        syncFloatingPane() // the pop-out's pane exists only where the player runs
         $engineVersion.set($engineVersion.get() + 1)
         // The legacy flag is derived now; place() follows $playerLocation alone.
         $winampOpen.set($playerLocation.get() === 'floating')
@@ -3052,6 +3092,21 @@ function RevampBar() {
   }
   const np = nowPlaying(live)
   const triggerRef = useRef(null)
+  // The hidden dock's home: a zero-size holder the engine parks the player
+  // iframe in while no visible surface shows it. The bar is always mounted
+  // in Hermes, so the dock never needs the host page's body. The effect runs
+  // in the host only (the bar's unit test stubs useEffect and never calls it).
+  const dockRef = useRef(null)
+  useEffect(() => {
+    const el = dockRef.current
+    if (!el) return undefined
+    barDockHolder = el
+    engine?.dockMounted()
+    return () => {
+      if (barDockHolder === el) barDockHolder = null
+      engine?.dockGone()
+    }
+  }, [])
   const [browseWidth, setBrowseWidth] = useState(null)
   maybeAnnounce(np)
   const name = np.kind === 'stream' ? np.title : np.title || ''
@@ -3061,6 +3116,7 @@ function RevampBar() {
     $open.set(value)
   }
   return jsxs('div', { className: 'revamp-bar', 'data-playing': np.playing, style: { position: 'relative' }, children: [
+    jsx('span', { ref: dockRef, 'aria-hidden': true, style: { position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' } }),
     jsx(BarToast, {}),
     jsx(Waveform, { compact: true }),
     jsxs(Popover, { open, onOpenChange, children: [
@@ -3188,6 +3244,40 @@ function ClassicPaneSpike() {
           jsx('span', { style: { flex: 1 }, children: 'Tip: pop out or hide the player anytime with these buttons.' }),
           jsx(Button, { onClick: dismissTip, children: 'OK' })
         ]
+      })
+    ]
+  })
+}
+
+// The floating pane's body: a stable mount point the engine adopts the
+// overlay into. The overlay is plain DOM, not React, so the iframe survives
+// every re-render (and every in-place size re-registration). The host's pane
+// header drags the card and persists its position; lifecycleKeepAlive keeps
+// this body — and the music — alive while the card is collapsed.
+function FloatPane() {
+  const version = useValue($engineVersion)
+  const where = useValue($where)
+  const hostRef = useRef(null)
+  // Layout effect: cleanup runs before React removes the mount point, so the
+  // player moves out while it can still move without a reload.
+  useLayoutEffect(() => {
+    const el = hostRef.current
+    if (!el) return undefined
+    engine?.showFloat(el)
+    return () => engine?.hideFloat(el)
+  }, [version])
+  const playerHere = where === 'winamp'
+  const note =
+    where === 'desktop' ? `${EN.playingIn} desktop window.` :
+    where === 'elsewhere' ? EN.elsewhere :
+    EN.starting
+  return jsxs('div', {
+    style: { position: 'relative', width: '100%', height: '100%', overflow: 'hidden' },
+    children: [
+      jsx('div', { ref: hostRef, style: { width: '100%', height: '100%' } }),
+      playerHere ? null : jsx('div', {
+        style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, color: 'var(--ui-text-secondary)', fontSize: 12, textAlign: 'center' },
+        children: note
       })
     ]
   })
@@ -3410,6 +3500,10 @@ export default {
     lastPetTitle = ''
     lastPetAt = 0
     disposeDockedPlayerPane = null
+    disposeFloatingPlayerPane = null
+    floatPaneSize = { w: 275, h: 348 }
+    if (floatResizeTimer) { clearTimeout(floatResizeTimer); floatResizeTimer = 0 }
+    floatResizeWant = null
     $where.set('none')
     pageBorrowRequested = false
     // The saved home: docked by default; an old winampOpen=yes migrates to floating,
@@ -3454,6 +3548,7 @@ export default {
       ctxRef = null
       engine = null
       disposeDockedPlayerPane = null
+      disposeFloatingPlayerPane = null
       $where.set('none')
     })
     ctx.i18n.register({ en: EN })
@@ -3468,6 +3563,11 @@ export default {
     // The desktop window took over (from any Hermes window) or closed: park or resume here.
     const offDesktop = $desktop.listen(open => (open ? engine?.park() : engine?.unpark()))
     ctx.onDispose(offDesktop)
+    // The pop-out's floating pane follows the chosen home (and follows the
+    // engine: it is registered in runEngine once this window holds the lock).
+    const offFloat = $playerLocation.listen(() => syncFloatingPane())
+    ctx.onDispose(offFloat)
+    syncFloatingPane()
     const refreshIfShown = () => { if (!document.hidden) void refreshLive() }
     const likesIfShown = () => { if (!document.hidden) void loadLikes() }
     void refreshIfShown()
