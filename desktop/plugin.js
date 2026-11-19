@@ -126,6 +126,7 @@ const EN = {
   books: 'Books',
   playlists: 'Playlists',
   searchRadio: 'Find a station, or pick a genre…',
+  agentRadioWeb: 'Listen on the web: hermesagentradio.com ↗',
   searchLibrary: 'Search your music…',
   searchBooks: 'Search your audiobooks…',
   searchPlaylists: 'Filter playlists…',
@@ -354,6 +355,7 @@ const CSS = `
 .revamp-space{flex:1;min-width:6px}
 .revamp-transport input{width:76px;min-width:0;height:3px;accent-color:var(--ui-accent);cursor:pointer}
 .revamp-note{font-size:11px;line-height:17px;color:var(--ui-text-secondary);padding:4px 6px 12px}
+.revamp-web-link{display:block;width:100%;background:none;border:0;cursor:pointer;text-align:left;text-decoration:underline;padding-bottom:6px}
 .revamp-focus{padding:6px 8px 4px;display:flex;flex-direction:column;gap:6px}
 .revamp-focus-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ui-text-secondary)}
 .revamp-focus-row>span{width:42px;flex-shrink:0}
@@ -2197,6 +2199,8 @@ function sameUrl(a, b) {
 const GENRES = ['jazz', 'lofi', 'ambient', 'chillout', 'rock', 'indie', 'classical', 'electronic',
   'hip hop', 'metal', '80s', 'country', 'reggae', 'soul', 'news', 'talk']
 
+const AGENT_RADIO_SITE = 'https://hermesagentradio.com/'
+
 function RadioList({ text, np, onPending, onText }) {
   const t = usePluginI18n(ID)
   const query = useDebounced(text)
@@ -2208,6 +2212,8 @@ function RadioList({ text, np, onPending, onText }) {
     staleTime: 3_600_000
   })
   const favorites = useQuery({ queryKey: [ID, 'favorites'], queryFn: () => rest('/radio/favorites'), staleTime: 30_000 })
+  // Hermes Agent Radio leads the list (its six channels); a fixed lineup, so it is fetched once.
+  const agentRadio = useQuery({ queryKey: [ID, 'agent-radio'], queryFn: () => rest('/radio/agent-radio'), staleTime: Infinity })
   const searchActive = (tag ? tag.length >= 2 : query.length >= 2) && query === text
   const search = usePagedList({
     queryKey: [ID, 'radio-search', tag, query],
@@ -2232,7 +2238,8 @@ function RadioList({ text, np, onPending, onText }) {
     ? s => (s.tags || []).some(v => fold(v).includes(fold(tag)))
     : s => !needle || [s.name, ...(s.tags || [])].some(v => fold(v).includes(needle))
   const seen = new Set()
-  const rows = [...pinned, ...(Array.isArray(presets.data) ? presets.data : []), ...searchItems]
+  const leading = Array.isArray(agentRadio.data) ? agentRadio.data : []
+  const rows = [...leading, ...pinned, ...(Array.isArray(presets.data) ? presets.data : []), ...searchItems]
     .filter(s => s?.url && (matches(s) || searchItems.includes(s)) && !seen.has(s.url) && seen.add(s.url))
   async function pinToggle(s) {
     try {
@@ -2251,6 +2258,11 @@ function RadioList({ text, np, onPending, onText }) {
   }, g)) }, 'chips') : null
   return jsx(Fragment, { children: [
     chips,
+    !text && leading.length ? jsx('button', {
+      type: 'button', className: 'revamp-note revamp-web-link',
+      onClick: () => void ctxRef?.os?.openExternal?.(AGENT_RADIO_SITE),
+      children: t('agentRadioWeb')
+    }, 'agent-radio-web') : null,
     rows.length > 1 ? jsx('div', { className: 'revamp-list-action', children: jsx(SmallAction, {
       label: t('shuffleVisible'), icon: ShuffleIcon, size: 'icon-xs', onClick: () => void shuffleVisible(rows, stationItem)
     }) }, 'shuffle') : null,

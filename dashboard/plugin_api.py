@@ -278,6 +278,11 @@ def radio_presets() -> Response:
     return _proxied(*_request("GET", "/api/radio/presets"))
 
 
+@router.get("/radio/agent-radio")
+def radio_agent_radio() -> Response:
+    return _proxied(*_request("GET", "/api/radio/agent-radio"))
+
+
 @router.get("/radio/popular")
 def radio_popular() -> Response:
     return _proxied(*_request("GET", "/api/radio/popular", timeout=10.0))

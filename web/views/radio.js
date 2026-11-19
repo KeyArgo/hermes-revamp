@@ -1,4 +1,4 @@
-// radio.js — Hermes Radio (the desktop lineup) / Popular / Browse / Search / Favorites.
+// radio.js — Popular / Hermes Radio (Hermes Agent Radio + the desktop lineup) / Browse / Search / Favorites.
 // Every directory list pages in with an IntersectionObserver sentinel and keeps
 // going until Radio Browser runs out of stations, like the Music view.
 import { textPrompt, toast } from "./modal.js";
@@ -22,10 +22,11 @@ const flagFor = (code) => {
 
 const SORTS = [["top", "Top"], ["votes", "Votes"], ["trending", "Trending"]];
 
-export async function render(root, api) {
+// Radio opens on Popular; the Hermes Radio entry in the nav opens the same view on its own tab.
+export async function render(root, api, opts = {}) {
   root.innerHTML = "";
 
-  let tab = "hermes";
+  let tab = opts.tab === "hermes" ? "hermes" : "popular";
   let favIds = new Set();
   let stationMenu = null;
   let stationMenuCleanup = null;
@@ -39,8 +40,8 @@ export async function render(root, api) {
   tabs.setAttribute("role", "tablist");
   tabs.setAttribute("aria-label", "Radio");
   tabs.innerHTML = `
-    <button type="button" data-t="hermes" class="active" role="tab" aria-selected="true">Hermes Radio</button>
     <button type="button" data-t="popular" role="tab" aria-selected="false">Popular</button>
+    <button type="button" data-t="hermes" role="tab" aria-selected="false">Hermes Radio</button>
     <button type="button" data-t="browse" role="tab" aria-selected="false">Browse</button>
     <button type="button" data-t="search" role="tab" aria-selected="false">Search</button>
     <button type="button" data-t="favorites" role="tab" aria-selected="false">Favorites</button>`;
@@ -51,6 +52,11 @@ export async function render(root, api) {
   const sortWrap = document.createElement("div");
   sortWrap.className = "tabs radio-sorts";
   sortWrap.style.marginLeft = "8px";
+  tabs.querySelectorAll("button[data-t]").forEach((b) => {
+    const on = b.dataset.t === tab;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
   bar.append(tabs, sortWrap, addBtn);
   root.appendChild(bar);
 
@@ -483,8 +489,15 @@ export async function render(root, api) {
     h.textContent = "Hermes Radio";
     const lead = document.createElement("p");
     lead.className = "hermes-hero-lead";
-    lead.textContent = "The lineup from Hermes. Press play to start a station.";
-    intro.append(h, lead);
+    lead.textContent = "Hermes Agent Radio's six channels, then the lineup from Hermes Desktop. Press play to start a station.";
+    // Their own player on the web, for listening outside REVamp (show notes, requests, the chart).
+    const web = document.createElement("a");
+    web.className = "hermes-web-link";
+    web.setAttribute("href", "https://hermesagentradio.com/");
+    web.setAttribute("target", "_blank");
+    web.setAttribute("rel", "noopener");
+    web.textContent = "Listen on the web: hermesagentradio.com ↗";
+    intro.append(h, lead, web);
     const ask = document.createElement("button");
     ask.type = "button";
     ask.className = "btn hermes-ask";
@@ -956,5 +969,6 @@ export async function render(root, api) {
 
   // init: favorites first so hearts are right everywhere, then the default tab
   try { const f = await api("/api/radio/favorites"); favIds = new Set(f.map((x) => x.id)); } catch { /* offline */ }
-  await loadHermes();
+  if (tab === "hermes") await loadHermes();
+  else loadPopular();
 }
