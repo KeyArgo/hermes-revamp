@@ -157,6 +157,15 @@ const EN = {
   addToQueue: 'Add to queue',
   addedToQueue: 'Added to queue',
   addedNext: 'Will play next',
+  addedNextMany: '{n} tracks will play next',
+  addedToQueueMany: '{n} tracks added to the queue',
+  addToPlaylist: 'Add to playlist',
+  newPlaylist: 'New playlist…',
+  addedToPlaylist: 'Added {n} track(s) to “{name}”',
+  createdPlaylist: 'Created “{name}” with {n} track(s)',
+  tracksView: 'Tracks',
+  albums: 'Albums',
+  artists: 'Artists',
   live: 'Live',
   paused: 'Paused',
   stopped: 'Stopped',
@@ -320,6 +329,9 @@ const CSS = `
 .revamp-menu-pop{padding:0;width:auto;min-width:0}.revamp-row{position:relative}.revamp-menu{display:flex;flex-direction:column;min-width:150px;padding:4px;border:1px solid var(--ui-stroke-secondary);border-radius:6px;background:var(--ui-bg-elevated,var(--ui-surface-primary,#1c1c1c));box-shadow:0 6px 20px rgba(0,0,0,.35)}
 .revamp-menu-item{display:block;width:100%;text-align:left;font-size:12px;line-height:24px;padding:0 8px;border:0;border-radius:4px;color:var(--ui-text-primary);background:none;cursor:pointer}
 .revamp-menu-item:hover,.revamp-menu-item:focus-visible{background:var(--chrome-action-hover);outline:none}
+.revamp-menu-sub{display:flex;flex-direction:column;margin-top:3px;padding-top:3px;border-top:1px solid var(--ui-stroke-secondary);max-height:180px;overflow-y:auto}
+.revamp-menu-sub .revamp-menu-item{padding-left:18px}
+.revamp-subtabs{position:sticky;top:0;z-index:1;padding:0 4px 4px;background:var(--ui-surface-primary,#1c1c1c)}
 .revamp-load-more{height:1px}
 .revamp-signal{height:48px;padding:5px 6px 0;min-width:0}
 .revamp-track{display:flex;align-items:center;gap:5px;height:19px;min-width:0;font-size:11px;line-height:16px;color:var(--ui-text-secondary)}
@@ -1781,12 +1793,24 @@ function setVolume(percent) {
 }
 
 // ---------------------------------------------------------------- picker
-function Row({ name, sub, current, playing, onPlay, pin, extra, item }) {
+// One row, one menu. `item` is a single track/station; `items` is the whole batch an
+// album or artist row stands for (an array, or a function that fetches it on demand).
+function Row({ name, sub, current, playing, onPlay, pin, extra, item, items }) {
   const t = usePluginI18n(ID)
   const [menu, setMenu] = useState(null)
+  const [playlistsOpen, setPlaylistsOpen] = useState(false)
+  const [newPl, setNewPl] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [busy, setBusy] = useState(false)
   const menuRef = useRef(null)
   const rowRef = useRef(null)
+  const hasMenu = Boolean(item || items)
   const activate = () => (current ? toggle() : onPlay())
+  // Only fetched while the playlist submenu is open (the first open caches it).
+  const plQuery = useQuery({
+    queryKey: [ID, 'playlists'], queryFn: () => rest('/playlists'),
+    enabled: Boolean(menu) && playlistsOpen, staleTime: 30_000
+  })
 
   // The menu is a Hermes Popover (it renders above everything): a plain fixed-position box
   // inside the mini player's panel was clipped by the panel and never showed. Escape, a click
@@ -1800,40 +1824,112 @@ function Row({ name, sub, current, playing, onPlay, pin, extra, item }) {
   function openMenu(x, y) {
     const box = rowRef.current?.getBoundingClientRect()
     if (!box) return
+    setPlaylistsOpen(false)
+    setNewPl(false)
+    setNewName('')
     setMenu({ x: Math.max(0, x - box.left), y: Math.max(0, y - box.top) })
   }
 
-  function choose(action) {
-    setMenu(null)
+  // The batch a menu action works on: an album/artist row fetches its tracks only when
+  // something is actually picked.
+  async function batch() {
+    const list = typeof items === 'function' ? await items() : (items || (item ? [item] : []))
+    return Array.isArray(list) ? list.filter(Boolean) : []
+  }
+
+  async function choose(action) {
     if (action === 'now') {
+      setMenu(null)
       activate()
       return
     }
-    if (!item) return
-    if (action === 'next') {
-      command('load', { items: [item], mode: 'next' })
-      host.notify({ kind: 'success', message: t('addedNext') })
-      return
+    if (busy) return
+    setBusy(true)
+    try {
+      const list = await batch()
+      if (!list.length) return
+      if (action === 'next') {
+        await command('load', { items: list, mode: 'next' })
+        host.notify({ kind: 'success', message: list.length === 1 ? t('addedNext') : t('addedNextMany').replace('{n}', list.length) })
+      } else {
+        await command('load', { items: list, mode: 'append' })
+        host.notify({ kind: 'success', message: list.length === 1 ? t('addedToQueue') : t('addedToQueueMany').replace('{n}', list.length) })
+      }
+      setMenu(null)
+    } catch (err) {
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
+    } finally {
+      setBusy(false)
     }
-    command('load', { items: [item], mode: 'append' })
-    host.notify({ kind: 'success', message: t('addedToQueue') })
+  }
+
+  async function addToPlaylist(p) {
+    if (busy) return
+    setBusy(true)
+    try {
+      const list = await batch()
+      if (!list.length) return
+      const path = `/playlists/${encodeURIComponent(p.id)}`
+      const cur = await rest(path)
+      await rest(path, { method: 'PUT', body: { items: [...(cur?.items || []), ...list] } })
+      host.notify({ kind: 'success', message: t('addedToPlaylist').replace('{n}', list.length).replace('{name}', p.name) })
+      setMenu(null)
+    } catch (err) {
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function createPlaylist() {
+    const wanted = newName.trim()
+    if (!wanted || busy) return
+    setBusy(true)
+    try {
+      const list = await batch()
+      if (!list.length) return
+      await rest('/playlists', { method: 'POST', body: { name: wanted, items: list } })
+      host.notify({ kind: 'success', message: t('createdPlaylist').replace('{name}', wanted).replace('{n}', list.length) })
+      setMenu(null)
+    } catch (err) {
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const menuItem = (action, label) => jsx('button', {
-    type: 'button', role: 'menuitem', className: 'revamp-menu-item',
-    onClick: () => choose(action), children: label
+    type: 'button', role: 'menuitem', className: 'revamp-menu-item', disabled: busy,
+    onClick: () => void choose(action), children: label
   }, action)
+
+  // Arrow keys walk the open menu (including the playlist list); Escape closes it.
+  function onMenuKeyDown(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setMenu(null)
+      return
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    const buttons = [...(menuRef.current?.querySelectorAll('button:not([disabled])') || [])]
+    if (!buttons.length) return
+    e.preventDefault()
+    const at = buttons.indexOf(document.activeElement)
+    buttons[(at + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length].focus()
+  }
+
+  const savedPlaylists = Array.isArray(plQuery.data) ? plQuery.data : []
 
   return jsxs('div', {
     ref: rowRef, className: 'revamp-row', 'data-current': current, 'data-pinned': Boolean(pin?.pinned),
     // Hermes catches every right-click on the window (capture phase) and stops it, unless the
     // target sits inside an element with this marker: then the row's own menu gets the click.
-    'data-hermes-context-menu-trigger': item ? '' : undefined,
-    onContextMenu: item ? e => {
+    'data-hermes-context-menu-trigger': hasMenu ? '' : undefined,
+    onContextMenu: hasMenu ? e => {
       e.preventDefault()
       openMenu(e.clientX, e.clientY)
     } : undefined,
-    onKeyDown: item ? e => {
+    onKeyDown: hasMenu ? e => {
       if ((e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu') {
         e.preventDefault()
         const box = rowRef.current?.getBoundingClientRect()
@@ -1870,11 +1966,40 @@ function Row({ name, sub, current, playing, onPlay, pin, extra, item }) {
             side: 'bottom', align: 'start', sideOffset: 2, className: 'revamp-menu-pop',
             children: jsxs('div', {
               ref: menuRef, className: 'revamp-menu', role: 'menu', 'aria-label': t('rowMenu'),
-              onContextMenu: e => e.preventDefault(),
+              onContextMenu: e => e.preventDefault(), onKeyDown: onMenuKeyDown,
               children: [
                 menuItem('now', t('playNow')),
                 menuItem('next', t('playNext')),
-                menuItem('queue', t('addToQueue'))
+                menuItem('queue', t('addToQueue')),
+                jsx('button', {
+                  type: 'button', role: 'menuitem', className: 'revamp-menu-item', disabled: busy,
+                  'aria-haspopup': 'menu', 'aria-expanded': String(playlistsOpen),
+                  onClick: () => setPlaylistsOpen(open => !open), children: `${t('addToPlaylist')} ▸`
+                }, 'pl'),
+                playlistsOpen ? jsxs('div', { className: 'revamp-menu-sub', role: 'group', 'aria-label': t('playlists'), children: [
+                  plQuery.isLoading ? jsx('div', { className: 'revamp-note', children: t('loadingMore') }) : null,
+                  ...savedPlaylists.map(p => jsx('button', {
+                    type: 'button', role: 'menuitem', className: 'revamp-menu-item', disabled: busy,
+                    onClick: () => void addToPlaylist(p), children: p.name
+                  }, p.id)),
+                  plQuery.error ? jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }) : null,
+                  jsx('button', {
+                    type: 'button', role: 'menuitem', className: 'revamp-menu-item', disabled: busy,
+                    onClick: () => { setNewName(''); setNewPl(true) }, children: t('newPlaylist')
+                  }, 'new')
+                ] }) : null,
+                newPl ? jsxs('form', {
+                  className: 'revamp-ask',
+                  onSubmit: e => { e.preventDefault(); void createPlaylist() },
+                  children: [
+                    jsx('input', {
+                      value: newName, autoFocus: true, disabled: busy,
+                      onChange: e => setNewName(e.target.value), 'aria-label': t('newPlaylist')
+                    }),
+                    jsx('button', { type: 'submit', disabled: busy || !newName.trim(), children: t('save') }),
+                    jsx('button', { type: 'button', onClick: () => setNewPl(false), children: t('cancel') })
+                  ]
+                }) : null
               ]
             })
           })
@@ -2057,6 +2182,7 @@ function RadioList({ text, np, onPending, onText }) {
 
 function LibraryList({ text, np, onPending, kind = 'music' }) {
   const t = usePluginI18n(ID)
+  const [view, setView] = useState('tracks')
   const query = useDebounced(text, 250)
   const version = useValue($libVersion)
   const scanning = useValue($scanning)
@@ -2070,32 +2196,149 @@ function LibraryList({ text, np, onPending, kind = 'music' }) {
   })
   const tracks = result.items
   const pending = text !== query || (result.loading && !tracks.length)
-  useEffect(() => onPending(pending), [pending])
+  const browse = kind === 'music'
+  useEffect(() => onPending(view === 'tracks' ? pending : false), [pending, view])
   return jsx(Fragment, { children: [
-    tracks.length > 1 ? jsx('div', { className: 'revamp-list-action', children: jsx(SmallAction, {
-      label: t('shuffleVisible'), icon: ShuffleIcon, size: 'icon-xs', onClick: () => void shuffleVisible(tracks, trackItem)
-    }) }, 'shuffle') : null,
-    scanning && jsx('div', { className: 'revamp-note', role: 'status', children: progress?.total
-      ? t('scanningOf').replace('{done}', progress.done.toLocaleString()).replace('{total}', progress.total.toLocaleString())
-      : t('scanning') }, 'scan'),
-    ...tracks.map((tr, i) => jsx(Row, {
-      name: tr.title || tr.path?.split('/').pop() || '?',
-      sub: [tr.artist, tr.album, tr.resume > 0 && t('leftOff').replace('{time}', clock(tr.resume))].filter(Boolean).join(' · '),
-      current: np.kind !== 'stream' && np.kind !== 'focus' && sameUrl(np.url, tr.url), playing: np.playing,
-      // Play from here, with the rest of the results queued behind it.
-      onPlay: () => playItems(tracks.map(trackItem), i),
-      item: trackItem(tr)
-    }, tr.id)),
-    jsx(LoadMore, {
-      hasMore: result.hasMore, loading: result.loading && Boolean(tracks.length),
-      onLoad: result.loadMore, label: t('loadingMore')
-    }, 'more'),
-    result.error && jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }, 'err'),
-    !pending && !scanning && !tracks.length && jsx('div', { className: 'revamp-note', role: 'status', children: t(query ? 'noResults' : kind === 'audiobook' ? 'emptyBooks' : 'emptyLibrary') }, 'none')
+    // Albums and artists are rows with the same menu as a track; their menu acts on every
+    // track of the album or artist. Books keep the plain track list.
+    browse ? jsx('div', { className: 'revamp-subtabs', children: jsx(SegmentedControl, {
+      options: [
+        { id: 'tracks', label: t('tracksView') },
+        { id: 'albums', label: t('albums') },
+        { id: 'artists', label: t('artists') }
+      ],
+      value: view, sizing: 'equal', onChange: id => setView(id)
+    }) }, 'view') : null,
+    browse && view === 'albums' ? jsx(AlbumList, { text: query, np, onPending })
+      : browse && view === 'artists' ? jsx(ArtistList, { text: query, np, onPending })
+        : jsx(Fragment, { children: [
+          tracks.length > 1 ? jsx('div', { className: 'revamp-list-action', children: jsx(SmallAction, {
+            label: t('shuffleVisible'), icon: ShuffleIcon, size: 'icon-xs', onClick: () => void shuffleVisible(tracks, trackItem)
+          }) }, 'shuffle') : null,
+          scanning && jsx('div', { className: 'revamp-note', role: 'status', children: progress?.total
+            ? t('scanningOf').replace('{done}', progress.done.toLocaleString()).replace('{total}', progress.total.toLocaleString())
+            : t('scanning') }, 'scan'),
+          ...tracks.map((tr, i) => jsx(Row, {
+            name: tr.title || tr.path?.split('/').pop() || '?',
+            sub: [tr.artist, tr.album, tr.resume > 0 && t('leftOff').replace('{time}', clock(tr.resume))].filter(Boolean).join(' · '),
+            current: np.kind !== 'stream' && np.kind !== 'focus' && sameUrl(np.url, tr.url), playing: np.playing,
+            // Play from here, with the rest of the results queued behind it.
+            onPlay: () => playItems(tracks.map(trackItem), i),
+            item: trackItem(tr)
+          }, tr.id)),
+          jsx(LoadMore, {
+            hasMore: result.hasMore, loading: result.loading && Boolean(tracks.length),
+            onLoad: result.loadMore, label: t('loadingMore')
+          }, 'more'),
+          result.error && jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }, 'err'),
+          !pending && !scanning && !tracks.length && jsx('div', { className: 'revamp-note', role: 'status', children: t(query ? 'noResults' : kind === 'audiobook' ? 'emptyBooks' : 'emptyLibrary') }, 'none')
+        ] })
   ] })
 }
 
 const BooksList = props => jsx(LibraryList, { ...props, kind: 'audiobook' })
+
+// Every track of an album or artist, in the server's order (disc then track number), for the
+// row menu. Cached per library version so Play and a menu action share one fetch.
+const albumCache = new Map()
+const artistCache = new Map()
+
+function cached(cache, key, make) {
+  if (!cache.has(key)) {
+    if (cache.size > 100) cache.clear() // a long session should not keep every album
+    const pending = make().catch(err => { cache.delete(key); throw err })
+    cache.set(key, pending)
+  }
+  return cache.get(key)
+}
+
+async function allTrackItems(params, key, cache) {
+  return cached(cache, key, async () => {
+    const items = []
+    let offset = 0
+    for (;;) {
+      const out = await rest(`/library/tracks?${new URLSearchParams({
+        ...params, sort: 'album', limit: '200', offset: String(offset)
+      })}`)
+      const rows = Array.isArray(out?.tracks) ? out.tracks : []
+      items.push(...rows.map(trackItem))
+      offset += rows.length
+      if (!rows.length || offset >= (Number(out?.total) || items.length)) break
+    }
+    return items
+  })
+}
+
+const albumItems = (a, version) => allTrackItems(
+  { album: a.album || '', artist: a.artist || '', kind: 'music' },
+  `${version}|${a.artist || ''}|${a.album || ''}`, albumCache
+)
+const artistItems = (name, version) => allTrackItems(
+  { artist: name || '', kind: 'music' },
+  `${version}|${name || ''}`, artistCache
+)
+
+const foldName = v => String(v ?? '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+
+function AlbumList({ text, np, onPending }) {
+  const t = usePluginI18n(ID)
+  const version = useValue($libVersion)
+  const albums = useQuery({
+    queryKey: [ID, 'albums', version],
+    queryFn: () => rest('/library/albums?kind=music'), staleTime: 20_000
+  })
+  const needle = foldName(text)
+  const rows = (Array.isArray(albums.data) ? albums.data : [])
+    .filter(a => !needle || [a.album, a.artist].some(v => foldName(v).includes(needle)))
+  const pending = albums.isLoading && !rows.length
+  useEffect(() => onPending(pending), [pending])
+  const play = a => {
+    albumItems(a, version)
+      .then(items => items.length && playItems(items))
+      .catch(err => notifyError(`REVamp: ${err?.message || t('failed')}`))
+  }
+  return jsx(Fragment, { children: [
+    ...rows.map(a => jsx(Row, {
+      name: a.album || '?',
+      sub: [a.artist, a.year, `${a.tracks} ${t('tracks')}`].filter(Boolean).join(' · '),
+      current: false, playing: false,
+      onPlay: () => play(a),
+      items: () => albumItems(a, version)
+    }, `${a.artist}|${a.album}`)),
+    albums.error && jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }, 'err'),
+    !pending && !rows.length && jsx('div', { className: 'revamp-note', role: 'status', children: t(text ? 'noResults' : 'emptyLibrary') }, 'none')
+  ] })
+}
+
+function ArtistList({ text, np, onPending }) {
+  const t = usePluginI18n(ID)
+  const version = useValue($libVersion)
+  const artists = useQuery({
+    queryKey: [ID, 'artists', version],
+    queryFn: () => rest('/library/artists?kind=music'), staleTime: 20_000
+  })
+  const needle = foldName(text)
+  const rows = (Array.isArray(artists.data) ? artists.data : [])
+    .filter(a => !needle || foldName(a.name).includes(needle))
+  const pending = artists.isLoading && !rows.length
+  useEffect(() => onPending(pending), [pending])
+  const play = a => {
+    artistItems(a.name, version)
+      .then(items => items.length && playItems(items))
+      .catch(err => notifyError(`REVamp: ${err?.message || t('failed')}`))
+  }
+  return jsx(Fragment, { children: [
+    ...rows.map(a => jsx(Row, {
+      name: a.name || '?',
+      sub: `${a.tracks} ${t('tracks')} · ${a.albums} ${t('albums').toLowerCase()}`,
+      current: false, playing: false,
+      onPlay: () => play(a),
+      items: () => artistItems(a.name, version)
+    }, a.name)),
+    artists.error && jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }, 'err'),
+    !pending && !rows.length && jsx('div', { className: 'revamp-note', role: 'status', children: t(text ? 'noResults' : 'emptyLibrary') }, 'none')
+  ] })
+}
 
 // After the folders change: poll the scan, refreshing the track lists every few
 // seconds (a big network folder takes minutes and fills in as it goes).

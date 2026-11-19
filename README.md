@@ -107,6 +107,8 @@ In narrow panes the player scales to fit and the menu becomes a compact row. In 
 
 Separate local Music and Books folders keep libraries apart. Search artists and albums, read cover art, build queues and likes, save playlists, and resume audiobooks with chapters and a speed control. Radio uses Radio Browser for popular stations ranked by listener votes, genre, country and language browsing, search, favourites and endless scrolling.
 
+Albums and artists are right-clickable. In the Albums and Artists views, and in the Hermes mini player's Music tab, right-click, long-press, the ⋯ button, Shift+F10 or the context-menu key opens the same menu a song has: Play, Play next, Add to queue and Add to playlist.
+
 <p align="center">
   <img src="assets/screenshots/full-player.png" alt="The classic player with EQ, playlist and the Visualizer control" width="49%">
   <img src="assets/screenshots/nous.png" alt="The REVamp Nous light skin" width="49%">

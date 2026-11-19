@@ -37,8 +37,6 @@ export async function render(root, api, kind = "music") {
   let artists = [], albums = [];
   let selected = new Set();
   let currentAlbum = null;
-  let trackMenu = null;
-  let trackMenuCleanup = null;
   let loadMoreObserver = null;
 
   root.innerHTML = "";
@@ -310,13 +308,25 @@ export async function render(root, api, kind = "music") {
         setTabs();
         loadAlbums(a.name);
       };
-      tr.addEventListener("click", open);
+      const openMenu = (point) => openArtistMenu(a.name, point, tr);
+      const consumed = bindLongPress(tr, (point) => openMenu(point));
+      tr.addEventListener("click", () => { if (consumed()) return; open(); });
       tr.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           open();
+        } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = tr.getBoundingClientRect();
+          openMenu({ x: rect.left, y: rect.bottom });
         }
       });
+      tr.addEventListener("contextmenu", (e) => {
+        if (pickMode) return;
+        e.preventDefault();
+        openMenu({ x: e.clientX, y: e.clientY });
+      });
+      tr.appendChild(moreCell(`Actions for ${a.name}`, (point) => openMenu(point)));
       tb.appendChild(tr);
     }
     tbl.appendChild(tb); listEl.appendChild(tbl);
@@ -340,8 +350,23 @@ export async function render(root, api, kind = "music") {
       ar.textContent = [al.artist, al.year].filter(Boolean).join(" · ") + ` · ${al.tracks} tracks`;
       card.append(img, nm, ar);
       const open = () => { currentAlbum = al; renderAlbums(); };
-      card.addEventListener("click", open);
-      card.addEventListener("keydown", (e) => e.key === "Enter" && open());
+      const openMenu = (point) => openAlbumMenu(al, point, card);
+      const consumed = bindLongPress(card, (point) => openMenu(point));
+      card.addEventListener("click", () => { if (consumed()) return; open(); });
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") open();
+        else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = card.getBoundingClientRect();
+          openMenu({ x: rect.left, y: rect.bottom });
+        }
+      });
+      card.addEventListener("contextmenu", (e) => {
+        if (pickMode) return;
+        e.preventDefault();
+        openMenu({ x: e.clientX, y: e.clientY });
+      });
+      card.appendChild(moreButton(`Actions for ${al.album || "Untitled"}`, (point) => openMenu(point)));
       grid.appendChild(card);
     }
     listEl.appendChild(grid);
@@ -433,47 +458,220 @@ export async function render(root, api, kind = "music") {
     p.loadTracks(items, { mode: "replace", play: false }).then(() => p.playIndex(Math.max(0, startIdx)));
   }
 
-  function closeTrackMenu(returnFocus = false) {
-    if (!trackMenu) return;
-    const { rowIndex, element } = trackMenu;
-    trackMenu = null;
-    trackMenuCleanup?.();
-    trackMenuCleanup = null;
+  // ---- one context menu for every row: track rows, album cards and artist rows.
+  // Right-click, long-press, the ⋯ button, Shift+F10 and the context-menu key all open it.
+  let itemMenu = null;
+  let itemMenuCleanup = null;
+  // A menu opens only if its own open request is still the newest (a slow album fetch must not
+  // paint over a menu the user opened later).
+  let itemMenuSeq = 0;
+
+  function closeItemMenu(returnFocus = false) {
+    if (!itemMenu) return;
+    const { element, focusEl } = itemMenu;
+    itemMenu = null;
+    itemMenuCleanup?.();
+    itemMenuCleanup = null;
     element.remove();
-    if (returnFocus) listEl.querySelector(`tr[data-i="${rowIndex}"]`)?.focus();
+    if (returnFocus) focusEl?.focus();
+  }
+
+  // A small ⋯ button on cards and rows: opens the same menu where the button sits.
+  function moreButton(label, onOpen) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "album-more";
+    button.textContent = "⋯";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rect = button.getBoundingClientRect();
+      onOpen({ x: rect.left, y: rect.bottom });
+    });
+    return button;
+  }
+  function moreCell(label, onOpen) {
+    const td = document.createElement("td");
+    td.className = "more-cell";
+    td.appendChild(moreButton(label, onOpen));
+    return td;
+  }
+
+  // Long-press on a touch screen opens the menu; the click that follows is swallowed so the
+  // card does not also open. Returns a function that tells the click handler to ignore it.
+  function bindLongPress(el, onLong) {
+    let timer = null;
+    let fired = false;
+    let sx = 0, sy = 0;
+    const cancel = () => { clearTimeout(timer); timer = null; };
+    el.addEventListener("touchstart", (e) => {
+      if (pickMode || !e.touches || e.touches.length !== 1) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; fired = false;
+      cancel();
+      timer = setTimeout(() => { fired = true; onLong({ x: sx, y: sy }); }, 500);
+    }, { passive: true });
+    el.addEventListener("touchmove", (e) => {
+      const t = e.touches?.[0];
+      if (!t) return;
+      if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) cancel();
+    }, { passive: true });
+    el.addEventListener("touchend", (e) => { cancel(); if (fired) e.preventDefault(); }, { passive: false });
+    el.addEventListener("touchcancel", cancel, { passive: true });
+    return () => { const was = fired; fired = false; return was; };
+  }
+
+  // Every page of a filtered list, in the server's order (album: disc then track number).
+  async function fetchAllTracks(params) {
+    const out = [];
+    for (;;) {
+      const q = new URLSearchParams({ ...params, limit: "500", offset: String(out.length) });
+      const res = await api(`/api/library/tracks?${q}`);
+      const rows = res.tracks || [];
+      out.push(...rows);
+      if (!rows.length || out.length >= (res.total ?? out.length) || out.length > 50000) break;
+    }
+    return out;
+  }
+
+  async function openAlbumMenu(al, point, focusEl) {
+    const seq = ++itemMenuSeq;
+    let tracks;
+    try {
+      tracks = await fetchAllTracks({ album: al.album || "", artist: al.artist || "", kind: apiKind, sort: "album" });
+    } catch (e) {
+      return toast(e.message, { kind: "error" });
+    }
+    if (seq !== itemMenuSeq) return; // a newer menu was opened while this one loaded
+    const items = tracks.map(trackToItem);
+    if (!items.length) return toast("That album has no tracks yet", { kind: "error" });
+    openItemMenu({
+      items, point, focusEl, withLike: false,
+      label: "Album actions",
+      headerText: `${al.album || "Untitled"} · ${items.length} ${items.length === 1 ? "track" : "tracks"}`,
+    });
+  }
+
+  async function openArtistMenu(name, point, focusEl) {
+    const seq = ++itemMenuSeq;
+    let tracks;
+    try {
+      tracks = await fetchAllTracks({ artist: name || "", kind: apiKind, sort: "album" });
+    } catch (e) {
+      return toast(e.message, { kind: "error" });
+    }
+    if (seq !== itemMenuSeq) return; // a newer menu was opened while this one loaded
+    const items = tracks.map(trackToItem);
+    if (!items.length) return toast(`No tracks by ${name || "this artist"}`, { kind: "error" });
+    openItemMenu({
+      items, point, focusEl, withLike: false,
+      label: "Artist actions",
+      headerText: `${name || "Unknown Artist"} · ${items.length} ${items.length === 1 ? "track" : "tracks"}`,
+    });
   }
 
   function openTrackMenu(rowIndex, point) {
-    closeTrackMenu();
+    itemMenuSeq += 1; // cancels an album/artist menu still loading
+    const items = chosenTracks().map(trackToItem);
+    openItemMenu({
+      items, point, withLike: true,
+      focusEl: listEl.querySelector(`tr[data-i="${rowIndex}"]`),
+      label: "Track actions",
+      headerText: `${items.length} ${items.length === 1 ? "song" : "songs"}`,
+    });
+  }
+
+  // One menu implementation for tracks, albums and artists: Play, Play next, Add to queue,
+  // Add to playlist ▸ (saved playlists + New playlist…), plus Like for single tracks.
+  function openItemMenu({ items, point, focusEl, label, headerText, withLike }) {
+    itemMenuSeq += 1;
+    closeItemMenu();
     const menu = document.createElement("div");
     menu.className = "track-menu";
     menu.setAttribute("role", "menu");
-    menu.setAttribute("aria-label", "Track actions");
+    menu.setAttribute("aria-label", label || "Actions");
     const header = document.createElement("div");
     header.className = "track-menu-header";
-    const count = chosenTracks().length;
-    header.textContent = `${count} ${count === 1 ? "song" : "songs"}`;
+    header.textContent = headerText || `${items.length} tracks`;
     menu.appendChild(header);
-    const addItem = (label, action) => {
+    const addItem = (text, action, opts = {}) => {
       const button = document.createElement("button");
       button.type = "button";
       button.setAttribute("role", "menuitem");
-      button.textContent = label;
-      button.addEventListener("click", () => {
-        closeTrackMenu();
-        action();
+      if (opts.haspopup) {
+        button.setAttribute("aria-haspopup", "menu");
+        button.setAttribute("aria-expanded", "false");
+      }
+      button.textContent = text;
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        action(button);
       });
       menu.appendChild(button);
+      return button;
     };
-    addItem("Play", playChosenTracks);
-    addItem("Add to queue", enqueueChosenTracks);
-    const items = chosenTracks();
-    const allLiked = items.every((track) => {
-      const player = window.revampPlayerApi;
-      return player?.isLiked ? player.isLiked(track.id) : !!track.liked;
-    });
-    addItem(allLiked ? "Unlike" : "Like", () => setChosenLiked(!allLiked));
-    addItem("Add to playlist…", addChosenTracksToPlaylist);
+    const run = (fn) => () => { closeItemMenu(); fn(); };
+    addItem("Play", run(() => playItemsNow(items)));
+    addItem("Play next", run(() => queueItems(items, "next")));
+    addItem("Add to queue", run(() => queueItems(items, "append")));
+    if (withLike) {
+      const allLiked = chosenTracks().every((track) => {
+        const player = window.revampPlayerApi;
+        return player?.isLiked ? player.isLiked(track.id) : !!track.liked;
+      });
+      addItem(allLiked ? "Unlike" : "Like", run(() => setChosenLiked(!allLiked)));
+    }
+
+    // Add to playlist ▸: saved playlists plus a new one. The list is fetched when the
+    // submenu first opens, so the menu itself never waits on the server.
+    const plButton = addItem("Add to playlist ▸", () => openSub(true), { haspopup: true });
+    const sub = document.createElement("div");
+    sub.className = "track-menu-sub";
+    sub.setAttribute("role", "group");
+    sub.setAttribute("aria-label", "Playlists");
+    sub.hidden = true;
+    menu.appendChild(sub);
+    let subLoaded = false;
+    let subLoading = null;
+    const addSubItem = (text, action) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "menuitem");
+      button.textContent = text;
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        action();
+      });
+      sub.appendChild(button);
+      return button;
+    };
+    const fillSub = async () => {
+      let pls = [];
+      try {
+        pls = await api("/api/playlists");
+      } catch (e) {
+        toast(e.message, { kind: "error" });
+        subLoaded = false;
+        subLoading = null; // a failed fetch can be tried again on the next open
+        return;
+      }
+      sub.replaceChildren();
+      for (const p of pls || []) addSubItem(p.name || "Untitled", () => saveItemsToPlaylist(items, p.id));
+      addSubItem("＋ New playlist…", () => newPlaylistWith(items));
+      subLoaded = true;
+    };
+    const openSub = async (focusFirst = false) => {
+      sub.hidden = false;
+      plButton.setAttribute("aria-expanded", "true");
+      if (!subLoaded) subLoading = subLoading || fillSub();
+      await subLoading;
+      if (focusFirst) sub.querySelector('[role="menuitem"]')?.focus();
+    };
+    const closeSub = () => {
+      sub.hidden = true;
+      plButton.setAttribute("aria-expanded", "false");
+    };
+
     root.appendChild(menu);
 
     const rect = menu.getBoundingClientRect();
@@ -481,35 +679,46 @@ export async function render(root, api, kind = "music") {
     const y = Math.max(8, Math.min(point.y, window.innerHeight - rect.height - 8));
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
-    trackMenu = { element: menu, rowIndex };
+    itemMenu = { element: menu, focusEl };
 
+    // Only visible items are reachable with the arrow keys: a closed submenu's rows are not.
+    const menuItems = () => [...menu.querySelectorAll('[role="menuitem"]')]
+      .filter((button) => button.parentNode !== sub || !sub.hidden);
     const onKeydown = (e) => {
-      const buttons = [...menu.querySelectorAll('[role="menuitem"]')];
+      const buttons = menuItems();
       const current = buttons.indexOf(document.activeElement);
       if (e.key === "Escape") {
         e.preventDefault();
-        closeTrackMenu(true);
+        closeItemMenu(true);
       } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
+        if (!buttons.length) return;
         const direction = e.key === "ArrowDown" ? 1 : -1;
         buttons[(current + direction + buttons.length) % buttons.length].focus();
+      } else if (e.key === "ArrowRight" && document.activeElement === plButton) {
+        e.preventDefault();
+        openSub(true);
+      } else if (e.key === "ArrowLeft" && sub.contains(document.activeElement)) {
+        e.preventDefault();
+        closeSub();
+        plButton.focus();
       } else if (e.key === "Enter" && current >= 0) {
         e.preventDefault();
         buttons[current].click();
       }
     };
     const onOutsideClick = (e) => {
-      if (!menu.contains(e.target)) closeTrackMenu();
+      if (!menu.contains(e.target)) closeItemMenu();
     };
     let opening = true;
     const onScroll = () => {
-      if (!opening) closeTrackMenu();
+      if (!opening) closeItemMenu();
     };
     menu.querySelector('[role="menuitem"]')?.focus();
     document.addEventListener("keydown", onKeydown);
     document.addEventListener("click", onOutsideClick);
     document.addEventListener("scroll", onScroll, true);
-    trackMenuCleanup = () => {
+    itemMenuCleanup = () => {
       document.removeEventListener("keydown", onKeydown);
       document.removeEventListener("click", onOutsideClick);
       document.removeEventListener("scroll", onScroll, true);
@@ -519,16 +728,54 @@ export async function render(root, api, kind = "music") {
     }, 200);
   }
 
-  function playChosenTracks() {
-    const items = chosenTracks().map(trackToItem);
+  function playItemsNow(items) {
     if (!items.length) return;
-    window.revampPlayerApi.loadTracks(items, { mode: "replace", play: true });
+    const p = window.revampPlayerApi;
+    if (p.playItemsAt) return p.playItemsAt(0, items);
+    p.loadTracks(items, { mode: "replace", play: true });
+  }
+
+  function queueItems(items, mode) {
+    if (!items.length) return;
+    const n = items.length;
+    const what = `${n} ${n === 1 ? "track" : "tracks"}`;
+    window.revampPlayerApi.loadTracks(items, { mode });
+    toast(mode === "next" ? `${what} will play next` : `Added ${what} to the queue`, { kind: "ok" });
+  }
+
+  async function saveItemsToPlaylist(items, id) {
+    closeItemMenu();
+    try {
+      const cur = await api(`/api/playlists/${encodeURIComponent(id)}`);
+      await api(`/api/playlists/${encodeURIComponent(id)}`, "PUT", { items: [...(cur.items || []), ...items] });
+      const n = items.length;
+      toast(`Added ${n} ${n === 1 ? "track" : "tracks"} to “${cur.name}”`, { kind: "ok" });
+      window.dispatchEvent(new Event("revamp:playlists-changed"));
+    } catch (e) {
+      toast(`Could not save playlist: ${e.message}`, { kind: "error" });
+    }
+  }
+
+  async function newPlaylistWith(items) {
+    closeItemMenu();
+    const name = await textPrompt("New playlist", { placeholder: "My playlist" });
+    if (!name) return;
+    try {
+      await api("/api/playlists", "POST", { name, items });
+      const n = items.length;
+      toast(`Created “${name}” with ${n} ${n === 1 ? "track" : "tracks"}`, { kind: "ok" });
+      window.dispatchEvent(new Event("revamp:playlists-changed"));
+    } catch (e) {
+      toast(`Could not save playlist: ${e.message}`, { kind: "error" });
+    }
+  }
+
+  function playChosenTracks() {
+    playItemsNow(chosenTracks().map(trackToItem));
   }
 
   function enqueueChosenTracks() {
-    const items = chosenTracks().map(trackToItem);
-    if (!items.length) return;
-    window.revampPlayerApi.loadTracks(items, { mode: "append" });
+    queueItems(chosenTracks().map(trackToItem), "append");
   }
 
   function setChosenLiked(liked) {
@@ -560,21 +807,8 @@ export async function render(root, api, kind = "music") {
       ],
     });
     if (!pick) return;
-    try {
-      if (pick === "__new__") {
-        const name = await textPrompt("New playlist", { placeholder: "My playlist" });
-        if (!name) return;
-        await api("/api/playlists", "POST", { name, items });
-        toast(`Created “${name}” with ${items.length} song(s)`, { kind: "ok" });
-      } else {
-        const cur = await api(`/api/playlists/${pick}`);
-        await api(`/api/playlists/${pick}`, "PUT", { items: [...(cur.items || []), ...items] });
-        toast(`Added ${items.length} song(s) to “${cur.name}”`, { kind: "ok" });
-      }
-      window.dispatchEvent(new Event("revamp:playlists-changed"));
-    } catch (e) {
-      toast(`Could not save playlist: ${e.message}`, { kind: "error" });
-    }
+    if (pick === "__new__") return newPlaylistWith(items);
+    return saveItemsToPlaylist(items, pick);
   }
 
   // action buttons
