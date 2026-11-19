@@ -4,6 +4,7 @@ import { getHostPlayerPlace } from "../host-place.js";
 import { getThemeSnapshot } from "../theme.js";
 import { toast } from "./modal.js";
 import { mountBackups } from "./backups.js";
+import { AURA_LINE, mountHint } from "./siblings.js";
 
 const KIND_ORDER = ["approval_request", "tool_start", "tool_end", "session_start", "session_end", "approval_response"];
 const kindIcon = (k, ok) =>
@@ -74,6 +75,18 @@ export async function render(root, api) {
   const tickerRow = tickerToggle.row;
   tickerRow.style.borderBottom = "none";
   box.appendChild(tickerRow);
+
+  // Aura, only where it means something: MilkDrop was switched off on purpose
+  // (settings.milkdropOn === false — the state the visualizer toggle saves), so
+  // a calmer backdrop is a fair thing to mention. Once. Dismissal persists.
+  if (settings.milkdropOn === false) {
+    const auraHolder = document.createElement("div");
+    auraHolder.className = "sib-holder";
+    box.appendChild(auraHolder);
+    mountHint({
+      holder: auraHolder, key: "aura", name: "Aura", line: AURA_LINE, pApi,
+    });
+  }
 
   const bugBox = document.createElement("div");
   bugBox.className = "setting-row";

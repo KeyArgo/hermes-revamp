@@ -30,6 +30,13 @@ REVamp keeps your library close while adding playlists, radio, lyrics, a MilkDro
 - Hermes tools (`revamp_player`, `revamp_library`, `revamp_playlist`, and `revamp_radio`) plus `revampctl mcp` for other agent apps.
 - **Agent-aware:** a ticker shows what the agent is doing, and optional chime-and-dip alerts briefly flag approvals you can act on (Settings → REVamp → Music and approvals).
 
+## Works well with
+
+Two sibling plugins that pair naturally with a music player. Neither is required; REVamp works alone.
+
+- **Aura** — plays films and MilkDrop-style scenes in its own page or pane and listens to the system audio loopback, so the visuals react to whatever REVamp plays with no configuration. A quiet hint in REVamp's Settings (only when the visualizer is switched off) points to it in Capabilities → Plugins.
+- **Music Studio** — turns a song idea into lyrics and a style you approve, then renders the audio locally (ACE-Step, or MiniMax via ComfyUI). Finished takes are plain `.wav` files; when REVamp finds that folder it offers one click to add it to your library, and empty-library / empty-playlist screens mention where it lives.
+
 ## Install in Hermes Desktop
 
 Install from the published catalog when available:

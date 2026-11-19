@@ -74,6 +74,11 @@ const PANE_SPIKE = true
 // other sender announces {type: 'play'}, and announces its own plays there.
 const RADIO_BUS = 'hermes:radio:playback'
 
+// Sibling plugins the player page may point at. The id is allowlisted here and
+// the host route is built here, once: the web UI can only ask, never act on the
+// host itself. The route is the public one (Capabilities -> Plugins, preselected).
+const SIBLING_PLUGIN_IDS = ['aura', 'hermes-music-studio']
+
 const EN = {
   title: 'REVamp',
   navLabel: 'REVamp',
@@ -1254,6 +1259,13 @@ function createEngine(ctx, url, bridgeKey = '') {
       setPlayerLocation(e.data.location)
     }
     if (e.data.type === 'revamp:diagnostic') saveDiagnostic(e.data.record)
+    // "Find <name> in Plugins" in the web UI: one hop, then the host's public
+    // route. Only REVamp's own frames may ask, and a host without a router
+    // leaves the click harmless — nothing outside our iframes is touched.
+    if (e.data.type === 'revamp:open-plugin' && SIBLING_PLUGIN_IDS.includes(e.data.plugin) &&
+        (e.source === frame?.contentWindow || e.source === controlFrame?.contentWindow)) {
+      try { host.navigate(`/capabilities?tab=plugins&plugin=${encodeURIComponent(e.data.plugin)}`) } catch { /* no router, no move */ }
+    }
     // Duck/unduck notices while docked to mini: the iframe's own toasts are invisible
     // there (docked off-screen), so surface them through the host instead.
     if (e.data.type === 'revamp:toast' && typeof e.data.text === 'string' && e.data.text) {
