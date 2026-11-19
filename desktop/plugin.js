@@ -366,6 +366,8 @@ const CSS = `
 .revamp-chip:hover,.revamp-chip[aria-pressed=true]{color:var(--ui-accent);border-color:var(--ui-accent)}
 .revamp-chip[aria-pressed=true]{background:color-mix(in srgb,var(--ui-accent) 12%,transparent)}
 .revamp-chip:focus-visible{outline:2px solid var(--ui-accent);outline-offset:1px}
+.revamp-menu-pills{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:2px 8px}
+.revamp-menu-pill{white-space:nowrap}
 .revamp-folders-head{display:flex;align-items:center;gap:4px;height:32px;padding:0 4px 4px 8px;font-size:12px;color:var(--ui-text-primary)}
 .revamp-folders-head .revamp-space{flex:1}
 .revamp-path{font-size:10px;line-height:14px;color:var(--ui-text-tertiary);padding:0 8px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
@@ -3028,24 +3030,24 @@ function placeItems(item, extra, t) {
   ]
 }
 
-// Where the player lives; the dot marks the active one.
+// The menu's footer actions are pills, like the genre chips above them.
+const Pill = ({ on, onClick, children, label }) => jsx('button', {
+  type: 'button', className: 'revamp-chip revamp-menu-pill',
+  ...(on === undefined ? {} : { 'data-active': on, 'aria-pressed': on }),
+  'aria-label': label, onClick, children
+})
+
+// Where the player lives; the filled pill marks the active one.
 function LocationRow() {
   const t = usePluginI18n(ID)
   const location = useValue($playerLocation)
   useValue($dockedPlayerSide); useValue($desktop); useValue($frameHidden)
   const active = loc => loc === location && !$desktop.get()
-  const item = (loc, key, suffix = '') => jsxs(Button, {
-    variant: 'ghost', size: 'micro',
-    'data-active': active(loc),
-    'aria-pressed': active(loc),
-    onClick: () => setPlayerLocation(loc),
-    children: [active(loc) ? '● ' : '', t(key) + suffix]
+  const item = (loc, key, suffix = '') => jsx(Pill, {
+    on: active(loc), onClick: () => setPlayerLocation(loc), children: t(key) + suffix
   }, loc)
-  const extra = (key, label, on, onClick) => jsxs(Button, {
-    variant: 'ghost', size: 'micro', 'data-active': on, 'aria-pressed': on, onClick,
-    children: [on ? '● ' : '', label]
-  }, key)
-  return jsxs('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '2px 8px' }, 'aria-label': t('location'), children: placeItems(item, extra, t) })
+  const extra = (key, label, on, onClick) => jsx(Pill, { on, onClick, children: label }, key)
+  return jsxs('div', { className: 'revamp-menu-pills', 'aria-label': t('location'), children: placeItems(item, extra, t) })
 }
 
 function LocationRowWithTip() {
@@ -3081,10 +3083,10 @@ function ReportBugRow({ compact = false }) {
     children: [
       compact ? null : jsx('span', { style: { fontSize: 12, color: 'var(--ui-text-secondary)' }, children: t('reportBug') }),
       compact ? null : jsx('span', { style: { fontSize: 11, color: 'var(--ui-text-tertiary)', marginBottom: 4 }, children: t('reportBugHint') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(false), children: t('reportBug') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(true), children: t('copyBugDetails') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void recoverPlayer(), children: t('recoverPlayer') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void ctxRef?.os.writeClipboard(formatDiagnostics()), children: t('copyDiagnostics') })
+      jsx(Pill, { onClick: () => void openBugReport(false), children: t('reportBug') }, 'bug'),
+      jsx(Pill, { onClick: () => void openBugReport(true), children: t('copyBugDetails') }, 'details'),
+      jsx(Pill, { onClick: () => void recoverPlayer(), children: t('recoverPlayer') }, 'recover'),
+      jsx(Pill, { onClick: () => void ctxRef?.os.writeClipboard(formatDiagnostics()), children: t('copyDiagnostics') }, 'diag')
     ]
   })
 }
