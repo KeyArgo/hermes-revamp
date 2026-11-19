@@ -4,9 +4,9 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
-- REVamp no longer uses CPU in the terminal plugin while you aren't playing music. Each terminal session with the plugin used to start a small Python program every 4 seconds to check what was playing; with a dozen sessions open that took about two thirds of a CPU core all the time. Now the REVamp server keeps a tiny `now.json` file up to date while a player is open, and sessions just glance at it: no programs, no requests. Agent activity is only sent while a player is open to show it.
-- The version chip now reads like every other InovinLabs plugin, `v1.0.0-dev.N · commit · date`, and you can always see it: under the REVamp name, sideways in the narrow rail, and under the nav icons inside Hermes Desktop, where it used to be hidden. Click it to copy the line for a bug report.
-- REVamp keeps a log for troubleshooting at `~/.hermes/revamp/logs/revamp.log` (private to you, at most 3 MB). Once a minute it notes memory, threads and open files, and warns if memory jumps or something piles up, so a slow leak shows up in the log instead of as a mystery. The latest health line is also at `/api/diagnostics`.
+- REVamp no longer uses CPU in the terminal plugin while you aren't playing music. Each terminal session used to start a small Python program every 4 seconds to check what was playing; with a dozen sessions open that took about two thirds of a CPU core all the time. The REVamp server now keeps a tiny `now.json` file up to date while a player is open, and sessions just read it. Agent activity is sent only while a player is open, to feed the ticker.
+- The version chip now reads like every other InovinLabs plugin: `v1.0.0-dev.N · short sha · date`. It is always visible, under the REVamp name, sideways in the narrow rail and under the nav icons inside Hermes Desktop, where it used to be hidden. Click it to copy the line for a bug report.
+- REVamp keeps a private log at `~/.hermes/revamp/logs/revamp.log`, rotating at 1 MB with three backups. Once a minute it writes one line with memory, threads, open files, SSE clients and uptime. It warns when memory jumps by more than 100 MB in ten minutes, threads pass 200 or open files pass 1000, so a slow leak is visible in the log. The latest health line and the log path are also at the token-gated `/api/diagnostics`.
 - **If your REVamp server is older than this release:** sessions fall back to asking it once a minute until it is updated.
 
 ## 1.0.0 — next catalog version

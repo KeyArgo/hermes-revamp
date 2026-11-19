@@ -1177,9 +1177,7 @@ export async function initPlayer(ctx) {
   let milkdropSuspended = false;
   let resumeMilkdropOnVisible = false;
   const isMiniVisible = () => !!document.querySelector(".revamp-mini:not([hidden])");
-  // One open/closed choice for MilkDrop that follows the player to every place. It used to be
-  // remembered per place and start closed in the desktop window and the floating overlay, so
-  // popping out "lost" MilkDrop, and closing it there once hid it in that place for good.
+  // One shared open/closed choice for MilkDrop across every player place.
   const milkdropSetting = () => "milkdropOn";
   // The per-place choices of alpha.9 and earlier ("milkdropOpen" was the page's own) still count
   // in their place until the first choice under the new shared key, so an upgrade does not flip
@@ -1321,10 +1319,9 @@ export async function initPlayer(ctx) {
     });
   } catch { /* store shape changed: the button still toggles */ }
 
-  // A closed EQ unmounts its window, so the playlist would stay where the EQ
-  // used to be — 116px of empty page between the two windows. Watch the EQ's
-  // open state in the compact homes and re-place the stack when it changes.
-  // (The desktop pop-out keeps its EQ open on purpose; ensureClassicOpen owns it.)
+  // A closed EQ unmounts its window and leaves a gap between the windows.
+  // Watch its open state in the compact homes and re-place the stack when it changes.
+  // The desktop pop-out keeps its EQ open; ensureClassicOpen owns that.
   function eqOpen() {
     try { return !!webamp.store.getState().windows.genWindows.equalizer?.open; } catch { return false; }
   }

@@ -564,8 +564,8 @@ function fitDesktopWindow() {
 
 function kickDesktopFit() {
   if (!desktopFloat) return;
-  // A hidden window (minimised, or occluded on Chrome) must not be resized: it used to shrink to
-  // the stack and grow back, restarting MilkDrop (claude a10r19). visibilitychange refits on show.
+  // A hidden window (minimised, or occluded on Chrome) must not be resized: doing so shrank it to
+  // the stack and grew it back, restarting MilkDrop. visibilitychange refits on show.
   if (document.hidden) return;
   fitDesktopWindow();
   requestAnimationFrame(fitDesktopWindow);
