@@ -293,8 +293,7 @@ def _tool_radio(args: dict, **kw) -> str:
     try:
         c = _client()
         if action == "hermes":
-            return _dump({"ok": True, "stations": c.get("/api/radio/hermes"),
-                          "coming_soon": "Hermes FM is not on the air yet."})
+            return _dump({"ok": True, "stations": c.get("/api/radio/hermes")})
         if action == "presets":
             return _dump({"ok": True, "stations": c.get("/api/radio/presets")})
         if action == "favorites":
@@ -543,9 +542,8 @@ SCHEMA_PLAYLIST = _schema(
 
 SCHEMA_RADIO = _schema(
     "revamp_radio",
-    "Internet radio. action=hermes lists Hermes Radio (Chillsynth, Nightride, Darksynth, "
-    "Spacesynth, Radio Paradise Main and Mellow, EVE Radio); play one that fits what the "
-    "user is doing. Hermes FM is not on the air yet — do not invent a stream for it. "
+    "Internet radio. action=hermes lists Hermes Radio: Hermes Agent Radio's six channels "
+    "(main, Hip-Hop, Dance, Rock, Smooth, Techno); play one that fits what the user is doing. "
     "Other actions: presets, search Radio Browser, play a station, manage favorites.",
     {
         "action": {"type": "string", "enum": ["hermes", "presets", "search", "play",

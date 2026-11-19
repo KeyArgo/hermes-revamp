@@ -866,13 +866,19 @@ body.revamp-idle #webamp #visualizer { visibility: hidden; }
 }
 .hermes-now-title { min-width: 0; overflow-wrap: anywhere; }
 .hermes-play { min-width: 36px; min-height: 32px; flex: none; }
-.hermes-soon {
-  grid-column: 1 / -1; min-width: 0;
-  border: 1px dashed var(--glass-brd); border-radius: 10px; padding: 12px;
-  background: transparent;
+.hermes-play:active { transform: scale(0.92); }
+.hermes-station.is-starting { border-color: var(--accent); border-style: dashed; }
+.hermes-play.is-starting::after {
+  content: ""; display: inline-block; width: 12px; height: 12px; vertical-align: middle;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: hermes-spin 0.8s linear infinite;
 }
-.hermes-soon-title { font-size: 15px; }
-.hermes-soon p { color: var(--txt-dim); font-size: 13px; margin-top: 4px; overflow-wrap: anywhere; }
+@keyframes hermes-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .hermes-play.is-starting::after { animation: none; } }
+.hermes-starting { color: var(--accent); font-size: 12px; margin-top: 6px; }
+.hermes-starting[hidden] { display: none; }
+.radio-catcard-hermes { border-color: var(--accent); }
+.radio-catcard-hermes .cat-name { color: var(--accent); }
 
 /* build stamp: forces a client reload after an edit */
 
