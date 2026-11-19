@@ -640,6 +640,21 @@ html.revamp-smooth-milkdrop #milkdrop-window:fullscreen {
   height: var(--milkdrop-h, 464px) !important;
 }
 
+/* The labelled way out on the visualizer itself (player.js paints it). The picture
+   is dark in every theme, so the pill borrows Aura's dark-glass tokens and its
+   2px ember focus ring; geometry matches the status-bar pills (22px, 999px). */
+.revamp-md-off {
+  position: absolute; right: 6px; bottom: 6px; z-index: 30;
+  display: inline-flex; align-items: center; height: 22px; padding: 0 10px;
+  box-sizing: border-box; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.35); background: rgba(10,12,16,0.62);
+  color: #f3ece2; font: 600 10.5px/1 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  letter-spacing: 0.06em; cursor: pointer; opacity: 0.9;
+  transition: opacity .12s ease, background-color .12s ease, border-color .12s ease;
+}
+.revamp-md-off:hover { opacity: 1; background: rgba(10,12,16,0.8); border-color: rgba(255,190,120,0.65); }
+.revamp-md-off:focus-visible { outline: 2px solid #ffbf8f; outline-offset: 2px; }
+
 /* The original skin's title bar, relabelled REVAMP (same pixels otherwise).
    player.js sets html.revamp-classic only while the built-in base skin is shown. */
 html.revamp-classic #webamp #title-bar { background-image: url(/web/img/title.png); }

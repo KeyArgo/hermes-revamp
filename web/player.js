@@ -1316,6 +1316,7 @@ export async function initPlayer(ctx) {
       lastMilkdrop = open;
       if (!milkdropSuspended && !autoMilkdrop) api.setSavedSettings?.({ [milkdropSetting()]: open });
       paintNpExtras();
+      paintMilkdropOff();
       // Off Webamp's dispatch: pin the stack and ask the desktop window to refit.
       if (visualizerPlacement === "desktop") setTimeout(desktopLayoutChanged, 0);
     });
@@ -1459,6 +1460,23 @@ export async function initPlayer(ctx) {
     paintNpExtras();
     return lastMilkdrop;
   };
+  // A visible way out on the visualizer itself: a labelled pill over the picture,
+  // bottom-right so it never covers Webamp's own title-bar close button. Closing
+  // the window unmounts MilkDrop's canvas, so the renderer really stops; the
+  // open-state watcher above remembers milkdropOn=false for every home.
+  function paintMilkdropOff() {
+    const win = document.querySelector("#milkdrop-window, #webamp-host .gen-window");
+    if (!win || win.querySelector(".revamp-md-off")) return;
+    try { if (getComputedStyle(win).position === "static") win.style.position = "relative"; } catch { /* detached */ }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "revamp-md-off";
+    btn.textContent = "Turn off";
+    btn.setAttribute("aria-label", "Turn off MilkDrop visualizer");
+    btn.addEventListener("click", (event) => { event.stopPropagation(); api.toggleVisualizer(false); });
+    win.appendChild(btn);
+  }
+  paintMilkdropOff();
   function suspendMilkdrop() {
     if (milkdropSuspended) return;
     // Marked hidden even when MilkDrop is already closed, so a placement change while hidden
@@ -1542,7 +1560,7 @@ export async function initPlayer(ctx) {
   };
   document.addEventListener("dblclick", (event) => {
     const target = event.target instanceof Element ? event.target : null;
-    if (!target?.closest("#milkdrop-window, .gen-window")) return;
+    if (!target?.closest("#milkdrop-window, .gen-window") || target.closest(".revamp-md-off")) return;
     event.preventDefault();
     api.fullscreenVisualizer();
   }, true);
@@ -1663,7 +1681,7 @@ export async function initPlayer(ctx) {
   } catch { /* a click still cycles; it just is not remembered */ }
   const visHost = document.getElementById("webamp-host");
   if (visHost && typeof MutationObserver === "function") {
-    const mo = new MutationObserver(() => applyMainVis());
+    const mo = new MutationObserver(() => { applyMainVis(); paintMilkdropOff(); });
     mo.observe(visHost, { childList: true, subtree: true });
   }
   applyMainVis();
@@ -1861,7 +1879,14 @@ export async function initPlayer(ctx) {
           if (Number.isFinite(cmd.duck_level)) patch.duck_level = Math.min(1, Math.max(0, cmd.duck_level));
           if (typeof cmd.duck_toast === "boolean") patch.duck_toast = cmd.duck_toast;
           if (cmd.duck_approval_scope === "app" || cmd.duck_approval_scope === "all") patch.duck_approval_scope = cmd.duck_approval_scope;
-          if (Object.keys(patch).length) api.setSavedSettings(patch);
+          if (typeof cmd.milkdropOn === "boolean") patch.milkdropOn = cmd.milkdropOn;
+          if (Object.keys(patch).length) {
+            api.setSavedSettings(patch);
+            // The switch must really stop (or start) the renderer, not just remember
+            // a wish. applyMilkdropChoice marks the toggle automatic, so the window
+            // watcher does not write the key a second time.
+            if (typeof patch.milkdropOn === "boolean") applyMilkdropChoice(patch.milkdropOn && hasWebGL());
+          }
           break;
         }
         default: break;

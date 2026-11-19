@@ -202,6 +202,8 @@ const EN = {
   crispScaleHint: 'Snap the Frame to whole pixels (1×–4×). Off fills the frame.',
   on: 'On',
   off: 'Off',
+  milkdropTitle: 'MilkDrop visualizer',
+  milkdropHelp: 'The animated picture beside the player. Turning it off saves CPU/GPU.',
   showDocked: 'Show the docked player',
   hideDocked: 'Hide the docked player (mini only)',
   showFrame: 'Show Frame',
@@ -264,13 +266,27 @@ const CSS = `
    track name, transport labels or the braille waveform. Text fields stay selectable. */
 [class^="revamp-"],[class*=" revamp-"]{-webkit-user-select:none;user-select:none}
 [class^="revamp-"] input,[class*=" revamp-"] input,[class^="revamp-"] textarea,[class*=" revamp-"] textarea{-webkit-user-select:text;user-select:text}
-.revamp-bar{display:flex;align-items:center;gap:2px;height:100%;color:var(--ui-text-tertiary)}
+.revamp-bar{display:flex;align-items:center;gap:4px;height:100%;color:var(--ui-text-tertiary)}
 .revamp-bar .revamp-name{max-width:150px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .revamp-bar[data-playing=true] .revamp-name{color:var(--ui-text-secondary)}
 .revamp-action{width:16px;height:16px;padding:0;flex-shrink:0}
 .revamp-action-icon{display:flex;align-items:center;justify-content:center;width:12px;height:12px;flex-shrink:0;overflow:hidden}
 .revamp-skip{display:flex;align-items:center;width:12px;height:12px}
 .revamp-skip[data-dir=prev]{transform:scaleX(-1)}
+/* Aura-style pills: the geometry of Aura's .ap-pill/.aura-pill (full radius, 1px
+   border, 4px gaps, 2px accent focus ring) on Hermes theme tokens, so the bar
+   reads the same in light and dark. Fixed height: state changes never shift it.
+   Declared after .revamp-action so a pill wins over the old 16px square. */
+.revamp-pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;box-sizing:border-box;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:11px;line-height:1;cursor:pointer;flex-shrink:0;transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.revamp-pill:hover{background:var(--chrome-action-hover);color:var(--ui-text-primary)}
+.revamp-pill:focus-visible{outline:2px solid var(--ui-accent);outline-offset:1px}
+.revamp-pill[aria-pressed=true]{border-color:var(--ui-accent);color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 12%,transparent)}
+.revamp-pill-icon{width:22px;padding:0;justify-content:center}
+.revamp-np-pill{max-width:172px;min-width:0}
+.revamp-np-pill .revamp-name{flex:0 1 auto;max-width:132px}
+.revamp-np-state{display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;flex-shrink:0;color:var(--ui-text-tertiary)}
+.revamp-bar[data-playing=true] .revamp-np-pill{border-color:var(--ui-accent)}
+.revamp-bar[data-playing=true] .revamp-np-state{color:var(--ui-accent)}
 .revamp-wave{position:relative;height:24px;width:100%;font-family:var(--font-mono,monospace);font-size:12px;line-height:12px;color:var(--ui-text-tertiary);opacity:.45;overflow:hidden;flex-shrink:0}
 .revamp-wave-layer{position:absolute;inset:0;display:grid;grid-template-columns:repeat(var(--revamp-cols),minmax(0,1fr));grid-auto-rows:12px}
 .revamp-wave-layer>span{text-align:center;min-width:0}
@@ -318,8 +334,11 @@ const CSS = `
 .revamp-focus-row>span{width:42px;flex-shrink:0}
 .revamp-focus-row input{flex:1;min-width:0;height:3px;accent-color:var(--ui-accent);cursor:pointer}
 .revamp-chips{display:flex;flex-wrap:wrap;gap:4px;padding:2px 6px 6px}
-.revamp-chip{font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;border:1px solid var(--ui-stroke-secondary);color:var(--ui-text-secondary);cursor:pointer;background:none}
+.revamp-chip{display:inline-flex;align-items:center;height:22px;font-size:11px;line-height:1;padding:0 10px;border-radius:999px;border:1px solid var(--ui-stroke-secondary);color:var(--ui-text-secondary);cursor:pointer;background:none;transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.revamp-chip:hover{background:var(--chrome-action-hover)}
 .revamp-chip:hover,.revamp-chip[aria-pressed=true]{color:var(--ui-accent);border-color:var(--ui-accent)}
+.revamp-chip[aria-pressed=true]{background:color-mix(in srgb,var(--ui-accent) 12%,transparent)}
+.revamp-chip:focus-visible{outline:2px solid var(--ui-accent);outline-offset:1px}
 .revamp-folders-head{display:flex;align-items:center;gap:4px;height:32px;padding:0 4px 4px 8px;font-size:12px;color:var(--ui-text-primary)}
 .revamp-folders-head .revamp-space{flex:1}
 .revamp-path{font-size:10px;line-height:14px;color:var(--ui-text-tertiary);padding:0 8px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
@@ -2787,9 +2806,16 @@ function RevampBar() {
     jsx(Waveform, { compact: true }),
     jsxs(Popover, { open, onOpenChange, children: [
       jsx(PopoverTrigger, { asChild: true, children: jsx(Button, {
-        ref: triggerRef, variant: 'ghost', size: 'micro', style: { width: open ? browseWidth : undefined },
+        ref: triggerRef, variant: 'ghost', size: 'micro', className: 'revamp-pill revamp-np-pill',
+        style: { width: open ? browseWidth : undefined },
         'aria-label': `${t('browse')}: ${label(np) || t('title')}`, title: label(np) || undefined,
-        children: jsx('span', { className: 'revamp-name', children: name || t('title') })
+        'aria-haspopup': 'dialog', 'aria-expanded': open,
+        children: jsxs(Fragment, { children: [
+          // Play state, not an action: lit while playing, dim while paused. The
+          // pill next to it is the actual play/pause control.
+          jsx('span', { className: 'revamp-np-state', 'aria-hidden': true, children: jsx(np.playing ? icons.Pause : icons.Play, { style: { width: 10, height: 10 } }) }),
+          jsx('span', { className: 'revamp-name', children: name || t('title') })
+        ] })
       }) }),
       jsx(PopoverContent, { side: 'top', align: 'end', className: 'revamp-panel', 'aria-label': t('title'), children:
         np.online
@@ -2809,14 +2835,15 @@ function RevampBar() {
           ] })
       })
     ] }),
-    np.online ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, onClick: toggle }) : null,
-    np.online ? jsx(SmallAction, { label: t('next'), icon: NextIcon, onClick: () => command('next') }) : null,
+    np.online ? jsx(SmallAction, { label: t('prev'), icon: PrevIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('prev') }) : null,
+    np.online ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, className: 'revamp-pill revamp-pill-icon', onClick: toggle }) : null,
+    np.online ? jsx(SmallAction, { label: t('next'), icon: NextIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('next') }) : null,
     hasQueue ? jsx(SmallAction, {
       label: clearArmed ? t('clearConfirm') : t('clearQueue'), icon: TrashIcon, pressed: clearArmed,
-      onClick: clearQueue
+      className: 'revamp-pill revamp-pill-icon', onClick: clearQueue
     }) : null,
     jsx(SmallAction, {
-      label: t(frameOpen ? 'hideFrame' : 'showFrame'), icon: DockIcon, pressed: frameOpen, className: 'revamp-dock-toggle',
+      label: t(frameOpen ? 'hideFrame' : 'showFrame'), icon: DockIcon, pressed: frameOpen, className: 'revamp-pill revamp-pill-icon revamp-dock-toggle',
       onClick: () => frameOpen ? setFrameHidden(true) : setPlayerLocation('docked')
     })
   ] })
@@ -2977,6 +3004,31 @@ function NowPlayingCard() {
 // ---------------------------------------------------------------- settings
 // Settings → REVamp: where the player lives. The pressed button follows
 // $playerLocation (useValue), and picking one moves the player at once.
+// The one MilkDrop on/off choice, surfaced where anyone can find it. It is the
+// player's own saved `milkdropOn` (the same key its window watcher writes), not a
+// second setting: the command persists it AND closes/opens the renderer.
+function MilkdropSettings() {
+  const t = k => EN[k] || k
+  const live = useValue($live)
+  const st = live?.settings || {}
+  const [local, setLocal] = useState({})
+  // Before the unified key existed, the page's own open choice stood in for it.
+  const saved = st.milkdropOn === true || (st.milkdropOn === undefined && st.milkdropOpen === true)
+  const on = local.milkdropOn ?? saved
+  const set = want => {
+    setLocal(cur => ({ ...cur, milkdropOn: want }))
+    void command('settings', { milkdropOn: want })
+  }
+  return jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 }, children: [
+    jsx('h3', { style: { margin: 0, fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('milkdropTitle') }),
+    jsx('span', { style: { fontSize: 11, color: 'var(--ui-text-tertiary)' }, children: t('milkdropHelp') }),
+    jsxs('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('milkdropTitle'), children: [
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': on, onClick: () => set(true), children: t('on') }),
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': !on, onClick: () => set(false), children: t('off') })
+    ] })
+  ] })
+}
+
 function RevampSettings() {
   const t = k => EN[k] || k
   const location = useValue($playerLocation)
@@ -2992,7 +3044,8 @@ function RevampSettings() {
   }, loc)
   const extra = (key, label, on, onClick) => jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': on, onClick, children: label }, key)
   return jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, padding: 12, alignItems: 'flex-start' }, children: [
-    jsx('h3', { style: { margin: 0, fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('location') }),
+    jsx(MilkdropSettings, {}),
+    jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('location') }),
     jsx('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 }, role: 'group', 'aria-label': t('location'), children: placeItems(item, extra, t) }),
     jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('dockedPlayerSide') }),
     jsxs('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('dockedPlayerSide'), children: [
