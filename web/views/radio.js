@@ -517,7 +517,7 @@ export async function render(root, api, opts = {}) {
     web.setAttribute("href", "https://hermesagentradio.com/");
     web.setAttribute("target", "_blank");
     web.setAttribute("rel", "noopener");
-    web.textContent = "Listen on the web: hermesagentradio.com ↗";
+    web.textContent = "Check out the new Hermes Radio on the web: hermesagentradio.com ↗";
     intro.append(h, lead, web);
     const ask = document.createElement("button");
     ask.type = "button";

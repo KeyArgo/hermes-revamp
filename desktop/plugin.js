@@ -126,7 +126,7 @@ const EN = {
   books: 'Books',
   playlists: 'Playlists',
   searchRadio: 'Find a station, or pick a genre…',
-  agentRadioWeb: 'Listen on the web: hermesagentradio.com ↗',
+  agentRadioWeb: 'Check out the new Hermes Radio on the web: hermesagentradio.com ↗',
   searchLibrary: 'Search your music…',
   searchBooks: 'Search your audiobooks…',
   searchPlaylists: 'Filter playlists…',

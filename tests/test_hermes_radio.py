@@ -97,6 +97,8 @@ def test_status_bar_radio_list_leads_with_agent_radio_and_links_the_site():
     assert "rest('/radio/agent-radio')" in plugin
     assert "const rows = [...leading, ...pinned," in plugin
     assert "openExternal?.(AGENT_RADIO_SITE)" in plugin
+    link = "Check out the new Hermes Radio on the web: hermesagentradio.com ↗"
+    assert link in plugin and link in RADIO_JS.read_text(encoding="utf-8")
     assert "const AGENT_RADIO_SITE = 'https://hermesagentradio.com/'" in plugin
     api = (REPO / "dashboard" / "plugin_api.py").read_text(encoding="utf-8")
     assert '@router.get("/radio/agent-radio")' in api
