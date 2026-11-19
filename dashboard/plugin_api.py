@@ -182,12 +182,37 @@ def _clamp(value: int, lo: int, hi: int) -> int:
 
 
 @router.get("/library/tracks")
-def library_tracks(q: str = "", limit: int = 50, kind: str = "", offset: int = 0) -> Response:
+def library_tracks(q: str = "", limit: int = 50, kind: str = "", offset: int = 0,
+                   artist: str = "", album: str = "", sort: str = "") -> Response:
     params: dict = {"q": q, "limit": _clamp(limit, 1, 200), "offset": _clamp(offset, 0, 10_000_000)}
     if kind:
         params["kind"] = kind
+    # One album's tracks (disc then track order) or one artist's, for the row menus.
+    if artist:
+        params["artist"] = artist
+    if album:
+        params["album"] = album
+    if sort:
+        params["sort"] = sort
     query = urllib.parse.urlencode(params)
     return _proxied(*_request("GET", "/api/library/tracks?" + query))
+
+
+@router.get("/library/albums")
+def library_albums(artist: str = "", kind: str = "") -> Response:
+    params: dict = {}
+    if artist:
+        params["artist"] = artist
+    if kind:
+        params["kind"] = kind
+    query = ("?" + urllib.parse.urlencode(params)) if params else ""
+    return _proxied(*_request("GET", "/api/library/albums" + query))
+
+
+@router.get("/library/artists")
+def library_artists(kind: str = "") -> Response:
+    query = ("?" + urllib.parse.urlencode({"kind": kind})) if kind else ""
+    return _proxied(*_request("GET", "/api/library/artists" + query))
 
 
 @router.get("/library/lyrics")
@@ -286,6 +311,12 @@ def radio_favorite_remove(id: str = "") -> Response:
 @router.get("/playlists")
 def playlists() -> Response:
     return _proxied(*_request("GET", "/api/playlists"))
+
+
+@router.post("/playlists")
+def playlist_create(body: dict | None = None) -> Response:
+    """Create a playlist from the mini player's menu (``{"name", "items"}``)."""
+    return _proxied(*_request("POST", "/api/playlists", body=body or {}))
 
 
 @router.get("/playlists/{pid}")

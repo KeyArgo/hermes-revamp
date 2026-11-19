@@ -23,6 +23,7 @@ REVamp keeps your library close while adding playlists, radio, lyrics, a MilkDro
 - **Works in any size:** in narrow panes the player scales to fit and the menu becomes a compact row; in wide panes it scales up in crisp 2x/3x/4x steps.
 - **Library mode:** open the full REVamp page while the player stays in its Frame or pop-out, and browse, queue and build playlists there.
 - Separate local Music and Books folders, searchable artists and albums, cover art, queues, likes, playlists, and audiobook resume, chapters, and speed.
+- **Albums and artists are right-clickable:** in the Albums and Artists views, and in the Hermes mini player's Music tab (Tracks / Albums / Artists), right-click, long-press, the ⋯ button, Shift+F10 or the context-menu key opens the same menu a song has: Play, Play next, Add to queue, and Add to playlist ▸ (your playlists or a new one), acting on every track of the album or artist in disc/track order.
 - **Radio:** popular stations ranked by listener votes, browse by genre, country and language, search, favourites, and endless scrolling, through Radio Browser.
 - **Themes:** one-tap Looks for the REVamp page (colour scheme, gradient, an illustrated scene and an optional animated backdrop), or your own picture and accent colour.
 - Focus drone, sleep timer, synced LRCLIB lyrics, the MilkDrop visualizer (Butterchurn), and classic skins from the Winamp Skin Museum.

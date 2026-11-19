@@ -13,5 +13,12 @@ PLUGIN = (Path(__file__).resolve().parents[1] / "desktop" / "plugin.js").read_te
 def test_rows_with_a_menu_carry_the_hermes_marker():
     row = PLUGIN[PLUGIN.index("function Row("):]
     row = row[:row.index("\nfunction ", 1)]
-    assert "onContextMenu: item ?" in row
-    assert re.search(r"'data-hermes-context-menu-trigger':\s*item \? '' : undefined", row)
+    assert "onContextMenu: hasMenu ?" in row
+    assert re.search(r"'data-hermes-context-menu-trigger':\s*hasMenu \? '' : undefined", row)
+
+
+def test_album_and_artist_rows_count_as_menu_rows():
+    """An album or artist row carries `items`, not a single `item`: it must still be marked."""
+    row = PLUGIN[PLUGIN.index("function Row("):]
+    row = row[:row.index("\nfunction ", 1)]
+    assert "const hasMenu = Boolean(item || items)" in row

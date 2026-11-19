@@ -245,7 +245,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-size: 12px; c
 
 /* album grid */
 .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-.album-card { border-radius: 10px; overflow: hidden; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-brd); cursor: pointer; transition: transform .12s, border-color .12s; }
+.album-card { position: relative; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-brd); cursor: pointer; transition: transform .12s, border-color .12s; }
 .album-card:hover { transform: translateY(-2px); border-color: var(--accent); }
 .album-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--bg-2); }
 .album-card .a-name { padding: 8px 10px 2px; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -695,6 +695,40 @@ html.revamp-classic #webamp .selected .playlist-top-title { background-image: ur
   background: var(--bg-2);
   color: var(--accent);
 }
+/* The ▸ submenu: saved playlists and "New playlist…", indented under its parent row. */
+.track-menu-sub {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid var(--glass-brd);
+}
+.track-menu-sub button { padding-left: 18px; }
+.track-menu-sub[hidden] { display: none; }
+
+/* The ⋯ button on album cards and artist rows: opens the same menu as a right-click. */
+.album-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--glass-brd);
+  border-radius: 6px;
+  background: rgba(10, 12, 18, 0.72);
+  color: var(--txt);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.album-card:hover .album-more,
+.album-card:focus-within .album-more,
+.album-more:focus-visible { opacity: 1; }
+/* In a table row the button sits in its own cell, so it is always visible. */
+.trow .album-more { position: static; opacity: 1; }
+.more-cell { width: 34px; text-align: right; }
+@media (hover: none) { .album-more { opacity: 1; } }
 
 /* Narrow panels: the Books table keeps title + time; artist and album give way. */
 @media (max-width: 700px) {
