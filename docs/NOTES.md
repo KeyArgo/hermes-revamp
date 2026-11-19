@@ -85,10 +85,8 @@
   - every view renders without console errors
   - the narrow/embed (520 px) layout and the wide layout
 - `hermes plugins validate` and `hermes plugins doctor` both pass.
-- Claude Code mod: `claude plugin validate`, `tsc`, and `claude plugin test` (2 tests).
+- Terminal plugin mod: `claude plugin validate`, `tsc`, and `claude plugin test` (2 tests).
 
 ## Build history
 
-Drafted by four opencode lanes running GLM-5.3-Flash on Spark A (DeepSeek's opencode key had expired). Claude
-reviewed and fixed the integration bugs, and wrote `desktop/plugin.js` after two GLM attempts stalled. The
-skins got a second pass as four small, check-gated tasks (`lanes/skin/`).
+The core was drafted in four short passes, then reviewed and integrated. The Desktop half needed a second pass after two earlier attempts stalled. The skins were four small, check-gated tasks.

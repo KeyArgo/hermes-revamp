@@ -1,6 +1,6 @@
 # Extending REVamp
 
-REVamp’s player server is local-only and deliberately small: it is a stdlib HTTP server on `127.0.0.1`. This guide describes the supported seams for an extension such as an agent that picks music.
+REVamp's player server is local-only and deliberately small: it is a stdlib HTTP server on `127.0.0.1`. This guide describes the supported seams for an extension such as an agent that picks music.
 
 ## Local API and events
 
@@ -8,7 +8,7 @@ REVamp’s player server is local-only and deliberately small: it is a stdlib HT
 
 Useful endpoints include `GET /api/state`, `GET /api/playback`, `GET /api/library/tracks?q=`, `GET/POST/PUT/DELETE /api/playlists`, `GET /api/radio/presets`, `POST /api/command`, and `POST /api/agent_event`. `POST /api/command` accepts playback actions including `play`, `pause`, `next`, `prev`, `seek`, `volume`, `shuffle`, `repeat`, and `load`. Use `GET /api/playback` to discover the active backend and its capabilities first.
 
-`GET /api/events` is authenticated server-sent events. It carries `command` events for page players and state-related updates; clients must reconnect and re-read `/api/state` after a disconnect. Agent activity is persisted separately and readable at `GET /api/agent_events`; post it with `POST /api/agent_event` using a small object such as `{"kind":"tool_start","tool":"search","source":"codex"}`.
+`GET /api/events` is authenticated server-sent events. It carries `command` events for page players and state-related updates; clients must reconnect and re-read `/api/state` after a disconnect. Agent activity is persisted separately and readable at `GET /api/agent_events`; post it with `POST /api/agent_event` using a small object such as `{"kind":"tool_start","tool":"search","source":"terminal-app"}`.
 
 ## revampctl and MCP
 

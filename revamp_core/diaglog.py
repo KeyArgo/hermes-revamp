@@ -110,9 +110,7 @@ def setup() -> logging.Logger:
     return logger
 
 
-# ---------------------------------------------------------------------------
 # Health sampling
-# ---------------------------------------------------------------------------
 
 def _rss_mb() -> Tuple[Optional[float], Optional[float]]:
     """(rss, peak) in MB. /proc/self/status on Linux; getrusage elsewhere."""
