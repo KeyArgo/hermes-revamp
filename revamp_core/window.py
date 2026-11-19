@@ -59,6 +59,7 @@ def _installed_browsers() -> List[str]:
                  for base in ("/Applications", os.path.expanduser("~/Applications"))]
     return [path for path in found if os.path.isfile(path)]
 WINDOW_SIZE = (300, 420)  # first paint; the page then sizes the window to the player stack
+                          # (on Windows this is the size the window keeps: see USE_DEVTOOLS)
 
 _lock = threading.Lock()
 _last_resize_error = ""
@@ -66,8 +67,10 @@ _proc: Optional[subprocess.Popen] = None
 _closing: Optional[subprocess.Popen] = None  # closed by us: the handoff is already written
 # The pop-out's DevTools channel. On Linux/macOS it is a private pipe pair inherited only by
 # the browser (--remote-debugging-pipe): no port that another local account could connect
-# to and drive the token-bearing page with. Windows keeps a loopback port (fd passing
-# works differently there). {"proc", "w", "r", "lock", "id", "buf"} or None.
+# to and drive the token-bearing page with. Windows cannot pass fds to the browser, and a
+# loopback port there is a listening socket any local account can open, so the pop-out
+# opens no DevTools at all on Windows and keeps its launch size (--window-size).
+# {"proc", "w", "r", "lock", "id", "buf"} or None.
 _cdp_pipe: Optional[Dict[str, Any]] = None
 # Hands the two pipe ends to the browser as fds 3 and 4 (where Chrome expects them) and
 # execs it; avoids preexec_fn, which is unsafe in this threaded server. Python, not a shell
@@ -77,21 +80,26 @@ _PIPE_SHIM = ("import fcntl,os,sys\n"
               "r,w=(fcntl.fcntl(int(a),fcntl.F_DUPFD,10) for a in sys.argv[1:3])\n"
               "os.dup2(r,3);os.dup2(w,4);os.close(r);os.close(w)\n"
               "os.execvp(sys.argv[3],sys.argv[3:])")
-USE_CDP_PIPE = os.name == "posix" and bool(sys.executable)
+USE_DEVTOOLS = os.name != "nt"  # Windows: no fd passing for the pipe, and no listening port
+USE_CDP_PIPE = USE_DEVTOOLS and os.name == "posix" and bool(sys.executable)
 HANDOFF_TTL = 120.0
 LEASE = "float-window.json"  # survives a server restart, so an orphaned window can be found
 # One entry per window identity, each matching ONLY the pop-out:
 # - X11: Chrome sets WM_CLASS from --class=REVamp.
 # - Wayland: Chrome ignores --class; an --app window's app_id is derived from its
-#   URL and profile ("chrome-127.0.0.1__-Default" for http://127.0.0.1:<any port>/),
-#   verified with KWin on Chrome 150. Never "google-chrome": that would badge every
-#   Chrome window with the REVamp icon.
+#   URL and profile name ("chrome-127.0.0.1__-Default" for http://127.0.0.1:<any port>/
+#   on the "Default" profile), verified with KWin on Chrome 150. The pop-out launches
+#   with --profile-directory=REVamp, so its app_id ends in "-REVamp" and belongs to
+#   REVamp alone: the "-Default" id is shared with every other Chrome --app window on
+#   127.0.0.1, and never "google-chrome", which would badge every Chrome window.
 LINUX_X11_CLASS = "REVamp"
-LINUX_WAYLAND_APP_ID = "chrome-127.0.0.1__-Default"
+LINUX_WAYLAND_APP_ID = "chrome-127.0.0.1__-REVamp"
 LINUX_DESKTOP_ENTRIES = {
     "revamp-player.desktop": LINUX_X11_CLASS,
     f"{LINUX_WAYLAND_APP_ID}.desktop": LINUX_WAYLAND_APP_ID,
 }
+# Entries an older REVamp wrote for the shared class: removed when the pop-out is installed.
+_STALE_DESKTOP_ENTRIES = ("chrome-127.0.0.1__-Default.desktop",)
 _ICON_NAMES = ("icon-64.png", "icon-128.png", "icon-256.png")
 _SOURCE_ICON_DIR = Path(__file__).resolve().parent.parent / "web" / "img" / "icons"
 
@@ -213,6 +221,19 @@ def install_linux_desktop_identity() -> None:
                 current = None
             if current != entry:
                 destination.write_text(entry, encoding="utf-8")
+        # Drop the entry an older REVamp wrote for the shared Wayland class, or it keeps
+        # badging every other Chrome app window on 127.0.0.1 with the REVamp icon.
+        for filename in _STALE_DESKTOP_ENTRIES:
+            stale = desktop_dir / filename
+            try:
+                text = stale.read_text(encoding="utf-8")
+            except (OSError, ValueError):
+                continue
+            if "Name=REVamp" in text and f"StartupWMClass={filename[:-len('.desktop')]}" in text:
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
     except OSError:
         # A read-only home must not prevent the optional player from opening.
         pass
@@ -353,6 +374,10 @@ def open_window(port: int, position: float = 0.0, playing: bool = False) -> Dict
         ]
         if sys.platform.startswith("linux"):
             args.append("--class=REVamp")
+            # A profile name of its own: on Wayland the app_id is "chrome-<host>__-<profile>",
+            # and the default "-Default" suffix is shared with every other Chrome app window
+            # on 127.0.0.1 (see LINUX_WAYLAND_APP_ID).
+            args.append("--profile-directory=REVamp")
         args.extend(float_gpu_args())
         # The page asks the server to shrink the window to the player (resizeTo is ignored on
         # many app windows), which the server does over DevTools: a private pipe where possible.
@@ -363,7 +388,9 @@ def open_window(port: int, position: float = 0.0, playing: bool = False) -> Dict
             pipe_ends = (to_chrome_r, from_chrome_w)
             args.insert(1, "--remote-debugging-pipe")
             args = [sys.executable, "-I", "-c", _PIPE_SHIM, str(to_chrome_r), str(from_chrome_w)] + args
-        else:
+        elif USE_DEVTOOLS:
+            # Only where a pipe is not available (a Python that cannot pass fds): the
+            # loopback port is still a listening socket, but the alternative is no resize.
             args[1:1] = ["--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"]
         try:
             proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -458,7 +485,12 @@ def resize_window(content_w: float, content_h: float, inner_w: float, inner_h: f
         out["reason"] = "already"
         return out
     out["resized"] = _apply_outer_size(width, height)
-    out["reason"] = "ok" if out["resized"] else "debugger"
+    if out["resized"]:
+        out["reason"] = "ok"
+    else:
+        # "fixed": no DevTools here (Windows), so the window keeps its launch size and the
+        # page should stop asking. "debugger": try again, the channel may not be up yet.
+        out["reason"] = "debugger" if USE_DEVTOOLS else "fixed"
     return out
 
 
@@ -473,13 +505,13 @@ def _debug_port() -> Optional[int]:
 
 
 def _apply_outer_size(width: int, height: int) -> bool:
-    """Set the app window's outer bounds through DevTools (its private pipe, or on Windows
-    its localhost port)."""
+    """Set the app window's outer bounds through DevTools (its private pipe, or a loopback
+    port where a pipe is not available). Windows has neither, so it reports no resize."""
     pipe = _cdp_pipe
     if pipe is not None and pipe.get("proc") is _proc and _proc is not None:
         def cdp(calls):  # type: ignore[no-untyped-def]
             return _pipe_calls(pipe, calls)
-    else:
+    elif USE_DEVTOOLS:
         port = _debug_port()
         if port is None:
             return False
@@ -491,6 +523,8 @@ def _apply_outer_size(width: int, height: int) -> bool:
                 with opener.open(f"http://127.0.0.1:{port}/json/version", timeout=1.5) as resp:
                     ws_box.append(str(json.loads(resp.read().decode("utf-8")).get("webSocketDebuggerUrl") or ""))
             return _cdp_calls(ws_box[0], calls)
+    else:
+        return False
     try:
         targets = cdp([("Target.getTargets", {})])[0]
         infos = targets.get("targetInfos") or []

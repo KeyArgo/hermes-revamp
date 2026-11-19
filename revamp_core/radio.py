@@ -382,8 +382,16 @@ def read_capped(resp: Any, limit: int) -> bytes:
 
 
 def _rb_open(req: urllib.request.Request, timeout: float):
-    """One Radio Browser request (tests replace this to fake the network)."""
-    return urllib.request.build_opener(_FirstAddressHTTPSHandler()).open(req, timeout=timeout)
+    """One Radio Browser request (tests replace this to fake the network).
+
+    The mirror list is fixed, but a DNS answer or a redirect must not take the request
+    into the LAN or to a metadata address: no proxy is honoured, every address is checked
+    public before it is connected to, and a redirect is followed only to a public http(s)
+    target (see _SafeRedirect).
+    """
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SafeRedirect(),
+                                         _FirstAddressHTTPSHandler())
+    return opener.open(req, timeout=timeout)
 
 
 def _rb_json(path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[Any, Optional[int]]:
@@ -1043,8 +1051,12 @@ def _connect_first(answers: Any, timeout: Any, source_address: Any = None) -> so
 
 
 class _FirstAddressHTTPSConnection(http.client.HTTPSConnection):
-    """Radio Browser over HTTPS, connecting with _connect_first (no address checks:
-    these are fixed public hosts, and a configured proxy is used as before)."""
+    """Radio Browser over HTTPS: connect to one of the addresses that was checked public.
+
+    The mirrors are fixed public hosts, but their DNS answer is not trusted (a mirror can
+    move, or a resolver can answer 127.0.0.1), so every answer is checked first and the
+    connection is made to an address that passed.
+    """
 
     def connect(self) -> None:
         if getattr(self, "_tunnel_host", None):
@@ -1052,8 +1064,11 @@ class _FirstAddressHTTPSConnection(http.client.HTTPSConnection):
         # One budget for connect, TLS and the reply: a slow connect followed by a stall
         # must not run past the Hermes proxy's 10 s.
         t0 = time.monotonic()
-        answers = socket.getaddrinfo(self.host, self.port, type=socket.SOCK_STREAM)
-        sock = _connect_first(answers, self.timeout, self.source_address)
+        try:
+            answers = socket.getaddrinfo(self.host, self.port, type=socket.SOCK_STREAM)
+        except (OSError, ValueError) as exc:
+            raise RadioError("radio-browser host could not be resolved") from exc
+        sock = _connect_first(_public_answers(answers), self.timeout, self.source_address)
         if isinstance(self.timeout, (int, float)):
             sock.settimeout(max(0.5, self.timeout - (time.monotonic() - t0)))
         self.sock = self._context.wrap_socket(sock, server_hostname=self.host)  # type: ignore[attr-defined]
@@ -1086,6 +1101,47 @@ class _PinnedHTTPHandler(urllib.request.HTTPHandler):
 class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
     def https_open(self, req):  # type: ignore[no-untyped-def]
         return self.do_open(_PinnedHTTPSConnection, req, context=self._context)  # type: ignore[attr-defined]
+
+
+class _FixedHostRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to another URL on the same fixed HTTPS hosts.
+
+    An API answer is data, not a redirect instruction: a redirect that leaves the plugin's
+    own hosts is refused rather than fetched with the plugin's network.
+    """
+
+    def __init__(self, hosts: Any) -> None:
+        super().__init__()
+        self._hosts = set(hosts)
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        target = urllib.parse.urlsplit(newurl)
+        host = (target.hostname or "").lower()
+        if target.scheme.lower() != "https" or host not in self._hosts:
+            raise RadioError(f"redirect left the allowed hosts: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def open_fixed_https(req: Any, hosts: Any, timeout: float):
+    """One HTTPS request to a fixed host set (LRCLIB, the Webamp Skin Museum).
+
+    Only those hosts over HTTPS; no proxy; every address checked public before it is
+    connected to, and the connection pinned to the address that was checked (including a
+    same-host redirect hop). A redirect to any other host is refused.
+    """
+    url = req.full_url if isinstance(req, urllib.request.Request) else str(req)
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError as exc:
+        raise RadioError("invalid url") from exc
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme.lower() != "https" or host not in set(hosts):
+        raise RadioError(f"not one of the allowed https hosts: {url}")
+    if not isinstance(req, urllib.request.Request):
+        req = urllib.request.Request(url)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                                         _FixedHostRedirect(hosts), _PinnedHTTPSHandler())
+    return opener.open(req, timeout=timeout)
 
 
 # Station logos: fetched by the server, never by the page directly. The page loading a

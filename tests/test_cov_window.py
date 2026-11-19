@@ -271,8 +271,10 @@ def test_popout_devtools_is_loopback_only_and_grants_no_origin(monkeypatch, win)
     if window.USE_CDP_PIPE:  # Linux/macOS: a private pipe, no DevTools port at all
         assert "--remote-debugging-pipe" in args
         assert not any(a.startswith("--remote-debugging-port") for a in args), args
-    else:  # Windows: loopback-only port
+    elif window.USE_DEVTOOLS:  # no pipe available: loopback-only port
         assert "--remote-debugging-address=127.0.0.1" in args
+    else:  # Windows: no listening socket either
+        assert not any(a.startswith("--remote-debugging-port") for a in args), args
 
 
 def test_devtools_client_sends_no_origin_header(monkeypatch):

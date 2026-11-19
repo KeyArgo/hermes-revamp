@@ -4,6 +4,15 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- The optional desktop pop-out no longer opens a DevTools port on Windows: nothing else on the machine can connect to it, and the window keeps the size it was opened at. Linux and macOS keep using a private pipe that no other account can reach.
+- Radio station search now only talks to public addresses, ignores `HTTP(S)_PROXY` like stream playback does, and refuses a mirror redirect into your own network.
+- Lyrics and Skin Museum requests only contact `lrclib.net`, `api.webamp.org` and `r2.webampskins.org`. A name that resolves to a private address, or a redirect that leaves those hosts, is refused instead of fetched.
+- The version chip no longer reads Hermes's internal `.install-metadata.json`; it reads the build's own `BUILD_INFO.json` and the repository, so a change in Hermes's install records cannot alter or break the line.
+- On Linux, the pop-out's Wayland desktop entry now claims REVamp's own window class instead of one shared with every Chrome app window on `127.0.0.1`, so those windows no longer pick up the REVamp icon.
+- In Claude Code, a tool argument shown in REVamp's agent ticker is credential-masked before the helper command starts, so a token in a command no longer appears in the process list.
+- Audiobook chapter reading runs at the same low priority as the library's own probes.
+- The player frames now ask only for scripts and downloads, not form submission, which the page never uses.
+- The plugin's disclosure and the README now say plainly that the same-user check on the loopback server exists only on Linux, that macOS and Windows let other local accounts reach it, that `mutagen` is optional, and that the pop-out opens no DevTools port on Windows.
 - Errors REVamp used to swallow now leave a line in its private log: a failed library scan is a warning and one unreadable file is a debug line. Set `REVAMP_LOG_LEVEL=DEBUG` to see the per-file lines.
 - Fixes around the library and the Hermes pages: the album list no longer mixes in other artists whose names merely contain the one you clicked, an album or artist with no artist tag finds its songs instead of an empty list, a compilation stays in its own album instead of leaking into another album of the same name, song rows on a touch screen now have the same ⋯ menu (Play next, queue, playlist) as album cards, an opened album keeps its "← All albums" way back when you select a row or load more, "Load more" can try again after a failure, the Music Studio folder button keeps folders you added or removed after it was drawn, "Find … in Plugins" works from the library page, dismissing the place-menu tip is remembered for a new profile, and an upgrade hand-over no longer leaves the old process writing the log.
 - Nothing visible changes: REVamp now lives only inside Hermes's own panes. The hidden player park and the pop-out window are no longer attached to the page itself — the pop-out is a normal Hermes floating pane you drag by its header, and Hermes remembers where you put it.

@@ -13,14 +13,13 @@ Precedence, highest first:
 3. ``plugin.yaml``'s ``version:`` (always available, no commit).
 4. ``"unknown"``.
 
-Release or dev (VERSIONING-STANDARD.md §1): a build reads the bare ``X.Y.Z`` only when it is
-that release — HEAD is exactly the ``vX.Y.Z`` tag, or Hermes installed this exact commit from
-the plugin catalog (its install record carries the catalog pin). Anything else reads
-``X.Y.Z-dev.N`` (``N`` = commit count; plain ``-dev`` in a shallow clone, where the count is
-meaningless). Once ``vX.Y.Z`` is tagged, later builds bump the patch to ``X.Y.(Z+1)-dev.N`` so
-they sort after the release they follow. A catalog install has no tags, so the install record
-is what proves it is the reviewed release; ``release_check.py`` makes sure only a tagged release
-commit is ever pinned.
+Release or dev (VERSIONING-STANDARD.md §1): a build reads the bare ``X.Y.Z`` only when it can
+prove it is that release — HEAD is exactly the ``vX.Y.Z`` tag, or ``BUILD_INFO.json`` records that
+version (a build made from the release commit carries it). Anything else reads ``X.Y.Z-dev.N``
+(``N`` = commit count; plain ``-dev`` where the count is unknown). Once ``vX.Y.Z`` is tagged, later
+builds bump the patch to ``X.Y.(Z+1)-dev.N`` so they sort after the release they follow. Only files
+inside the plugin package are read: ``BUILD_INFO.json``, ``plugin.yaml``, ``.release-check.json``
+and the surrounding repository's git.
 
 Usage in a plugin:
 
@@ -88,30 +87,10 @@ def _declared_version() -> str:
     return ""
 
 
-def _catalog_pin() -> str:
-    """The commit Hermes installed this plugin at from the catalog, from its install record.
-
-    Hermes keeps one ``.install-metadata.json`` in the plugins directory, keyed by the plugin's
-    folder name. The package may sit a level or two below that folder, so walk up to find it."""
-    for folder in (_HERE, *list(_HERE.parents)[:3]):
-        try:
-            records = json.loads((folder.parent / ".install-metadata.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        record = records.get(folder.name) if isinstance(records, dict) else None
-        if isinstance(record, dict):
-            block = record.get("catalog") or {}
-            return str(block.get("pin") or block.get("sha") or "")
-    return ""
-
-
-def _is_release(declared: str, commit: str) -> bool:
-    """True when this build is exactly release ``declared``: tagged, or installed from the catalog pin."""
+def _is_release(declared: str) -> bool:
+    """True when this build is exactly release ``declared``: HEAD is its tag."""
     tag = _git("describe", "--tags", "--exact-match", "HEAD")
-    if tag and tag.lstrip("v") == declared:
-        return True
-    pin = _catalog_pin()
-    return bool(pin) and bool(commit) and pin == commit
+    return bool(tag) and tag.lstrip("v") == declared
 
 
 def _dev_base() -> int:
@@ -170,7 +149,7 @@ def as_dict() -> dict:
     if not version:
         version = release
         # Without git or a commit there is nothing to compare, so the manifest is all we can say.
-        if release != "unknown" and "-" not in release and commit and not _is_release(release, commit):
+        if release != "unknown" and "-" not in release and commit and not _is_release(release):
             # Dev builds must sort after the release they follow: once v1.0.0 is tagged, a plain
             # "1.0.0-dev.N" reads older than 1.0.0, so start the patch one higher.
             base = _bump_patch(release) if _release_is_tagged(release) else release

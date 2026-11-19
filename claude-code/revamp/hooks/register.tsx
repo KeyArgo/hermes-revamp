@@ -45,13 +45,32 @@ function settleApproval($: EngineInterface, tool: string) {
   }
 }
 
-function preview(e: Record<string, unknown>): string {
+// ---- credential masking (ported from revamp_core/redact.py, same patterns) ----
+// The preview travels to `revampctl event` as an argv word, so it is visible in the process
+// list for the moment that process lives. The server masks the stored event, but the process
+// list must not show a token either: mask before it leaves this process.
+const KEYWORD = /((?:authorization|api[-_]?key|api[-_]?secret|access[-_]?key|client[-_]?secret|token|secret|password|passwd|pwd|bearer|basic)[-_ ]?[=: ]*(?:bearer|basic)?[ \t]*)[^\s'"&]+/gi
+const SHAPES = /\b(?:sk-[A-Za-z0-9_-]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|hf_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,})\b/g
+const URL_AUTH = /(\w+:\/\/[^/\s:@]+:)[^@\s/]+@/g
+const USER_FLAG = /((?:^|\s)(?:-u|--user)[ =]+[^\s:'"]+:)[^\s'"]+/g
+
+export function maskSecrets(text: string): string {
+  if (!text) return text
+  return text
+    .replace(KEYWORD, '$1***')
+    .replace(SHAPES, '***')
+    .replace(USER_FLAG, '$1***')
+    .replace(URL_AUTH, '$1***@')
+}
+
+export function preview(e: Record<string, unknown>): string {
   // tool events nest the arguments under `input`; top-level keys are the fallback
   const input = (e.input && typeof e.input === 'object' ? e.input : {}) as Record<string, unknown>
   for (const src of [input, e]) {
     for (const k of ['command', 'file_path', 'pattern', 'url', 'query', 'description', 'prompt']) {
       const v = src[k]
-      if (typeof v === 'string' && v) return v.replace(/\s+/g, ' ').slice(0, 80)
+      // Mask the whole value first: a token cut by the 80-char slice would no longer match.
+      if (typeof v === 'string' && v) return maskSecrets(v).replace(/\s+/g, ' ').slice(0, 80)
     }
   }
   return ''

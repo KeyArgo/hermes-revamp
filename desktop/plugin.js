@@ -76,6 +76,9 @@ const DOCK_H = 1000
 const PANE_SPIKE = true
 // The bundled Radio plugin's cross-window channel: it stops itself when any
 // other sender announces {type: 'play'}, and announces its own plays there.
+// Published by Hermes's own bundled Radio plugin, apps/desktop/src/plugins/radio/plugin.js
+// (the `new BroadcastChannel('hermes:radio:playback')` there, which also listens for the
+// same message), so this name is a channel the app itself keeps, not another plugin's.
 const RADIO_BUS = 'hermes:radio:playback'
 
 // Sibling plugins the player page may point at. The id is allowlisted here and
@@ -1075,8 +1078,11 @@ function createEngine(ctx, url, bridgeKey = '') {
   const frame = document.createElement('iframe')
   frame.title = 'REVamp player'
   frame.src = `${url}/?embed=1`
-  // Same posture as the SDK's SandboxedFrame: opaque origin, no popups, no top navigation.
-  frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-downloads')
+  // Same posture as the SDK's SandboxedFrame: opaque origin, scripts only, no popups, no
+  // top navigation. allow-downloads stays because the page saves files itself: the backup
+  // zip (web/views/backups.js) and a playlist export (web/views/playlists.js) click a
+  // temporary <a download>. allow-forms is not granted: web/ has no <form> at all.
+  frame.setAttribute('sandbox', 'allow-scripts allow-downloads')
   frame.setAttribute('referrerpolicy', 'no-referrer')
   frame.setAttribute('allow', 'autoplay; fullscreen')
   frame.setAttribute('allowfullscreen', '')
@@ -1088,7 +1094,7 @@ function createEngine(ctx, url, bridgeKey = '') {
   const controlFrame = document.createElement('iframe')
   controlFrame.title = 'REVamp library controls'
   controlFrame.src = `${url}/?embed=1&control=1`
-  controlFrame.setAttribute('sandbox', 'allow-scripts allow-forms allow-downloads')
+  controlFrame.setAttribute('sandbox', 'allow-scripts allow-downloads')
   controlFrame.setAttribute('referrerpolicy', 'no-referrer')
   controlFrame.setAttribute('allow', 'autoplay; fullscreen')
   controlFrame.style.cssText = 'border:0;display:none;width:100%;height:100%;background:transparent'
@@ -1113,6 +1119,10 @@ function createEngine(ctx, url, bridgeKey = '') {
   let floatHost = null
   let box = { x: 0, y: 0, w: 275, h: 348 }
 
+  // The frame is sandboxed without allow-same-origin, so its origin is opaque ("null") and
+  // no concrete target origin can match it: '*' is the only value that works here. Nothing
+  // secret is in the messages we post, and the page answers bridge requests only when they
+  // carry the bridge key (web/app.js), so '*' leaks nothing to a page that ends up there.
   const send = msg => frame.contentWindow?.postMessage(msg, '*')
 
   // ---- the bridge to the player page (see rest()). Requests are matched by id; a page

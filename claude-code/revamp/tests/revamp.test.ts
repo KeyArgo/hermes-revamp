@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { fromNowFile, isPlayingStatus, transportLabels } from '../hooks/register'
+import { fromNowFile, isPlayingStatus, maskSecrets, preview, transportLabels } from '../hooks/register'
 
 test('transport buttons use plain-text labels (glyphs are blank in many terminal fonts)', () => {
   expect(transportLabels(true)).toEqual({ prev: 'Prev', toggle: 'Pause', next: 'Next' })
@@ -220,4 +220,47 @@ test('session.start again (resume, /compact, /clear) never stacks a second ticke
   await clock.advance(60_000)
   expect(stats).toBeLessThanOrEqual(12)   // one ticker: 60 s / 5 s; three would be 36
   expect(stats).toBeGreaterThanOrEqual(11)
+})
+
+// ---- credentials never reach the process list (2026-11-19)
+// The preview is an argv word of `revampctl event`, so a token in a tool argument was
+// readable in `ps` for the moment that process lived. Same patterns as revamp_core/redact.py.
+
+test('credential shapes are masked like the server does', () => {
+  expect(maskSecrets('Authorization: Bearer ***')).toBe('Authorization: Bearer ***')
+  expect(maskSecrets('ghp_' + 'a'.repeat(30))).toBe('***')
+  expect(maskSecrets('curl --user bob:hunter2 https://x')).toBe('curl --user bob:*** https://x')
+  expect(maskSecrets('git clone https://user:***@example.com/x')).toBe('git clone https://user:***@example.com/x')
+  expect(maskSecrets('nothing to see here')).toBe('nothing to see here')
+})
+
+test('the preview masks before it is cut to 80 characters', () => {
+  expect(preview({ input: { command: 'git clone https://user:***@example.com/x' } }))
+    .toBe('git clone https://user:***@example.com/x')
+  expect(preview({ input: { command: 'ghp_' + 'a'.repeat(30) } })).toBe('***')
+  expect(preview({ input: { command: 'x'.repeat(200) } }).length).toBe(80)
+})
+
+test('a tool argument reaches revampctl event already masked', async ($: any, on: any) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  mock.env(on, { HOME: '/home/t' })
+  const argv: string[][] = []
+  on('process.run', async ($: any, e: any) => {
+    if (e.argv[0] === 'revampctl' && e.argv[1] === 'event') argv.push([...e.argv])
+    return { value: { exitCode: 0, stdout: '', stderr: '' } }
+  })
+  on('tool.call', async () => ({ result: 'ok', text: 'ok' }))
+  on('fs.stat', async ($: any, e: any) => {
+    if (e.path !== NOW) throw new Error('ENOENT')
+    return { value: { kind: 'file', size: 80, mtimeMs: clock.now(), isLink: false } }
+  })
+  on('fs.read', async () => ({ value: JSON.stringify({ connected: true, title: 'Song', status: 'PLAYING' }) }))
+  await $.command.run({ command: 'revamp', args: 'status' })   // connected: events go out
+  await $.tool.call({ tool: 'Bash', input: { command: 'curl -H "Authorization: Bearer tok-abcdefghijklmnop1234" https://api.example' } })
+    .catch(() => {})
+  const start = argv.find(a => a[2] === 'tool_start')
+  expect(Boolean(start)).toBe(true)
+  // argv is [revampctl, event, tool_start, tool, preview]: the preview is already masked.
+  expect(start![4]).toBe('curl -H "Authorization: Bearer ***" https://api.example')
+  expect(start![4]).not.toContain('tok-ab...1234')
 })

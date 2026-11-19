@@ -94,7 +94,7 @@ def test_museum_answer_is_capped():
 
 
 def test_oversized_lyrics_answer_is_an_error_not_a_cached_miss(monkeypatch):
-    monkeypatch.setattr(lyrics.urllib.request, "urlopen", lambda req, timeout=None: _Resp(lyrics.LYRICS_MAX_BYTES + 10))
+    monkeypatch.setattr(lyrics, "_open", lambda req, timeout=None: _Resp(lyrics.LYRICS_MAX_BYTES + 10))
     with pytest.raises(lyrics.LyricsError):
         lyrics._fetch({"track_name": "x", "artist_name": "y"})
 

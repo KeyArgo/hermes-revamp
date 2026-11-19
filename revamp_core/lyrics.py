@@ -19,9 +19,12 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import radio
 from .config import data_dir
 
 LRCLIB_URL = "https://lrclib.net/api/get"
+# LRCLIB's one host: the request may only go there (see radio.open_fixed_https).
+LRCLIB_HOSTS = frozenset({"lrclib.net"})
 LYRICS_MAX_BYTES = 1024 * 1024
 UA = "Revamp (Hermes plugin; https://github.com/KeyArgo/hermes-revamp)"
 TIMEOUT = 8
@@ -93,6 +96,12 @@ def parse_lrc(text: str) -> List[Dict[str, Any]]:
 # LRCLIB fetch
 # ---------------------------------------------------------------------------
 
+def _open(req: urllib.request.Request, timeout: float):
+    """GET on LRCLIB's fixed host: public addresses only, a pinned connection, no proxy,
+    and a redirect off the host is refused (radio.open_fixed_https). Tests replace this."""
+    return radio.open_fixed_https(req, LRCLIB_HOSTS, timeout)
+
+
 def _fetch(params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """GET LRCLIB ``/api/get``; returns the parsed JSON dict.
 
@@ -103,7 +112,7 @@ def _fetch(params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     url = LRCLIB_URL + "?" + urllib.parse.urlencode(clean)
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with _open(req, TIMEOUT) as resp:
             # Lyrics are a few KB: cap the answer so a hostile one can't fill memory.
             body = resp.read(LYRICS_MAX_BYTES + 1)
             if len(body) > LYRICS_MAX_BYTES:

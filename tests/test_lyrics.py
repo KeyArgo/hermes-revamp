@@ -53,7 +53,7 @@ def fake_net(monkeypatch, tmp_path):
                 return _Resp(json.dumps(val).encode())
         raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b"{}"))
 
-    monkeypatch.setattr(lyrics.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(lyrics, "_open", urlopen)
     for name in ("_CACHE", "_MEM"):
         if isinstance(getattr(lyrics, name, None), dict):
             getattr(lyrics, name).clear()

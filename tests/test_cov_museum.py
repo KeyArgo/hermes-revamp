@@ -90,7 +90,7 @@ class _Resp:
 
 def _urlopen(monkeypatch, **kw):
     obj = Url(**kw)
-    monkeypatch.setattr(museum.urllib.request, "urlopen", obj)
+    monkeypatch.setattr(museum, "_open", obj)
     obj.timeout_seen = None
     return obj
 
