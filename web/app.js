@@ -835,6 +835,19 @@ function installControlPlayerApi() {
     setSkin: (id) => cmd({ action: "skin", id }),
     setLiked: (trackId, liked) => trackId ? apiPost("/api/likes", { track_id: trackId, liked: !!liked }) : Promise.resolve(),
     nowStatus: () => "STOPPED",
+    // What the live player is doing, as the server last heard it. There is no Webamp store
+    // here, so views that show play/pause (Hermes Radio) read this and call refreshLive.
+    live: { url: null, status: "STOPPED" },
+    liveStream() { return this.live; },
+    async refreshLive() {
+      try {
+        const st = await apiGet("/api/state");
+        const np = st?.live?.now_playing;
+        const on = st?.live?.player_connected !== false && np;
+        this.live = { url: on && np.kind === "stream" ? np.url || null : null, status: on ? np.status || "STOPPED" : "STOPPED" };
+      } catch { /* keep the last answer; the connection pill shows the outage */ }
+      return this.live;
+    },
   };
   window.revampFocusActivate = window.revampPlayerApi.focusStart;
 }

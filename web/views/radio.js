@@ -435,9 +435,12 @@ export async function render(root, api, opts = {}) {
     return getList;
   }
 
-  // ---- Hermes Radio: the desktop lineup, big tiles, nothing plays by itself
+  // ---- Hermes Radio: Hermes Agent Radio's channels, big tiles, nothing plays by itself
   function currentStream() {
     const player = window.revampPlayerApi;
+    // Inside Hermes Desktop this page only controls the player in another frame: ask the
+    // server what that player is doing. Without this the buttons never showed play/pause.
+    if (typeof player?.liveStream === "function") return player.liveStream() || { url: null, status: "STOPPED" };
     if (!player?.webamp?.store?.getState) return { url: null, status: "STOPPED" };
     try {
       const st = player.webamp.store.getState();
@@ -589,7 +592,7 @@ export async function render(root, api, opts = {}) {
           else done = Promise.resolve(player.playItemsAt(index, lineup.map(hermesItem)));
         }
         notePlaying(gen);
-        done.then(() => { if (gen === listGen) notePlaying(gen); }).catch((e) => {
+        done.then(() => { if (gen === listGen) pollLive(400); }).catch((e) => {
           clearStarting();
           if (gen === listGen) notePlaying(gen);
           toast(`Couldn't play ${st.name}: ${e?.message || e}`, { kind: "error" });
@@ -630,12 +633,27 @@ export async function render(root, api, opts = {}) {
     }
     let unsub = null;
     timer = setInterval(() => notePlaying(gen), 15000);
+    // Control mode (Hermes Desktop): no store to subscribe to, so poll the server's view of
+    // the player — every second while a station is starting, every 4 s otherwise, never hidden.
+    let liveTimer = 0;
+    function pollLive(ms) {
+      const player = window.revampPlayerApi;
+      if (typeof player?.refreshLive !== "function") { notePlaying(gen); return; }
+      clearTimeout(liveTimer);
+      liveTimer = setTimeout(async () => {
+        if (gen !== listGen || !root.isConnected) return;
+        if (!document.hidden) { await player.refreshLive(); notePlaying(gen); }
+        pollLive(starting ? 1000 : 4000);
+      }, ms);
+    }
+    pollLive(0);
     try {
       const store = window.revampPlayerApi?.webamp?.store;
       if (typeof store?.subscribe === "function") unsub = store.subscribe(() => notePlaying(gen));
     } catch { /* player without a store still paints on the interval */ }
     stopLive = () => {
       clearInterval(timer);
+      clearTimeout(liveTimer);
       clearStarting();
       const off = unsub;
       unsub = null;

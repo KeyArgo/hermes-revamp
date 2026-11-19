@@ -494,6 +494,64 @@ window.revampPlayerApi = global.revampPlayerApi;
 """
 
 
+# Inside Hermes Desktop the page is a control frame: the player lives in another frame and
+# window.revampPlayerApi has no Webamp store, only the server's view of the player. Before
+# the fix the buttons never showed a press, and a second press restarted instead of pausing.
+NODE_CONTROL = NODE_SMOKE[:NODE_SMOKE.index("const calls = [];")] + r"""
+const calls = [];
+const server = { url: null, status: 'STOPPED', loads: 0, pauses: 0, refreshes: 0 };
+global.revampPlayerApi = {
+  control: true,
+  live: { url: null, status: 'STOPPED' },
+  liveStream() { return this.live; },
+  async refreshLive() { server.refreshes += 1; this.live = { url: server.url, status: server.status }; return this.live; },
+  async playItemsAt(index, list) { server.loads += 1; server.url = list[index].url; server.status = 'PLAYING'; },
+  pause() { server.pauses += 1; server.status = 'PAUSED'; },
+  play() { server.status = 'PLAYING'; },
+  stop() { server.status = 'STOPPED'; },
+};
+window.revampPlayerApi = global.revampPlayerApi;
+(async () => {
+  const mod = await import(pathToFileURL(process.argv[1]).href);
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  const api = async (path) => {
+    calls.push(String(path));
+    if (String(path).startsWith('/api/radio/hermes')) return stations;
+    if (String(path).includes('nowplaying')) return { title: 'Synthetic Calm' };
+    return [];
+  };
+  await mod.render(root, api, { tab: 'hermes' });
+  const fail = (msg) => { throw new Error(msg); };
+  const plays = root.querySelectorAll('.hermes-play');
+  if (plays.length !== 6) fail('expected 6 channels, got ' + plays.length);
+  plays[2].click();
+  await new Promise((r) => _st(r, 20));
+  if (plays[2].getAttribute('aria-pressed') !== 'true') fail('no pressed state right after the click');
+  await new Promise((r) => _st(r, 700));
+  if (!plays[2].getAttribute('aria-label').startsWith('Pause ')) fail('never showed playing: ' + plays[2].getAttribute('aria-label'));
+  plays[2].click();
+  await new Promise((r) => _st(r, 700));
+  if (server.pauses !== 1 || server.loads !== 1) fail('second press restarted instead of pausing ' + JSON.stringify(server));
+  if (plays[2].getAttribute('aria-pressed') !== 'false') fail('still pressed after pause');
+  root.remove ? root.remove() : null;
+  console.log('ok');
+  process.exit(0);
+})().catch((err) => { console.error(err && err.stack || err); process.exit(1); });
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_hermes_radio_buttons_follow_the_player_inside_hermes_desktop():
+    res = subprocess.run(
+        ["node", "-e", NODE_CONTROL, str(RADIO_JS), ASK],
+        input=json.dumps(radio.hermes_lineup()),
+        capture_output=True, text=True, timeout=30,
+    )
+    assert res.returncode == 0, res.stderr or res.stdout
+    assert res.stdout.strip().splitlines()[-1] == "ok"
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_hermes_radio_render_smoke():
     res = subprocess.run(
