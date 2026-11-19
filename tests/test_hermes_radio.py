@@ -1,6 +1,6 @@
-"""Hermes Radio: the desktop plugin's lineup, and a render of the hero.
+"""Hermes Radio: Hermes Agent Radio's six channels, and a render of the hero.
 
-The lineup is Hermes Desktop's bundled radio plugin (read-only). The render
+The lineup is Hermes Agent Radio only (the old desktop lineup was removed). The render
 smoke drives web/views/radio.js under Node with a small DOM — the same shape
 as the other Node checks in this suite — and asserts the hero, the other
 tabs, and that nothing plays until a play button is pressed.
@@ -34,23 +34,6 @@ SHOT_DIR = TMP_DIR / "shots"
 # alias beside the disk-backed temp root, not under a potentially long checkout.
 RUNTIME_ALIAS = TMP_DIR.parent / ".rr-runtime"
 
-# id, name, description, provider, url, homepage — the plugin's PRESETS, resolved.
-EXPECTED = [
-    ("chillsynth", "Chillsynth", "Soft focus · warm synths", "Nightride FM",
-     "https://stream.nightride.fm/chillsynth.mp3", "https://nightride.fm/?station=chillsynth"),
-    ("nightride", "Nightride", "Synthwave · after hours", "Nightride FM",
-     "https://stream.nightride.fm/nightride.mp3", "https://nightride.fm/"),
-    ("darksynth", "Darksynth", "Dark electronics · high energy", "Nightride FM",
-     "https://stream.nightride.fm/darksynth.mp3", "https://nightride.fm/?station=darksynth"),
-    ("spacesynth", "Spacesynth", "Cosmic synths · retro futures", "Nightride FM",
-     "https://stream.nightride.fm/spacesynth.mp3", "https://nightride.fm/?station=spacesynth"),
-    ("paradise-main", "Main Mix", "Eclectic · human selected", "Radio Paradise",
-     "https://stream.radioparadise.com/aac-128", "https://radioparadise.com/"),
-    ("paradise-mellow", "Mellow Mix", "A gentler pace", "Radio Paradise",
-     "https://stream.radioparadise.com/mellow-flac", "https://radioparadise.com/"),
-    ("eve-radio", "EVE Radio", "GamingNow · EVE community radio", "GamingNow",
-     "https://media01.gamingnow.net:8010/erweb.mp3", "https://gamingnow.net/eve-radio/"),
-]
 ASK = "Play something on Hermes Radio that fits what I'm doing"
 
 
@@ -119,30 +102,19 @@ def test_status_bar_radio_list_leads_with_agent_radio_and_links_the_site():
     assert '@router.get("/radio/agent-radio")' in api
 
 
-def test_hermes_lineup_matches_the_desktop_plugin():
-    assert [_row(s) for s in radio.HERMES_LINEUP] == EXPECTED
-    # Hermes Agent Radio's six channels lead the hero, then the desktop lineup.
-    assert [_row(s) for s in radio.hermes_lineup()] == AGENT_RADIO_ROWS + EXPECTED
-    assert all(s["url"].startswith("https://") for s in radio.HERMES_LINEUP)
-    assert all(s["source"] == "hermes" for s in radio.HERMES_LINEUP)
-    # Hermes FM is a placeholder in the page, not a stream we can hand to the player.
-    assert "hermes-fm" not in {s["id"] for s in radio.HERMES_LINEUP}
+def test_hermes_radio_is_only_hermes_agent_radio():
+    """The hero lists Hermes Agent Radio's channels and nothing else (owner ask, 11-19)."""
+    rows = radio.hermes_lineup()
+    assert [_row(s) for s in rows] == AGENT_RADIO_ROWS
+    assert all(s["name"].startswith("Hermes Agent Radio") for s in rows)
+    assert not hasattr(radio, "HERMES_LINEUP")
     assert "hermes-fm" not in {s["id"] for s in radio.PRESETS}
-    if PLUGIN.exists():
-        assert _plugin_presets() == EXPECTED
-
-
-def test_hermes_lineup_is_its_own_list():
-    """The SomaFM fallback presets stay the Radio Browser outage list."""
-    ids = [s["id"] for s in radio.PRESETS]
-    assert "spacesynth" not in ids and "eve-radio" not in ids and "paradise-main" not in ids
-    assert len(radio.presets()) == len(radio.PRESETS)
 
 
 def test_hermes_lineup_endpoint(server):
     status, _, body = server.client.get("/api/radio/hermes")
     assert status == 200
-    assert [_row(s) for s in body] == AGENT_RADIO_ROWS + EXPECTED
+    assert [_row(s) for s in body] == AGENT_RADIO_ROWS
     assert all("url" in s and s["url"] for s in body)
 
 
@@ -152,10 +124,10 @@ def test_tool_lists_and_plays_a_hermes_station(server):
     importlib.reload(plugin_root)
     listed = json.loads(plugin_root._tool_radio({"action": "hermes"}))
     assert listed["ok"] is True
-    assert [s["id"] for s in listed["stations"]] == [row[0] for row in AGENT_RADIO_ROWS + EXPECTED]
-    assert "not on the air" in listed["coming_soon"]
-    played = json.loads(plugin_root._tool_radio({"action": "play", "station_id": "spacesynth"}))
-    assert played["ok"] is True and played["station"] == "Spacesynth"
+    assert [s["id"] for s in listed["stations"]] == [row[0] for row in AGENT_RADIO_ROWS]
+    assert "coming_soon" not in listed
+    played = json.loads(plugin_root._tool_radio({"action": "play", "station_id": "hermes-agent-radio-techno"}))
+    assert played["ok"] is True and played["station"] == "Hermes Agent Radio Techno"
     # A preset id still resolves to the built-in preset, not the hero.
     preset = json.loads(plugin_root._tool_radio({"action": "play", "station_id": "somafm-groovesalad"}))
     assert preset["ok"] is True and preset["station"] == "SomaFM Groove Salad"
@@ -169,7 +141,8 @@ def test_radio_opens_on_popular_and_the_hermes_entry_opens_hermes_radio():
     assert "loadHermes();" in text
     assert "autoplay" not in text
     assert ASK in text
-    assert "Hermes FM — coming soon" in text
+    assert "Hermes FM" not in text and "hermes-soon" not in text
+    assert "Hermes FM" not in (REPO / "__init__.py").read_text(encoding="utf-8")
     app = (REPO / "web" / "app.js").read_text(encoding="utf-8")
     assert app.index('id: "hermes-radio"') < app.index('id: "library"')
     assert 'renderRadio(root, api, { tab: "hermes" })' in app
@@ -338,6 +311,7 @@ function createElement(tag) {
     if (name === 'class') return el._className;
     return el._attrs.has(name) ? el._attrs.get(name) : null;
   };
+  el.removeAttribute = (name) => { el._attrs.delete(name); };
   el.appendChild = (child) => {
     child.parentNode = el;
     el.childNodes.push(child);
@@ -407,18 +381,19 @@ global.addEventListener = (type, fn) => on(listeners, type, fn);
 global.removeEventListener = () => {};
 
 const calls = [];
-const state = { url: null, status: 'STOPPED', plays: 0, pauses: 0, items: [] };
+const state = { url: null, status: 'STOPPED', plays: 0, pauses: 0, stops: 0, items: [], slow: false };
 global.revampPlayerApi = {
   get items() { return state.items; },
   webamp: { store: { getState: () => ({ media: { status: state.status }, playlist: { currentTrack: state.url ? 0 : null, trackOrder: state.url ? [0] : [] } }) } },
   playItemsAt(index, list) {
     state.plays += 1;
     state.url = list[index].url;
-    state.status = 'PLAYING';
+    state.status = state.slow ? 'STOPPED' : 'PLAYING';
     state.items = list.map((row) => ({ kind: 'stream', playback: { stream: row.url }, title: row.title }));
   },
   pause() { state.pauses += 1; state.status = 'PAUSED'; },
   play() { state.status = 'PLAYING'; },
+  stop() { state.stops += 1; state.status = 'STOPPED'; },
 };
 window.revampPlayerApi = global.revampPlayerApi;
 
@@ -451,12 +426,7 @@ window.revampPlayerApi = global.revampPlayerApi;
     if (btn.tagName !== 'BUTTON' || btn.tabIndex < 0) fail('play control is not keyboard reachable');
     if (!btn.getAttribute('aria-label').startsWith('Play ')) fail('play label ' + btn.getAttribute('aria-label'));
   }
-  const soon = root.querySelector('.hermes-soon');
-  if (!soon) fail('missing coming soon');
-  if (!soon.textContent.includes('Hermes FM — coming soon')) fail('soon title');
-  if (!soon.textContent.includes('DJs between your library and live radio')) fail('soon idea');
-  if (soon.querySelector('button') || soon.querySelector('audio') || soon.querySelector('a')) fail('coming soon has a control');
-  if (/https?:/i.test(soon.textContent)) fail('coming soon looks like a stream');
+  if (root.querySelector('.hermes-soon') || root.textContent.includes('Hermes FM')) fail('Hermes FM card is back');
   if (root.querySelector('audio')) fail('audio element on first paint');
   const web = root.querySelector('.hermes-web-link');
   if (!web || web.getAttribute('href') !== 'https://hermesagentradio.com/' || web.getAttribute('target') !== '_blank') fail('web listening link');
@@ -480,6 +450,21 @@ window.revampPlayerApi = global.revampPlayerApi;
   await new Promise((r) => _st(r, 20));
   if (global.__copied !== ASK) fail('clipboard ' + global.__copied);
   if (state.plays !== 1) fail('ask started playback');
+  // A stream that takes a while to connect shows it was pressed straight away, and a
+  // second press while it connects cancels instead of doing nothing.
+  state.slow = true;
+  plays[1].click();
+  await new Promise((r) => _st(r, 20));
+  const card1 = plays[1].parentNode;
+  if (plays[1].getAttribute('aria-pressed') !== 'true') fail('no pressed state while connecting');
+  if (plays[1].getAttribute('aria-busy') !== 'true') fail('no busy state while connecting');
+  if (!plays[1].getAttribute('aria-label').startsWith('Starting ')) fail('label while connecting ' + plays[1].getAttribute('aria-label'));
+  if (card1.querySelector('.hermes-starting').hidden) fail('Starting… note hidden');
+  plays[1].click();
+  await new Promise((r) => _st(r, 20));
+  if (state.stops !== 1) fail('second press while connecting did not cancel');
+  if (plays[1].getAttribute('aria-pressed') !== 'false' || plays[1].getAttribute('aria-busy')) fail('still busy after cancel');
+  state.slow = false;
   root.querySelector('button[data-t="popular"]').click();
   await new Promise((r) => _st(r, 20));
   if (root.querySelector('.hermes-hero')) fail('popular kept the hero');
@@ -492,6 +477,14 @@ window.revampPlayerApi = global.revampPlayerApi;
   root.querySelector('button[data-t="browse"]').click();
   await new Promise((r) => _st(r, 20));
   if (root.querySelector('button[data-t="browse"]').getAttribute('aria-selected') !== 'true') fail('browse not selected');
+  // Browse lists Hermes Agent Radio as a genre, even with nothing from Radio Browser; it opens Hermes Radio.
+  const hermesCat = root.querySelector('.radio-catcard-hermes');
+  if (!hermesCat || !hermesCat.textContent.includes('Hermes Agent Radio')) fail('Browse has no Hermes Agent Radio card');
+  hermesCat.click();
+  await new Promise((r) => _st(r, 30));
+  if (root.querySelector('button[data-t="hermes"]').getAttribute('aria-selected') !== 'true') fail('Hermes card did not open Hermes Radio');
+  root.querySelector('button[data-t="browse"]').click();
+  await new Promise((r) => _st(r, 20));
   root.querySelector('button[data-t="hermes"]').click();
   await new Promise((r) => _st(r, 30));
   if (!root.querySelector('.hermes-hero')) fail('hermes tab did not come back');
@@ -609,8 +602,7 @@ def _shot_drive(call, ev, wait, width, height, url):
         timeout=45,
     )
     ev("document.querySelector('#nav button[data-view=\"hermes-radio\"]').click()")
-    wait("document.querySelectorAll('.hermes-station').length >= 7")
-    wait("document.querySelector('.hermes-soon')")
+    wait("document.querySelectorAll('.hermes-station').length >= 6")
     info = ev("""(() => {
       const panel = document.getElementById('panel-body');
       const hero = document.querySelector('.hermes-hero');
@@ -626,8 +618,7 @@ def _shot_drive(call, ev, wait, width, height, url):
         nav0: document.querySelector('#nav button')?.dataset.view,
         active: document.querySelector('.tabs button.active')?.dataset.t,
         ask: document.querySelector('.hermes-ask')?.textContent,
-        soon: document.querySelector('.hermes-soon')?.innerText,
-        soonControls: !!(document.querySelector('.hermes-soon button') || document.querySelector('.hermes-soon audio')),
+        soon: document.querySelector('.hermes-soon') != null || document.body.innerText.includes('Hermes FM'),
         audio: document.querySelectorAll('audio').length,
         status,
         playing: document.querySelector('.hermes-station.is-playing') != null,
@@ -668,9 +659,8 @@ def test_hermes_radio_screenshots(server, width):
         assert info["title"] == "Hermes Radio", info
         assert info["active"] == "hermes", info
         assert info["ask"] == "Ask Hermes to pick", info
-        assert "Hermes FM" in info["soon"] and "coming soon" in info["soon"].lower(), info
-        assert info["soonControls"] is False, info
-        assert info["count"] == 13, info
+        assert info["soon"] is False, info
+        assert info["count"] == 6, info
         assert info["playing"] is False, info
         assert info["status"] != "PLAYING", info
         assert info["overflow"] is False, info

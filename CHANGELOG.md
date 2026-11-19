@@ -4,6 +4,7 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- Hermes Radio now lists only Hermes Agent Radio's six channels. The older desktop lineup (Nightride, Radio Paradise, EVE Radio) and the "Hermes FM — coming soon" card are gone. Pressing play shows "Starting…" straight away while the stream connects; pressing again cancels, and a station that does not start within 20 seconds says so. Browse lists Hermes Agent Radio first among the genres.
 - The optional desktop pop-out no longer opens a DevTools port on Windows: nothing else on the machine can connect to it, and the window keeps the size it was opened at. Linux and macOS keep using a private pipe that no other account can reach.
 - Radio station search now only talks to public addresses, ignores `HTTP(S)_PROXY` like stream playback does, and refuses a mirror redirect into your own network.
 - Lyrics and Skin Museum requests only contact `lrclib.net`, `api.webamp.org` and `r2.webampskins.org`. A name that resolves to a private address, or a redirect that leaves those hosts, is refused instead of fetched.

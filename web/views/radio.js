@@ -1,4 +1,4 @@
-// radio.js — Popular / Hermes Radio (Hermes Agent Radio + the desktop lineup) / Browse / Search / Favorites.
+// radio.js — Popular / Hermes Radio (Hermes Agent Radio's six channels) / Browse / Search / Favorites.
 // Every directory list pages in with an IntersectionObserver sentinel and keeps
 // going until Radio Browser runs out of stations, like the Music view.
 import { textPrompt, toast } from "./modal.js";
@@ -453,16 +453,34 @@ export async function render(root, api, opts = {}) {
     }
   }
 
+  // A station pressed but not playing yet. A live stream takes a moment to connect, and
+  // without this the button looked dead until the first sound.
+  let starting = null; // { url, name, timer }
+  const START_TIMEOUT_MS = 20000;
+  function clearStarting() {
+    if (starting) clearTimeout(starting.timer);
+    starting = null;
+  }
+
   function paintTransport(cur) {
+    if (starting && cur.status === "PLAYING" && cur.url === starting.url) clearStarting();
+    if (starting && cur.url && cur.url !== starting.url && cur.status === "PLAYING") clearStarting();
     listEl.querySelectorAll(".hermes-station").forEach((el) => {
       const playing = cur.status === "PLAYING" && cur.url === el.dataset.url;
+      const waiting = !playing && starting?.url === el.dataset.url;
       el.classList.toggle("is-playing", playing);
+      el.classList.toggle("is-starting", waiting);
       const btn = el.querySelector(".hermes-play");
       if (!btn) return;
       const name = el.dataset.name || "station";
-      btn.textContent = playing ? "⏸" : "▶";
-      btn.setAttribute("aria-pressed", playing ? "true" : "false");
-      btn.setAttribute("aria-label", `${playing ? "Pause" : "Play"} ${name}`);
+      btn.textContent = playing ? "⏸" : waiting ? "" : "▶";
+      btn.classList.toggle("is-starting", waiting);
+      if (waiting) btn.setAttribute("aria-busy", "true");
+      else btn.removeAttribute("aria-busy");
+      btn.setAttribute("aria-pressed", playing || waiting ? "true" : "false");
+      btn.setAttribute("aria-label", playing ? `Pause ${name}` : waiting ? `Starting ${name}` : `Play ${name}`);
+      const note = el.querySelector(".hermes-starting");
+      if (note) note.hidden = !waiting;
     });
   }
 
@@ -489,7 +507,7 @@ export async function render(root, api, opts = {}) {
     h.textContent = "Hermes Radio";
     const lead = document.createElement("p");
     lead.className = "hermes-hero-lead";
-    lead.textContent = "Hermes Agent Radio's six channels, then the lineup from Hermes Desktop. Press play to start a station.";
+    lead.textContent = "Hermes Agent Radio's six channels. Press play to start one.";
     // Their own player on the web, for listening outside REVamp (show notes, requests, the chart).
     const web = document.createElement("a");
     web.className = "hermes-web-link";
@@ -539,7 +557,12 @@ export async function render(root, api, opts = {}) {
       const nowT = document.createElement("span");
       nowT.className = "hermes-now-title";
       now.append(nowK, nowT);
-      copy.append(name, provider, desc, now);
+      const startNote = document.createElement("p");
+      startNote.className = "hermes-starting";
+      startNote.setAttribute("aria-live", "polite");
+      startNote.textContent = "Starting…";
+      startNote.hidden = true;
+      copy.append(name, provider, desc, now, startNote);
       const play = document.createElement("button");
       play.type = "button";
       play.className = "btn sm btn-primary hermes-play";
@@ -551,27 +574,30 @@ export async function render(root, api, opts = {}) {
         if (!player?.playItemsAt) { toast("The player isn't ready yet", { kind: "error" }); return; }
         const cur = currentStream();
         let done = Promise.resolve();
-        if (cur.url === st.url && cur.status === "PLAYING") player.pause();
-        else if (cur.url === st.url) player.play();
-        else done = Promise.resolve(player.playItemsAt(index, lineup.map(hermesItem)));
+        if (cur.url === st.url && cur.status === "PLAYING") { clearStarting(); player.pause(); }
+        else if (starting?.url === st.url) { clearStarting(); player.stop?.(); } // a second press cancels
+        else {
+          clearStarting();
+          const timer = setTimeout(() => {
+            if (starting?.url !== st.url) return;
+            clearStarting();
+            if (gen === listGen) notePlaying(gen);
+            toast(`${st.name} didn't start. Check your connection, or try another channel.`, { kind: "error", ttl: 6000 });
+          }, START_TIMEOUT_MS);
+          starting = { url: st.url, name: st.name, timer };
+          if (cur.url === st.url) player.play();
+          else done = Promise.resolve(player.playItemsAt(index, lineup.map(hermesItem)));
+        }
         notePlaying(gen);
-        done.then(() => { if (gen === listGen) notePlaying(gen); }).catch(() => {});
+        done.then(() => { if (gen === listGen) notePlaying(gen); }).catch((e) => {
+          clearStarting();
+          if (gen === listGen) notePlaying(gen);
+          toast(`Couldn't play ${st.name}: ${e?.message || e}`, { kind: "error" });
+        });
       });
       card.append(copy, play);
       grid.appendChild(card);
     });
-
-    const soon = document.createElement("article");
-    soon.className = "hermes-soon";
-    soon.setAttribute("role", "listitem");
-    soon.dataset.comingSoon = "true";
-    const soonTitle = document.createElement("h3");
-    soonTitle.className = "hermes-soon-title";
-    soonTitle.textContent = "Hermes FM — coming soon";
-    const soonBody = document.createElement("p");
-    soonBody.textContent = "A station of our own, where Hermes DJs between your library and live radio.";
-    soon.append(soonTitle, soonBody);
-    grid.appendChild(soon);
 
     hero.append(head, grid);
     listEl.appendChild(hero);
@@ -610,6 +636,7 @@ export async function render(root, api, opts = {}) {
     } catch { /* player without a store still paints on the interval */ }
     stopLive = () => {
       clearInterval(timer);
+      clearStarting();
       const off = unsub;
       unsub = null;
       try { off?.(); } catch { /* already gone */ }
@@ -744,6 +771,23 @@ export async function render(root, api, opts = {}) {
     }
   }
 
+  // Hermes Agent Radio is one of the genres too: it opens the Hermes Radio tab. It is ours,
+  // so it shows even when Radio Browser is down.
+  function hermesCatCard() {
+    const card = document.createElement("button");
+    card.className = "radio-catcard radio-catcard-hermes";
+    card.type = "button";
+    const nm = document.createElement("span");
+    nm.className = "cat-name";
+    nm.textContent = "Hermes Agent Radio";
+    const ct = document.createElement("span");
+    ct.className = "cat-count";
+    ct.textContent = "6 channels";
+    card.append(nm, ct);
+    card.addEventListener("click", () => tabs.querySelector('button[data-t="hermes"]')?.click());
+    return card;
+  }
+
   async function loadBrowse() {
     sortWrap.replaceChildren();
     setNotice(null);
@@ -769,6 +813,10 @@ export async function render(root, api, opts = {}) {
       retry.addEventListener("click", loadBrowse);
       subRow.appendChild(retry);
       listEl.appendChild(subRow);
+      const grid = document.createElement("div");
+      grid.className = "radio-chipgrid";
+      grid.appendChild(hermesCatCard());
+      listEl.appendChild(grid);
       return;
     }
     if (gen !== listGen) return;
@@ -787,9 +835,10 @@ export async function render(root, api, opts = {}) {
     }
     listEl.appendChild(kindsBar);
 
-    if (!kinds.length) return errEmpty(listEl, "Nothing came back for this group.", "🗂");
+    if (!kinds.length && catKind !== "tags") return errEmpty(listEl, "Nothing came back for this group.", "🗂");
     const grid = document.createElement("div");
     grid.className = "radio-chipgrid";
+    if (catKind === "tags") grid.appendChild(hermesCatCard());
     kinds.forEach((cat) => {
       const chip = document.createElement("button");
       chip.className = "radio-catcard";

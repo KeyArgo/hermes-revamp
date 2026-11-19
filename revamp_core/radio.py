@@ -279,58 +279,14 @@ PRESETS: List[Dict[str, Any]] = [
 ]
 
 
-# Hermes Desktop's bundled radio plugin is the lineup for the Hermes Radio hero
-# (apps/desktop/src/plugins/radio/plugin.js PRESETS). Kept separate from PRESETS
-# above: those are the Radio Browser fallback, and several URLs differ
-# (Radio Paradise AAC/FLAC, Spacesynth, EVE Radio).
-_NIGHTRIDE = "https://stream.nightride.fm/"
-HERMES_LINEUP: List[Dict[str, Any]] = [
-    {"id": "chillsynth", "name": "Chillsynth", "description": "Soft focus · warm synths",
-     "provider": "Nightride FM", "url": f"{_NIGHTRIDE}chillsynth.mp3",
-     "homepage": "https://nightride.fm/?station=chillsynth",
-     "tags": ["chillsynth", "synthwave"], "codec": "MP3", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "nightride", "name": "Nightride", "description": "Synthwave · after hours",
-     "provider": "Nightride FM", "url": f"{_NIGHTRIDE}nightride.mp3",
-     "homepage": "https://nightride.fm/",
-     "tags": ["synthwave", "retrowave"], "codec": "MP3", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "darksynth", "name": "Darksynth", "description": "Dark electronics · high energy",
-     "provider": "Nightride FM", "url": f"{_NIGHTRIDE}darksynth.mp3",
-     "homepage": "https://nightride.fm/?station=darksynth",
-     "tags": ["darksynth", "synthwave"], "codec": "MP3", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "spacesynth", "name": "Spacesynth", "description": "Cosmic synths · retro futures",
-     "provider": "Nightride FM", "url": f"{_NIGHTRIDE}spacesynth.mp3",
-     "homepage": "https://nightride.fm/?station=spacesynth",
-     "tags": ["spacesynth", "synthwave"], "codec": "MP3", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "paradise-main", "name": "Main Mix", "description": "Eclectic · human selected",
-     "provider": "Radio Paradise", "url": "https://stream.radioparadise.com/aac-128",
-     "homepage": "https://radioparadise.com/",
-     "tags": ["eclectic"], "codec": "AAC", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "paradise-mellow", "name": "Mellow Mix", "description": "A gentler pace",
-     "provider": "Radio Paradise", "url": "https://stream.radioparadise.com/mellow-flac",
-     "homepage": "https://radioparadise.com/",
-     "tags": ["eclectic", "mellow"], "codec": "FLAC", "bitrate": None,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "eve-radio", "name": "EVE Radio", "description": "GamingNow · EVE community radio",
-     "provider": "GamingNow", "url": "https://media01.gamingnow.net:8010/erweb.mp3",
-     "homepage": "https://gamingnow.net/eve-radio/",
-     "tags": ["gaming"], "codec": "MP3", "bitrate": None,
-     "favicon": "", "country": "", "source": "hermes"},
-]
-
-
 def presets() -> List[Dict[str, Any]]:
     return [dict(s) for s in PRESETS]
 
 
 # Hermes Agent Radio (hermesagentradio.com): a 24/7 station about Hermes Agent and open-source agents,
 # with community music on six channels. Streams and taglines from its public /stations.json
-# (checked 2026-11-19: every stream is https audio/mpeg). Listed first in Hermes Radio and in the
-# status-bar radio list.
+# (checked 2026-11-19: every stream is https audio/mpeg). They are the whole Hermes Radio tab and
+# lead the status-bar radio list.
 AGENT_RADIO_SITE = "https://hermesagentradio.com/"
 _AGENT_RADIO = "https://hermesagentradio.com/stream"
 AGENT_RADIO: List[Dict[str, Any]] = [
@@ -354,8 +310,8 @@ def agent_radio() -> List[Dict[str, Any]]:
 
 
 def hermes_lineup() -> List[Dict[str, Any]]:
-    """The Hermes Radio hero: Hermes Agent Radio's six channels, then Hermes Desktop's own lineup."""
-    return agent_radio() + [dict(s) for s in HERMES_LINEUP]
+    """The Hermes Radio hero: Hermes Agent Radio's six channels and nothing else."""
+    return agent_radio()
 
 
 # Windows reports the WSA codes, not the C library ones.
