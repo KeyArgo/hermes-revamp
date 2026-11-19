@@ -95,7 +95,7 @@ function engineStart(on: any) {
   on('tool.register', async () => ({ value: undefined }))
 }
 
-test('no player and an old server: asked at most once a minute, no agent events', async ($, on) => {
+test('no player at all: the server is asked once per session, then never; no agent events', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   mock.env(on, { HOME: '/home/t' })
   on('fs.stat', async () => { throw new Error('ENOENT') })
@@ -104,7 +104,7 @@ test('no player and an old server: asked at most once a minute, no agent events'
   await $.session.start(START)
   await clock.advance(5 * 60_000)
   for (let i = 0; i < 20; i++) await $.tool.call({ tool: 'Bash', input: { command: 'ls' } }).catch(() => {})
-  expect(runs.filter(r => r === 'state').length).toBeLessThanOrEqual(6)
+  expect(runs.filter(r => r === 'state').length).toBe(1)
   expect(runs.filter(r => r === 'event').length).toBe(0)
 })
 
@@ -159,4 +159,51 @@ test('an approval answer still goes out after the player went away', async ($, o
   await $.tool.call({ tool: 'Bash', input: { command: 'rm -rf build' } }).catch(() => {})
   expect(events.includes('approval_request')).toBe(true)
   expect(events.includes('approval_response')).toBe(true)
+})
+
+test('a minimised Hermes still playing (one heartbeat a minute) keeps the band and the events', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  mock.env(on, { HOME: '/home/t' })
+  let written = clock.now()
+  on('fs.stat', async ($: any, e: any) => {
+    if (e.path !== NOW) throw new Error('ENOENT')
+    return { value: { kind: 'file', size: 80, mtimeMs: written, isLink: false } }
+  })
+  on('fs.read', async () => ({ value: JSON.stringify({ connected: true, title: 'Song', status: 'PLAYING' }) }))
+  on('tool.call', async () => ({ result: 'ok', text: 'ok' }))
+  const runs = countRuns(on)
+  engineStart(on)
+  await $.session.start(START)
+  for (let minute = 0; minute < 3; minute++) {
+    await clock.advance(55_000)          // 55 s since the last heartbeat: older than 15 s
+    await $.tool.call({ tool: 'Bash', input: { command: 'ls' } }).catch(() => {})
+    written = clock.now()                // the throttled page beats again
+  }
+  expect(runs.filter(r => r === 'event').length).toBe(6)   // tool_start + tool_end, every time
+  expect(runs.filter(r => r === 'state').length).toBe(0)
+  written = clock.now() - 200_000         // and once it is really gone, the band goes too
+  await clock.advance(5000)
+  await $.tool.call({ tool: 'Bash', input: { command: 'ls' } }).catch(() => {})
+  expect(runs.filter(r => r === 'event').length).toBe(6)
+})
+
+test('a stale leftover now.json does not hide an older server that has a player', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  mock.env(on, { HOME: '/home/t' })
+  on('fs.stat', async ($: any, e: any) => {
+    if (e.path !== NOW) throw new Error('ENOENT')
+    return { value: { kind: 'file', size: 80, mtimeMs: 1, isLink: false } }   // ancient
+  })
+  const runs: string[] = []
+  on('process.run', async ($: any, e: any) => {
+    if (e.argv[0] === 'revampctl') runs.push(String(e.argv[1]))
+    const state = { live: { player_connected: true, now_playing: { title: 'Old', status: 'PLAYING' } } }
+    return { value: { exitCode: 0, stdout: JSON.stringify(state), stderr: '' } }
+  })
+  engineStart(on)
+  await $.session.start(START)
+  await clock.advance(3 * 60_000)
+  const asks = runs.filter(r => r === 'state').length
+  expect(asks).toBeGreaterThanOrEqual(3)  // the older server is followed, once a minute
+  expect(asks).toBeLessThanOrEqual(4)
 })

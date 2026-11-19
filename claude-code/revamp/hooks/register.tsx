@@ -74,12 +74,18 @@ export function isPlayingStatus(status: unknown): boolean {
 // before now.json is asked with `revampctl state`, at most once per FALLBACK_MS.
 const CHECK_MS = 5000
 const NOW_STALE_MS = 15000 // store.NOW_FILE_STALE
+// A hidden Hermes window heartbeats only about once a minute; while it says "playing" it is
+// still playing (server.PLAYING_GRACE), so the band and the approval ducking stay on.
+const PLAYING_GRACE_MS = 180000
 const FALLBACK_MS = 60000
 
 let nowPath: string | null = null
-let seenFile = false // this server writes now.json: never fall back again
+let seenFresh = false // this server writes now.json: never fall back again
+let probed = false // a stale file and no fresh one yet: asked the server once (it may be older)
+let oldServer = false // that one answer came from a server without now.json and a player open
 let lastMtime = -1
 let lastAsk = -Infinity
+let lastPlaying = false
 let connected = false // last known; agent events go out only while a player can show them
 
 export async function nowFilePath($: EngineInterface): Promise<string | null> {
@@ -109,14 +115,13 @@ async function set($: EngineInterface, next: NowPlaying | null) {
 async function refresh($: EngineInterface, force = false) {
   if (nowPath === null) nowPath = await nowFilePath($).catch(() => null)
   const stat = nowPath ? await $.fs.stat(nowPath).catch(() => undefined) : undefined
-  if (stat) {
-    seenFile = true
-    if ((await $.clock.now()) - stat.mtimeMs > NOW_STALE_MS) {
-      lastMtime = -1
-      return set($, null)
-    }
-    if (stat.mtimeMs === lastMtime && !force) return
-    lastMtime = stat.mtimeMs
+  const t = await $.clock.now()
+  const age = stat ? t - stat.mtimeMs : Infinity
+  if (age <= (lastPlaying ? PLAYING_GRACE_MS : NOW_STALE_MS)) {
+    seenFresh = true
+    oldServer = false
+    if (stat!.mtimeMs === lastMtime && !force) return
+    lastMtime = stat!.mtimeMs
     let next: NowPlaying | null = null
     try {
       next = fromNowFile(await $.fs.read(nowPath!))
@@ -124,12 +129,18 @@ async function refresh($: EngineInterface, force = false) {
       lastMtime = -1 // caught mid-replace: read it again next time
       return
     }
+    lastPlaying = Boolean(next?.isPlaying)
     return set($, next)
   }
-  if (seenFile) return set($, null) // the file went away with its server
-  const t = await $.clock.now()
-  if (!force && t - lastAsk < FALLBACK_MS) return
+  lastMtime = -1
+  lastPlaying = false
+  // Stale or missing. A server that writes now.json has nothing to say: no player. Otherwise ask
+  // once (a leftover file from a newer server must not blind us to an older one), and keep asking
+  // once a minute only while that older server reports a player.
+  if (seenFresh || (probed && !oldServer && !force)) return set($, null)
+  if (probed && !force && t - lastAsk < FALLBACK_MS) return
   lastAsk = t
+  probed = true
   const r = await ctl($, ['state'], 4000)
   let next: NowPlaying | null = null
   if (r.ok) {
@@ -143,6 +154,7 @@ async function refresh($: EngineInterface, force = false) {
       next = null
     }
   }
+  oldServer = Boolean(next?.isConnected)
   return set($, next)
 }
 
