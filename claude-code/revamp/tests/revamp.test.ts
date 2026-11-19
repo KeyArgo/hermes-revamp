@@ -207,3 +207,17 @@ test('a stale leftover now.json does not hide an older server that has a player'
   expect(asks).toBeGreaterThanOrEqual(3)  // the older server is followed, once a minute
   expect(asks).toBeLessThanOrEqual(4)
 })
+
+test('session.start again (resume, /compact, /clear) never stacks a second ticker', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  mock.env(on, { HOME: '/home/t' })
+  let stats = 0
+  on('fs.stat', async () => { stats++; throw new Error('ENOENT') })
+  countRuns(on)
+  engineStart(on)
+  for (let i = 0; i < 3; i++) await $.session.start(START)
+  stats = 0
+  await clock.advance(60_000)
+  expect(stats).toBeLessThanOrEqual(12)   // one ticker: 60 s / 5 s; three would be 36
+  expect(stats).toBeGreaterThanOrEqual(11)
+})

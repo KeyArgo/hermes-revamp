@@ -158,6 +158,14 @@ async function refresh($: EngineInterface, force = false) {
   return set($, next)
 }
 
+let ticker: { cancel(): void } | null = null
+let busy = false
+async function tick($: EngineInterface) {
+  if (busy) return // a slow check (an old server's fallback) never overlaps the next
+  busy = true
+  try { await refresh($) } finally { busy = false }
+}
+
 // After a button or command the player reports within a heartbeat or two.
 function refreshSoon($: EngineInterface) {
   refresh($, true).catch(() => {})
@@ -186,7 +194,9 @@ export const register: Register = on => {
         required: ['action'],
       },
     })
-    $.clock.every(CHECK_MS, () => refresh($))
+    // session.start fires again on resume, /compact and /clear: one ticker per process, never stacked.
+    ticker?.cancel()
+    ticker = $.clock.every(CHECK_MS, () => tick($))
     await refresh($, true)
     return next(e)
   })
