@@ -26,7 +26,9 @@ async function ctl($: EngineInterface, args: readonly string[], timeoutMs = 8000
 // Fire and forget: agent activity must never slow a tool call down. Each event is a process,
 // so none go out while no player is open to show them (the ticker has no one to tell).
 function emit($: EngineInterface, args: readonly string[]) {
-  if (!connected) return
+  // An answer always follows its request, or a player that reconnects shows a stale "waiting".
+  // An answer always follows its request, or a player that reconnects shows a stale "waiting".
+  if (!connected && args[0] !== 'approval_response') return
   $.process.run(['revampctl', 'event', ...args], { timeoutMs: 2000 }).catch(() => {})
 }
 

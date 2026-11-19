@@ -321,14 +321,16 @@ def _now_path() -> Path:
     return data_dir() / "now.json"
 
 
-def _publish_now(live: Dict[str, Any]) -> None:
+def _publish_now(live: Dict[str, Any], remote: bool = False) -> None:
     global _now_written
     np = live.get("now_playing") or {}
     pb = live.get("playback") or {}
+    # A remote backend's report wins over the last page heartbeat, which may be another track.
+    first, then = (pb, np) if remote else (np, pb)
     content = {"connected": bool(live.get("player_connected")),
-               "title": np.get("title") or pb.get("title"),
-               "artist": np.get("artist") or pb.get("artist"),
-               "status": str(np.get("status") or pb.get("status") or "stopped").lower()}
+               "title": first.get("title") or then.get("title"),
+               "artist": first.get("artist") or then.get("artist"),
+               "status": str(first.get("status") or then.get("status") or "stopped").lower()}
     now = time.time()
     if content == _now_written[0] and now - _now_written[1] < NOW_FILE_REFRESH:
         return
@@ -336,7 +338,10 @@ def _publish_now(live: Dict[str, Any]) -> None:
     try:
         path = _now_path()
         tmp = path.with_name(f".now.{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(dict(content, updated=now)), encoding="utf-8")
+        # Owner-only, like the token beside it: what you listen to is nobody else's business.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(dict(content, updated=now)))
         os.replace(tmp, path)
     except OSError:
         pass  # cosmetic: readers fall back to asking the server
@@ -369,7 +374,7 @@ def report_playback(playback: Dict[str, Any]) -> None:
         live["playback"] = dict(playback, updated=time.time())
         st["live"] = live
         _STATE = st
-        _publish_now(live)
+        _publish_now(live, remote=True)
 
 
 # ---------------------------------------------------------------------------

@@ -64,3 +64,20 @@ def test_remote_backend_playback_also_writes(box):
 def test_unwritable_dir_is_harmless(box, monkeypatch):
     monkeypatch.setattr(store, "_now_path", lambda: box / "missing" / "now.json")
     store.heartbeat({"title": "Song", "status": "playing"})  # no raise
+
+
+def test_file_is_owner_only(box):
+    import os, stat
+    store.heartbeat({"title": "Song", "status": "playing"})
+    if os.name == "posix":
+        assert stat.S_IMODE((box / "now.json").stat().st_mode) == 0o600
+
+
+def test_remote_backend_wins_over_an_old_page_heartbeat(box, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(store.time, "time", lambda: clock[0])
+    store.heartbeat({"title": "Old page track", "status": "paused"})
+    clock[0] += 1
+    store.report_playback({"title": "Remote", "artist": "X", "status": "playing"})
+    now = json.loads((box / "now.json").read_text())
+    assert now["title"] == "Remote" and now["status"] == "playing"

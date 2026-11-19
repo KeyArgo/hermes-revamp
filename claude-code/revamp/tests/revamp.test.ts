@@ -139,3 +139,24 @@ test('now.json lines up the band', () => {
   expect(fromNowFile('{"connected":false,"title":"A"}')).toBe(null)
   expect(fromNowFile('{"connected":true,"status":"stopped"}')?.line).toBe('nothing queued')
 })
+
+test('an approval answer still goes out after the player went away', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const events = recordEvents(on)
+  on('tool.check', async () => ({ decision: 'ask' }))
+  mock.env(on, { HOME: '/home/t' })
+  const written = clock.now()               // the player wrote now.json once, then went away
+  on('fs.stat', async ($: any, e: any) => {
+    if (e.path !== NOW) throw new Error('ENOENT')
+    return { value: { kind: 'file', size: 80, mtimeMs: written, isLink: false } }
+  })
+  on('fs.read', async () => ({ value: JSON.stringify({ connected: true, title: 'Song', status: 'PLAYING' }) }))
+  await $.command.run({ command: 'revamp', args: 'status' })   // connected
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' } })
+  await clock.advance(7000)                                    // the ask is shown
+  await clock.advance(60_000)
+  await $.command.run({ command: 'revamp', args: 'status' })   // now.json stale: disconnected
+  await $.tool.call({ tool: 'Bash', input: { command: 'rm -rf build' } }).catch(() => {})
+  expect(events.includes('approval_request')).toBe(true)
+  expect(events.includes('approval_response')).toBe(true)
+})
