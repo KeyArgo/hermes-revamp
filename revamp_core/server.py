@@ -30,7 +30,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import re
 
 from . import proof
-from . import backup, chapters, items, library, lyrics, museum, playback, playlists, radio, sources, store, window
+from . import backup, chapters, diaglog, items, library, lyrics, museum, playback, playlists, radio, sources, store, window
 import base64
 from .config import (data_dir, library_dirs, library_dirs_custom, library_folders,
                      set_library_folders, setting)
@@ -58,6 +58,16 @@ def _stamp_dict() -> Dict[str, Any]:
             logger.warning("revamp: version stamp unreadable", exc_info=True)
     return {"version": "1.0.0", "commit": "", "commit_short": "", "commit_date": "",
             "built_at": "", "dirty": False, "channel": "release", "source": "manifest"}
+
+
+def _version_line() -> str:
+    """The one-line build description for log lines (never a guess, never raises)."""
+    if _stamp is not None:
+        try:
+            return _stamp.describe()
+        except Exception:
+            pass
+    return "v" + VERSION
 
 
 # VERSION is the release this code declares (plugin.yaml), never the "-dev.N" display string:
@@ -707,6 +717,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(
                 200, blob, "application/zip",
                 extra={"Content-Disposition": 'attachment; filename="revamp-backup.zip"'})
+        if path == "/api/diagnostics":
+            # Token-gated by the /api/ boundary above. The latest health sample
+            # (a fresh one before the sampler's first tick) and where the log lives.
+            return self._send_json({"sample": diaglog.latest() or diaglog.sample(),
+                                    "log_file": str(diaglog.log_path())})
         return self._err(404, "unknown route")
 
     # -- API POST / PUT / DELETE -------------------------------------------------
@@ -2102,6 +2117,7 @@ def _shutdown_for_upgrade(srv: ThreadingHTTPServer) -> None:
     global _started, _owned
     owner = "service" if getattr(srv, "revamp_owner", "plugin") == "service" else "plugin"
     port = srv.server_address[1]
+    logger.info("revamp: server stop on port %s (upgrade hand-over)", port)
     time.sleep(0.05)
     srv.shutdown()
     srv.server_close()
@@ -2120,6 +2136,7 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     holds it, log a loud warning (like pixel-office) and return None.
     """
     global _started, _owned
+    diaglog.setup()  # the private rotating log; idempotent and never raises
     port = int(port or setting("port"))
     token = get_token()  # ensure the token file exists before any client reads it
     version = version or VERSION
@@ -2240,6 +2257,7 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     srv.daemon_threads = True
     t = threading.Thread(target=srv.serve_forever, name="revamp-http", daemon=True)
     t.start()
+    diaglog.start_sampler()  # one daemon health-sampler thread per process
     # A desktop window left by the previous server would play alongside Hermes.
     window.reap_orphan()
     # A fresh install (no library index yet) starts from the saved copy instead of
@@ -2259,7 +2277,7 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     # Always reconcile the saved index with the filesystem. Files already read
     # come from the cache, so this is incremental after a normal restart.
     library.scan_async(library_dirs())
-    logger.info("revamp: serving at http://127.0.0.1:%s", port)
+    logger.info("revamp: server start, serving at http://127.0.0.1:%s (%s)", port, _version_line())
     return port
 
 
@@ -2383,7 +2401,7 @@ def main() -> None:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
-        pass
+        logger.info("revamp: server stop on port %s (interrupted)", port)
 
 
 if __name__ == "__main__":

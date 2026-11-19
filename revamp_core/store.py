@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from . import redact
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -315,6 +316,8 @@ def run_locked(fn):
 NOW_FILE_REFRESH = 5.0
 NOW_FILE_STALE = 15.0  # readers' rule, kept here so the two numbers live together
 _now_written: tuple = (None, 0.0)  # (content written, when)
+_now_write_warned = False  # a failing now.json write is logged once, not per beat
+logger = logging.getLogger("revamp.store")
 
 
 def _now_path() -> Path:
@@ -322,7 +325,7 @@ def _now_path() -> Path:
 
 
 def _publish_now(live: Dict[str, Any], remote: bool = False) -> None:
-    global _now_written
+    global _now_written, _now_write_warned
     np = live.get("now_playing") or {}
     pb = live.get("playback") or {}
     # A remote backend's report wins over the last page heartbeat, which may be another track.
@@ -344,7 +347,12 @@ def _publish_now(live: Dict[str, Any], remote: bool = False) -> None:
             fh.write(json.dumps(dict(content, updated=now)))
         os.replace(tmp, path)
     except OSError:
-        pass  # cosmetic: readers fall back to asking the server
+        # Cosmetic: readers fall back to asking the server. Say so once (a full
+        # disk would otherwise stay invisible), never once per heartbeat.
+        if not _now_write_warned:
+            _now_write_warned = True
+            logger.warning("revamp: could not write now.json; readers fall back to the server",
+                           exc_info=True)
 
 
 def heartbeat(now_playing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
