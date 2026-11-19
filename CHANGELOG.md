@@ -15,6 +15,14 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 - Albums and artists now have the song menu. Right-click an album in the Albums view or an artist in the Artists view — or long-press, use the new ⋯ button, Shift+F10 or the context-menu key — for Play, Play next, Add to queue and Add to playlist ▸ (your saved playlists, or a new one). It acts on every track of the album or artist, in disc/track order, and confirms with a toast like the song menu does ("Added 12 tracks to “Road trip”"). The Hermes mini player's Music tab gained the same Albums and Artists views, with the same menu, and can create a playlist from it.
 - REVamp now mentions its two sibling plugins where they genuinely help, and nowhere else. Settings shows one quiet line about Aura — but only when you have turned the visualiser off — and the empty library, the empty playlist screen and the library's ⋯ menu can point at Music Studio, whose finished songs REVamp can add to your library with one click (only when that folder exists). Both suggestions hide for good on "Not now", and the only thing their buttons do is open that plugin's page in Capabilities → Plugins.
 - **If your REVamp server is older than this release:** sessions fall back to asking it once a minute until it is updated.
+- The pop-out window's top strip no longer competes with Hermes for the drag: Hermes's own floating-pane header moves the card, the strip keeps its buttons (full player, dock, close), and REVamp no longer reaches into the app's markup or adds a listener on the whole window.
+- Links in the player now work inside Hermes: "Open GitHub issue", a station's "Open website" and the skin museum credit used to do nothing in the sandboxed player frame. They are handed to Hermes, which opens your browser; only http and https links are passed on.
+- The "Welcome back" restore offer appears again inside Hermes. Reading the browser's per-tab storage failed in the sandboxed frame, so the offer never showed; it now falls back to remembering the choice for the page load.
+- Bug-report buttons say plainly when the host has no clipboard or link-opening support, instead of failing with an error.
+- The docked player is measured on REVamp's own holder, which fills the space the pane gives it, rather than on a Hermes container around it. Scaling behaves as before.
+- The data folder, the lease folder and backups follow the standard XDG locations (`XDG_STATE_HOME`, `XDG_DATA_HOME`) and `%LOCALAPPDATA%` on Windows. When those variables are not set, every path stays exactly where it was, so nothing moves.
+- The player server and `revampctl` resolve the profile folder through Hermes's own resolver, so switching profiles is followed instead of reading the gateway's home.
+- Housekeeping: the docked-pane switch lost its "research spike" name, and the diagnostics report "unknown" for the Hermes version when the host does not provide one.
 
 ## 1.0.0 — next catalog version
 

@@ -3,6 +3,15 @@
 import { confirmDialog, openModal, toast } from "./modal.js";
 
 const OFFERED_KEY = "revamp.restoreOffered";
+// Inside Hermes the page is a sandboxed iframe (no sessionStorage): touching it throws.
+// Fall back to an in-memory flag so the offer still appears once per page load.
+let offeredInMemory = false;
+export function restoreOffered() {
+  try { return Boolean(sessionStorage.getItem(OFFERED_KEY)); } catch { return offeredInMemory; }
+}
+export function markRestoreOffered() {
+  try { sessionStorage.setItem(OFFERED_KEY, "1"); } catch { offeredInMemory = true; }
+}
 
 /** One row per backup: when it was taken, how many files, restore button. */
 function backupRow(manifest, onRestore) {
@@ -218,8 +227,8 @@ export async function maybeOfferRestore(api) {
   // The newest backup that holds real data: a fresh install's own (empty) first snapshot is skipped.
   const best = (data?.backups || []).find((b) => !b.empty);
   if (!data?.data_empty || !best) return;
-  if (sessionStorage.getItem(OFFERED_KEY)) return;
-  sessionStorage.setItem(OFFERED_KEY, "1");
+  if (restoreOffered()) return;
+  markRestoreOffered();
   const when = new Date(best.created * 1000).toLocaleString();
   const body = document.createElement("div");
   const p = document.createElement("p");

@@ -2,6 +2,7 @@
 import { buildBugReportUrl, collectWebBugEnv, formatBugReportBody } from "../bug-report.js";
 import { getHostPlayerPlace } from "../host-place.js";
 import { getThemeSnapshot } from "../theme.js";
+import { openExternal } from "../open-external.js";
 import { toast } from "./modal.js";
 import { mountBackups } from "./backups.js";
 import { AURA_LINE, mountHint } from "./siblings.js";
@@ -122,7 +123,7 @@ export async function render(root, api) {
     });
   openBug.addEventListener("click", async () => {
     const env = await envForBug();
-    window.open(buildBugReportUrl(env), "_blank", "noopener,noreferrer");
+    openExternal(buildBugReportUrl(env));
   });
   copyBug.addEventListener("click", async () => {
     const env = await envForBug();

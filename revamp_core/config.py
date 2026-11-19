@@ -62,7 +62,7 @@ def data_dir() -> Path:
     """Resolve (and create) the Revamp data dir: $REVAMP_HOME, else <profile home>/revamp."""
     raw = os.environ.get("REVAMP_HOME")
     if not raw:
-        hermes = str(_PINNED_HOME) if _PINNED_HOME is not None else os.environ.get("HERMES_HOME")
+        hermes = str(_PINNED_HOME) if _PINNED_HOME is not None else current_hermes_home()
         raw = os.path.join(hermes, "revamp") if hermes else "~/.hermes/revamp"
     d = Path(raw).expanduser()
     try:

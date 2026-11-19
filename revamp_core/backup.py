@@ -3,7 +3,8 @@
 A Hermes reinstall, a deleted profile or a bad migration must never be able to
 take the user's likes, queue, resume points, settings, radio favorites and
 playlists with it. ``snapshot()`` copies the small state files into
-``$REVAMP_BACKUP_DIR`` (default ``~/.local/share/revamp/backups/<profile>-<hash8>``)
+``$REVAMP_BACKUP_DIR`` (default ``$XDG_DATA_HOME/revamp/backups/<profile>-<hash8>`` on
+POSIX, ``%LOCALAPPDATA%/revamp/backups/<profile>-<hash8>`` on Windows)
 as immutable, content-deduplicated dirs with a ``manifest.json``; ``restore``
 and ``export_zip``/``import_zip`` put them back. Stdlib only.
 """
@@ -78,7 +79,9 @@ def _sha256(path: Path) -> str:
 
 def backup_root(data_dir) -> Path:
     """The backup root for *data_dir*: ``$REVAMP_BACKUP_DIR`` if set, else
-    ``~/.local/share/revamp/backups/<parent-name>-<hash8 of the abs path>``. mode 0o700."""
+    ``$XDG_DATA_HOME/revamp/backups/<parent-name>-<hash8 of the abs path>`` on POSIX
+    (``~/.local/share`` when the variable is unset) or
+    ``%LOCALAPPDATA%/revamp/backups/<...>`` on Windows. mode 0o700."""
     env = os.environ.get("REVAMP_BACKUP_DIR")
     if env:
         root = Path(env).expanduser()
@@ -86,7 +89,12 @@ def backup_root(data_dir) -> Path:
         data_dir = Path(data_dir).expanduser().resolve()
         name = data_dir.parent.name or "data"
         digest = hashlib.sha256(str(data_dir).encode("utf-8")).hexdigest()[:8]
-        root = Path("~/.local/share/revamp/backups").expanduser() / f"{name}-{digest}"
+        if os.name == "nt":
+            base = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+        else:
+            xdg = os.environ.get("XDG_DATA_HOME")
+            base = Path(xdg) if xdg else Path("~/.local/share").expanduser()
+        root = base / "revamp" / "backups" / f"{name}-{digest}"
     try:
         root.mkdir(parents=True, exist_ok=True)
         os.chmod(root, 0o700)

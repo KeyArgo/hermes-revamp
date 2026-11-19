@@ -4,7 +4,7 @@ REVamp's player server is local-only and deliberately small: it is a stdlib HTTP
 
 ## Local API and events
 
-`GET /api/health` is the only unauthenticated API endpoint. All other `/api/*` routes require `X-Revamp-Token: <token>` (or `?t=` for media/page URLs). The token is `<REVAMP_HOME>/token`, or `<HERMES_HOME>/revamp/token`, or `~/.hermes/revamp/token`. Do not pass it to a model, browser extension, or remote service.
+`GET /api/health` is the only unauthenticated API endpoint. All other `/api/*` routes require `X-Revamp-Token: <token>` (or `?t=` for media/page URLs). The token is `<REVAMP_HOME>/token`, or `<profile home>/revamp/token` (the active Hermes profile, falling back to `$HERMES_HOME`), or `~/.hermes/revamp/token`. Do not pass it to a model, browser extension, or remote service.
 
 Useful endpoints include `GET /api/state`, `GET /api/playback`, `GET /api/library/tracks?q=`, `GET/POST/PUT/DELETE /api/playlists`, `GET /api/radio/presets`, `POST /api/command`, and `POST /api/agent_event`. `POST /api/command` accepts playback actions including `play`, `pause`, `next`, `prev`, `seek`, `volume`, `shuffle`, `repeat`, and `load`. Use `GET /api/playback` to discover the active backend and its capabilities first.
 

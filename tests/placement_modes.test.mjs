@@ -46,7 +46,7 @@ test("hiding Frame unregisters its pane so Hermes has no empty container", () =>
   const clear = hidden.indexOf("disposeDockedPlayerPane = null");
   const hide = hidden.indexOf("host.hidePane(paneId)");
   assert.ok(dispose >= 0 && clear > dispose && hide > clear);
-  assert.match(body, /if \(!disposeDockedPlayerPane && PANE_SPIKE && ctxRef\) disposeDockedPlayerPane = ctxRef\.register/);
+  assert.match(body, /if \(!disposeDockedPlayerPane && DOCKED_PANE && ctxRef\) disposeDockedPlayerPane = ctxRef\.register/);
 });
 
 test("Frame uses Hermes's normal closable-tab chrome and can be restored", () => {

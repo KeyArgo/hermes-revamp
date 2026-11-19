@@ -1845,7 +1845,9 @@ def _lease_dir() -> Path:
     elif os.name == "nt":
         d = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "revamp" / "run"
     else:
-        d = Path.home() / ".local" / "state" / "revamp" / "run"
+        state = os.environ.get("XDG_STATE_HOME")
+        base = Path(state) if state else Path.home() / ".local" / "state"
+        d = base / "revamp" / "run"
     try:
         d.mkdir(parents=True, exist_ok=True)
         if os.name == "posix":

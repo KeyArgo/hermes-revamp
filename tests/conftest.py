@@ -323,6 +323,10 @@ def _private_home(tmp_path, monkeypatch):
     home.mkdir(exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))  # Windows: Path.home() reads this, not HOME
+    # XDG dirs belong to the person running the tests: clear them so a real
+    # XDG_STATE_HOME/XDG_DATA_HOME cannot steer where a test writes or reads.
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
 
 
 @pytest.fixture(autouse=True)

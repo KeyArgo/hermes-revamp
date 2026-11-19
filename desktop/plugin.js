@@ -70,10 +70,11 @@ const ROUTE = '/revamp'
 // winamp overlay shows only the part that holds the classic windows.
 const DOCK_W = 900
 const DOCK_H = 1000
-// Research spike only: prove a keep-alive Hermes pane can be the classic
-// player's home. Leave this true for the manual test; remove the registration
-// (or set false) before shipping a different pane design.
-const PANE_SPIKE = true
+// Whether the docked player gets its own keep-alive Hermes pane: the pane is
+// registered when the docked location is chosen and unregistered when the
+// player is elsewhere. Off keeps it in the status bar's hidden dock instead
+// of taking a pane column.
+const DOCKED_PANE = true
 // The bundled Radio plugin's cross-window channel: it stops itself when any
 // other sender announces {type: 'play'}, and announces its own plays there.
 const RADIO_BUS = 'hermes:radio:playback'
@@ -585,10 +586,7 @@ async function collectPluginBugEnv() {
     (storedTheme && typeof storedTheme === 'object' && (storedTheme.look || storedTheme.theme))
       ? String(storedTheme.look || storedTheme.theme)
       : 'unknown'
-  const hermesVersion =
-    typeof host?.appVersion === 'string' ? host.appVersion
-      : typeof globalThis.__HERMES_APP_VERSION__ === 'string' ? globalThis.__HERMES_APP_VERSION__
-        : undefined
+  const hermesVersion = typeof host?.appVersion === 'string' ? host.appVersion : 'unknown'
   return {
     revampVersion,
     revampBuild,
@@ -616,9 +614,15 @@ async function openBugReport(copyOnly = false) {
   if (!ctxRef) return
   const env = await collectPluginBugEnv()
   if (copyOnly) {
+    if (typeof ctxRef.os?.writeClipboard !== 'function') {
+      return notifyError('Copying to the clipboard is not available in this host.')
+    }
     await ctxRef.os.writeClipboard(formatBugReportBody(env))
     host.notify({ kind: 'success', message: EN.bugCopied })
   } else {
+    if (typeof ctxRef.os?.openExternal !== 'function') {
+      return notifyError('Opening a link is not available in this host.')
+    }
     await ctxRef.os.openExternal(buildBugReportUrl(env))
   }
 }
@@ -740,7 +744,7 @@ function setFrameHidden(hidden) {
     disposeDockedPlayerPane = null
     if (typeof host.hidePane === 'function') host.hidePane(paneId)
   } else {
-    if (!disposeDockedPlayerPane && PANE_SPIKE && ctxRef) disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane($dockedPlayerSide.get()))
+    if (!disposeDockedPlayerPane && DOCKED_PANE && ctxRef) disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane($dockedPlayerSide.get()))
     try { host.revealPane?.(paneId) } catch { /* older hosts */ }
   }
   engine?.place()
@@ -777,7 +781,7 @@ function applyDockedPlayerSide(side) {
     ctxRef.storage.set('dockedPlayerSide', side)
     $dockedPlayerSide.set(side)
   }
-  if (!changed || !PANE_SPIKE) return
+  if (!changed || !DOCKED_PANE) return
   disposeDockedPlayerPane?.()
   if ($frameHidden.get()) disposeDockedPlayerPane = null
   else disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane(side))
@@ -1109,7 +1113,12 @@ function createEngine(ctx, url, bridgeKey = '') {
 
   const overlay = buildOverlay(ctx)
   let pageHost = null
+  // The docked pane: `paneArea` is REVamp's own holder inside the pane body (it fills the
+  // space the host gave it); `paneHost` is the clip box REVamp creates inside that holder
+  // and sizes to the classic windows. Nothing outside REVamp's own nodes is measured.
+  let paneArea = null
   let paneHost = null
+  let paneClip = null
   let floatHost = null
   let box = { x: 0, y: 0, w: 275, h: 348 }
 
@@ -1156,7 +1165,9 @@ function createEngine(ctx, url, bridgeKey = '') {
   // The docked pane's clip box hugs the classic windows exactly (any skin/size).
   // Fractional scale fills the frame on the limiting side. Whole numbers are opt-in.
   function paneScale() {
-    const area = paneHost?.parentElement
+    // Measured on REVamp's own holder, which fills the space the pane gave it: no host
+    // container is queried.
+    const area = paneArea
     // Scale from the player windows only (bw/bh), so an open menu or a one-off wide window
     // never changes the zoom; the clip box still grows to hold the menu.
     const bw = box.bw || box.w, bh = box.bh || box.h
@@ -1310,6 +1321,17 @@ function createEngine(ctx, url, bridgeKey = '') {
       }
       return
     }
+    // A page's "open in browser" links: the iframe has no allow-popups, so
+    // window.open does nothing there. Only REVamp's own frames may ask, and
+    // only http(s) URLs leave the machine.
+    if (fromPage && e.data.type === 'revamp:open-external') {
+      const u = e.data.url
+      if (typeof u === 'string' && /^https?:\/\//i.test(u)) {
+        if (typeof ctxRef?.os?.openExternal === 'function') ctxRef.os.openExternal(u)
+        else notifyError('Opening a link is not available in this host.')
+      }
+      return
+    }
     // The server refused a page's key (it restarted with a new one). Its notice may sit outside
     // the visible clip of the Frame or overlay, so the host says it, once: the library frame
     // (no audio) reloads by itself; the player waits for Recover player, so music never stops
@@ -1414,6 +1436,10 @@ function createEngine(ctx, url, bridgeKey = '') {
     if (bridge === bridgeApi) bridge = null
     paneWatch?.disconnect()
     paneWatch = null
+    paneArea = null
+    paneHost = null
+    paneClip?.remove()
+    paneClip = null
     if (scaleTimer) { clearTimeout(scaleTimer); scaleTimer = 0 }
     refitPane = () => {}
     floatHost = null
@@ -1438,16 +1464,32 @@ function createEngine(ctx, url, bridgeKey = '') {
     hidePage(el) { if (pageHost === el) { pageHost = null; $pageBorrow.set(true); place() } },
     borrowPage() { $pageBorrow.set(true); place() },
     showPane(el) {
-      paneHost = el
+      paneArea = el
       scaleSeen = false
       paneWatch?.disconnect()
-      if (typeof ResizeObserver !== 'undefined' && el.parentElement) {
+      // The clip box is REVamp's own child of the holder: created once, moved with it.
+      if (!paneClip) {
+        paneClip = document.createElement('div')
+        paneClip.setAttribute('aria-hidden', 'true')
+        paneClip.style.cssText = 'position:relative;overflow:hidden;flex:none;margin:6px auto 0'
+      }
+      el.append(paneClip)
+      paneHost = paneClip
+      if (typeof ResizeObserver !== 'undefined') {
         paneWatch = new ResizeObserver(() => { if ($where.get() === 'pane') fitPane() })
-        paneWatch.observe(el.parentElement)
+        paneWatch.observe(el)
       }
       place()
     },
-    hidePane(el) { if (paneHost === el) { paneWatch?.disconnect(); paneWatch = null; paneHost = null; place() } },
+    hidePane(el) {
+      if (paneArea !== el) return
+      paneWatch?.disconnect()
+      paneWatch = null
+      paneArea = null
+      paneHost = null
+      place()
+      paneClip?.remove()
+    },
     // The floating pane's body adopts the overlay (plain DOM, not React, so
     // the iframe survives every re-render). hideFloat runs as a layout-effect
     // cleanup, while the pane is still connected: place() moves the iframe
@@ -1493,13 +1535,13 @@ function createEngine(ctx, url, bridgeKey = '') {
   }
 }
 
-// The floating Winamp window: a thin grip bar (full player, dock, close) over
+// The floating Winamp window: a thin strip (full player, dock, close) over
 // a clip box sized to the classic windows. Plain DOM: it lives outside the
 // React tree so it survives every navigation. It is mounted INSIDE a Hermes
 // floating pane (FloatPane adopts it) — never on the host page's body. The
-// host's pane header drags the card and remembers where it was put; pressing
-// the grip hands the pointer to that header so the strip still drags it too.
-// Colors are theme tokens.
+// card belongs to Hermes: the host's own pane header drags it and remembers
+// where it was put, so the strip is a plain label row with no drag handling
+// of its own. Colors are theme tokens.
 function buildOverlay(ctx) {
   const root = document.createElement('div')
   root.setAttribute('role', 'dialog')
@@ -1512,7 +1554,7 @@ function buildOverlay(ctx) {
 
   const grip = document.createElement('div')
   grip.style.cssText =
-    'height:16px;display:flex;align-items:center;gap:4px;padding:0 4px;cursor:grab;user-select:none;' +
+    'height:16px;display:flex;align-items:center;gap:4px;padding:0 4px;user-select:none;' +
     'font:10px/16px var(--font-sans, system-ui);color:var(--ui-text-quaternary);background:var(--ui-surface-secondary, transparent)'
   const label = document.createElement('span')
   label.textContent = '♪ REVamp'
@@ -1534,29 +1576,12 @@ function buildOverlay(ctx) {
     mkBtn('✕', EN.popIn, () => setPlayerLocation('mini'))
   )
 
-  // Drag by the grip: the card belongs to Hermes, so its header is the drag
-  // handle. Replaying the press on that header makes the host capture the
-  // real pointer; every following move/up then goes to it natively, and the
-  // host persists the drop position. No per-move forwarding, no second
-  // position store.
-  const paneHeader = () => root.closest('[data-floating-pane]')?.querySelector('header') ?? null
-  ctx.addEventListener(grip, 'pointerdown', e => {
-    // A press on the strip's buttons (⤢ ⇲ ✕) is a click, not a drag.
-    if (e.button !== 0 || e.target?.closest?.('button')) return
-    const header = paneHeader()
-    if (!header) return
-    try {
-      header.dispatchEvent(new PointerEvent('pointerdown', {
-        pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY,
-        button: 0, buttons: 1, bubbles: true, cancelable: true
-      }))
-      grip.style.cursor = 'grabbing'
-      window.addEventListener('pointerup', () => { grip.style.cursor = 'grab' }, { once: true, capture: true })
-    } catch { /* older host: the pane header itself still drags the card */ }
-  })
+  // The card belongs to Hermes: its pane header is the drag handle, so the
+  // strip only holds the label and the buttons. No host markup is queried and
+  // no synthetic pointer event is dispatched.
   // The classic title bars inside the player stream their drags here. Only
-  // the host can move its floating card now, so these are heard but not
-  // acted on: the grip and the pane header drag it instead.
+  // the host can move its floating card, so these are heard but not acted on:
+  // the pane header drags it instead.
   const dragFromPage = () => {}
 
   const clip = document.createElement('div')
@@ -3230,7 +3255,7 @@ function ClassicPaneSpike() {
       jsxs('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 },
         children: [
           jsx('div', { ref: hostRef, style: playerHere
-            ? { position: 'relative', overflow: 'hidden', width: '275px', height: '348px', flex: 'none', margin: '6px auto 0' }
+            ? { position: 'relative', overflow: 'hidden', width: '100%', height: '100%', flex: 'none' }
             : { display: 'none' } }),
           playerHere ? null : jsxs('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 12 },
             children: [
@@ -3616,6 +3641,6 @@ export default {
         }
       ])
     ])
-    if (PANE_SPIKE && !$frameHidden.get()) disposeDockedPlayerPane = ctx.register(dockedPlayerPane(dockedSide))
+    if (DOCKED_PANE && !$frameHidden.get()) disposeDockedPlayerPane = ctx.register(dockedPlayerPane(dockedSide))
   }
 }
