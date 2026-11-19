@@ -4,6 +4,7 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- Nothing visible changes: REVamp now lives only inside Hermes's own panes. The hidden player park and the pop-out window are no longer attached to the page itself — the pop-out is a normal Hermes floating pane you drag by its header, and Hermes remembers where you put it.
 - The Hermes status bar now wears Aura-style pills: one compact now-playing pill (play state + title, ellipsised) and round pill buttons for previous / play-pause / next, with the same height, radius, border and focus ring in light and dark themes. The filter chips in the chooser match them.
 - MilkDrop is now easy to turn off: a labelled "MilkDrop visualizer" On/Off switch at the top of Settings → REVamp (with a note that off saves CPU/GPU), and a "Turn off" pill on the visualizer itself. Both use the one saved choice the player already keeps, and turning it off really closes the renderer — no hidden canvas keeps drawing.
 - REVamp no longer uses CPU in the terminal plugin while you aren't playing music. Each terminal session used to start a small Python program every 4 seconds to check what was playing; with a dozen sessions open that took about two thirds of a CPU core all the time. The REVamp server now keeps a tiny `now.json` file up to date while a player is open, and sessions just read it. Agent activity is sent only while a player is open, to feed the ticker.
