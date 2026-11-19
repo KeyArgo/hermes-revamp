@@ -182,7 +182,8 @@ REVamp makes private automatic backups every 10 minutes under `~/.local/share/re
 - Reopen Hermes after a plugin update. **REVamp: Reload Player** reloads the player view, its embedded iframe, not the installed plugin or an update.
 - Set `REVAMP_FLOAT_BROWSER` to a Chrome or Chromium executable when pop-out browser discovery fails.
 - Install FFmpeg for `ffprobe` if audiobook chapters are missing. Durations and basic tags are read without it.
-- For a slow leak or a stalled server, read `~/.hermes/revamp/logs/revamp.log` (or `<REVAMP_HOME>/logs/revamp.log`). It is private to you, rotates at 1 MB with three backups, and writes one health line a minute with memory, threads, open files, SSE clients and uptime. It warns when memory jumps, threads pass 200 or open files pass 1000. Set `REVAMP_LOG_LEVEL` to change the level. The latest sample and the log path are also at the token-gated `GET /api/diagnostics`.
+- For a slow leak, a stalled server or a file that will not scan, read `~/.hermes/revamp/logs/revamp.log` (or `<REVAMP_HOME>/logs/revamp.log`). It is private to you, rotates at 1 MB with three backups, and writes one health line a minute with memory, threads, open files, SSE clients and uptime. It warns when memory jumps, threads pass 200 or open files pass 1000. Set `REVAMP_LOG_LEVEL=DEBUG` to see per-file problems, or `REVAMP_TRACEMALLOC=1` to add memory allocation tracking to the warnings. `GET /api/diagnostics` needs the REVamp token and shows the latest health line and the log path.
+- Turning the MilkDrop visualizer off saves CPU and GPU: use the **Visualizer** button in the player or the switch in Settings.
 
 ## Limits
 

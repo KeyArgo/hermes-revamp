@@ -14,10 +14,13 @@ The data dir is ``$REVAMP_HOME`` else ``$HERMES_HOME/revamp`` else
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
 from typing import Any, Optional
+
+log = logging.getLogger("revamp")
 
 DEFAULT_PORT = 8114
 
@@ -44,6 +47,7 @@ def current_hermes_home() -> Optional[str]:
         from hermes_constants import get_hermes_home
         return str(get_hermes_home())
     except Exception:
+        log.debug("could not resolve Hermes home", exc_info=True)
         return os.environ.get("HERMES_HOME")
 
 
@@ -75,6 +79,7 @@ def _hermes_setting(key: str) -> Optional[Any]:
 
         return cfg_get(load_config(), "plugins", "entries", "revamp", key)
     except Exception:
+        log.debug("could not read Hermes setting: %s", key, exc_info=True)
         return None
 
 

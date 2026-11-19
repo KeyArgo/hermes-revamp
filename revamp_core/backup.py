@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+log = logging.getLogger("revamp")
 
 #: Files under the data dir that get backed up (relpaths). ``library.json`` is
 #: rebuildable and big, ``token`` is a secret, ``skins/`` is cache — none of
@@ -591,6 +592,7 @@ def start_thread(data_dir, *, interval=600) -> threading.Thread:
                 prune(root)
                 save_index_copy(data_dir, root=root)
             except Exception:
+                log.warning("backup cycle failed", exc_info=True)
                 pass
             time.sleep(interval)
 

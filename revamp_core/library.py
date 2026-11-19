@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import threading
@@ -22,6 +23,8 @@ from typing import Any, Dict, List, Optional
 from .config import data_dir, library_folders
 from . import store
 from . import tags as tags_mod
+
+log = logging.getLogger("revamp")
 
 INDEX_NAME = "library.json"
 
@@ -285,6 +288,7 @@ def _scan(roots: Optional[List[str]], gen: int) -> int:
         try:
             entry = _entry_for(path, cached_all.get(track_id_for(path)))
         except Exception:  # one unreadable file must not sink the whole scan
+            log.debug("could not read one library file: %s", path, exc_info=True)
             return None
         if entry:
             entry = dict(entry, root=root)  # never mutate a cached entry in place
@@ -359,6 +363,7 @@ def scan_async(roots: Optional[List[str]] = None) -> None:
         try:
             scan_sync(roots, gen)
         except Exception:
+            log.warning("library scan failed", exc_info=True)
             pass
 
     try:

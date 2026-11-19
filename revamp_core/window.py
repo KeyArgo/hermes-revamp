@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 import shutil
@@ -28,6 +29,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import store
 from .config import data_dir
+
+log = logging.getLogger("revamp")
 
 BROWSERS = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "brave-browser",
             "microsoft-edge", "microsoft-edge-stable", "chrome", "msedge", "brave")
@@ -145,6 +148,7 @@ def _handoff_from_live() -> None:
             "ts": time.time(), "for": "hermes",
         }})
     except Exception:
+        log.debug("could not record window handoff", exc_info=True)
         pass
 
 

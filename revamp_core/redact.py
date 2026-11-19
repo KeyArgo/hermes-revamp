@@ -6,7 +6,10 @@ and scroll past on the ticker. The server applies this to every agent event, wha
 """
 from __future__ import annotations
 
+import logging
 import re
+
+log = logging.getLogger("revamp")
 
 _KEYWORD = re.compile(
     r"((?:authorization|api[-_]?key|api[-_]?secret|access[-_]?key|client[-_]?secret|token|secret"
@@ -32,6 +35,7 @@ def mask(text: str) -> str:
         text = _USER_FLAG.sub(lambda m: f"{m.group(1)}***", text)
         return _URL_AUTH.sub(lambda m: f"{m.group(1)}***@", text)
     except Exception:
+        log.debug("could not redact event text", exc_info=True)
         return text
 
 

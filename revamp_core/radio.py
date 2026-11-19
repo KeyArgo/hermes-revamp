@@ -12,6 +12,7 @@ import hashlib
 import http.client
 import ipaddress
 import json
+import logging
 import os
 import re
 import socket
@@ -24,6 +25,8 @@ import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import data_dir
+
+log = logging.getLogger("revamp")
 
 UA = "Revamp/0.1"
 RADIO_BROWSER_SEARCH = "https://all.api.radio-browser.info/json/stations/search"
@@ -1167,6 +1170,7 @@ def resolve_playlist_url(url: str) -> str:
             geturl = getattr(resp, "geturl", None)
             base = (geturl() if callable(geturl) else None) or url
     except Exception:
+        log.debug("could not resolve playlist URL", exc_info=True)
         return url
     # pls: File1=... ; m3u: first non-comment line
     import re

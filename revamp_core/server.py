@@ -36,6 +36,7 @@ from .config import (current_hermes_home, data_dir, library_dirs, library_dirs_c
                      library_folders, set_library_folders, setting)
 
 logger = logging.getLogger("revamp.server")
+log = logging.getLogger("revamp")
 
 # One source for the running build: BUILD_INFO.json (installed) -> live git (checkout) ->
 # plugin.yaml (release target). A number typed into this file would drift from the manifest.
@@ -66,6 +67,7 @@ def _version_line() -> str:
         try:
             return _stamp.describe()
         except Exception:
+            log.debug("could not describe version", exc_info=True)
             pass
     return "v" + VERSION
 
@@ -478,6 +480,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self._err(500, "internal error")
             except Exception:
+                log.warning("could not send error response", exc_info=True)
                 pass
 
     def _route_dispatch(self, method: str) -> None:
@@ -1200,6 +1203,7 @@ class Handler(BaseHTTPRequestHandler):
             code = exc.code if exc.code in (401, 403, 404, 416) else 502
             return self._err(code, f"upstream said {exc.code}")
         except Exception as exc:
+            log.warning("upstream request failed", exc_info=True)
             return self._err(502, f"upstream unreachable: {exc}")
         try:
             self.send_response(upstream.status)
@@ -1227,6 +1231,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 upstream.close()
             except Exception:
+                log.debug("could not close upstream response", exc_info=True)
                 pass
 
     # -- GET helpers -----------------------------------------------------------
@@ -1262,6 +1267,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             upstream = radio.open_stream(url, icy=False)
         except Exception as exc:
+            log.warning("stream proxy failed", exc_info=True)
             return self._err(502, f"stream unreachable: {exc}")
         ctype = upstream.headers.get("Content-Type") or "audio/mpeg"
         try:
@@ -1295,6 +1301,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 upstream.close()
             except Exception:
+                log.debug("could not close upstream stream", exc_info=True)
                 pass
 
     def _sse(self) -> None:
@@ -1778,6 +1785,7 @@ def _probe_health(port: int, timeout: float = 2.0) -> Optional[dict]:
             payload = json.loads(resp.read(4096).decode("utf-8-sig"))
             return payload if isinstance(payload, dict) and payload.get("app") == "revamp" else None
     except Exception:
+        log.debug("health probe failed", exc_info=True)
         return None
 
 
@@ -2131,6 +2139,7 @@ def _request_upgrade_shutdown(port: int, token: str) -> bool:
         with proof.local_opener().open(req, timeout=2.0) as resp:
             return resp.status == 200
     except Exception:
+        log.debug("shutdown probe failed", exc_info=True)
         return False
 
 
@@ -2347,6 +2356,7 @@ def _quiet_for_restart() -> bool:
         playing = _is_playing(store.get_state().get("live") or {},
                               heard_recently=store.heartbeat_age() < PLAYING_GRACE)
     except Exception:
+        log.debug("quiet check failed", exc_info=True)
         return False  # can't tell: count it as busy
     return not playing and not window.is_open()
 

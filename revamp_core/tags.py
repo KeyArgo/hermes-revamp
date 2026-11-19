@@ -10,6 +10,7 @@ never the whole file, and a bad file cannot fail a scan.
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import os
 import shutil
@@ -18,6 +19,8 @@ import struct
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+
+log = logging.getLogger("revamp")
 
 try:  # optional, per SPEC
     import mutagen  # type: ignore
@@ -152,6 +155,7 @@ def _tags_mutagen(path: str) -> Dict[str, Any]:
     try:
         f = mutagen.File(path, easy=True)
     except Exception:
+        log.debug("could not read tags: %s", path, exc_info=True)
         return {}
     if f is None:
         return {}
@@ -204,13 +208,16 @@ def has_art(path: str) -> bool:
                         if tags.get(key):
                             return True
                     except Exception:
+                        log.debug("could not check cover art: %s", path, exc_info=True)
                         pass
         except Exception:
+            log.debug("could not check cover art: %s", path, exc_info=True)
             pass
     try:
         if _stdlib_has_art(path):
             return True
     except Exception:
+        log.debug("could not check cover art: %s", path, exc_info=True)
         pass
     folder = Path(path).parent
     for name in ("cover", "folder", "front"):
@@ -242,12 +249,14 @@ def read_cover(path: str) -> Optional[bytes]:
                         if isinstance(data, (bytes, bytearray)):
                             return bytes(data)
         except Exception:
+            log.debug("could not read cover: %s", path, exc_info=True)
             pass
     try:
         embedded = _stdlib_cover(path)
         if embedded:
             return embedded
     except Exception:
+        log.debug("could not read cover: %s", path, exc_info=True)
         pass
     folder = Path(path).parent
     for name in ("cover", "folder", "front"):
@@ -307,6 +316,7 @@ def probe(path: str) -> Dict[str, Any]:
         if got:
             meta.update(got)
     except Exception:
+        log.debug("could not read tags: %s", path, exc_info=True)
         pass
     if not _metadata_present(meta):
         try:
@@ -317,6 +327,7 @@ def probe(path: str) -> Dict[str, Any]:
                 if got:
                     meta.update(got)
         except Exception:
+            log.debug("could not probe tags: %s", path, exc_info=True)
             pass
     if not _metadata_present(meta):
         got = _probe_stdlib(path)
@@ -464,6 +475,7 @@ def _decode_id3_string(raw: bytes) -> str:
         else:
             text = data.split(b"\x00", 1)[0].decode("latin-1", "replace")
     except Exception:
+        log.debug("could not decode tag text", exc_info=True)
         return ""
     return text.split("\x00", 1)[0].strip()
 
@@ -1063,6 +1075,7 @@ def _mp4_walk(f, end: int, meta: Dict[str, Any], want_image: bool, depth: int = 
                 if found and art is None:
                     art = found
         except Exception:
+            log.debug("could not walk MP4 box", exc_info=True)
             pass
         f.seek(box_end)
     return art
@@ -1139,6 +1152,7 @@ def _read_container(path: str, want_image: bool) -> Tuple[Dict[str, Any], Option
             try:
                 meta, art = parser(fh, want_image)
             except Exception:
+                log.debug("could not parse media container: %s", path, exc_info=True)
                 return {}, None
     except OSError:
         return {}, None
@@ -1152,6 +1166,7 @@ def _probe_stdlib(path: str) -> Dict[str, Any]:
     try:
         meta, _art = _read_container(path, False)
     except Exception:
+        log.debug("could not probe tags: %s", path, exc_info=True)
         return {}
     return {k: v for k, v in meta.items() if k in _META_KEYS and v is not None}
 
@@ -1160,6 +1175,7 @@ def _stdlib_has_art(path: str) -> bool:
     try:
         meta, _art = _read_container(path, False)
     except Exception:
+        log.debug("could not check cover art: %s", path, exc_info=True)
         return False
     return bool(meta.get("_has_art"))
 
@@ -1168,5 +1184,6 @@ def _stdlib_cover(path: str) -> Optional[bytes]:
     try:
         _meta, art = _read_container(path, True)
     except Exception:
+        log.debug("could not read cover: %s", path, exc_info=True)
         return None
     return bytes(art) if art else None
