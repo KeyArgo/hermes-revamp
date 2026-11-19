@@ -39,6 +39,7 @@ export async function render(root, api, kind = "music") {
   let selected = new Set();
   let currentAlbum = null;
   let loadMoreObserver = null;
+  let loadMoreRetry = null; // set while a "Load more" marker is on screen: a failed load re-arms it
 
   root.innerHTML = "";
 
@@ -148,6 +149,12 @@ export async function render(root, api, kind = "music") {
     const generation = ++tracksGeneration;
     const params = new URLSearchParams({ limit: "200", offset: String(requestOffset), kind: apiKind });
     if (requestQuery) params.set("q", requestQuery);
+    // An open album pages through its own tracks, not the whole library.
+    if (currentAlbum) {
+      params.set("album", currentAlbum.album || "");
+      params.set("artist", currentAlbum.artist || "");
+      params.set("album_artist", currentAlbum.artist || "Unknown Artist");
+    }
     statusEl.innerHTML = `<span class="spinner"></span>`;
     try {
       const res = await api(`/api/library/tracks?${params}`);
@@ -163,8 +170,10 @@ export async function render(root, api, kind = "music") {
     } catch (e) {
       if (generation !== tracksGeneration) return;
       if (requestOffset > 0) {
-        // A failed "load more" keeps the rows already shown; the button can try again.
+        // A failed "load more" keeps the rows already shown; the button (and the
+        // observer) can try again instead of staying switched off for good.
         statusEl.textContent = `${tracks.length} / ${total} (couldn't load more)`;
+        loadMoreRetry?.();
         return;
       }
       listElEmpty(listEl, e.message);
@@ -235,6 +244,7 @@ export async function render(root, api, kind = "music") {
   function renderTracks() {
     loadMoreObserver?.disconnect();
     loadMoreObserver = null;
+    loadMoreRetry = null;
     listEl.innerHTML = "";
     if (!tracks.length) {
       listElEmpty(listEl,
@@ -243,11 +253,12 @@ export async function render(root, api, kind = "music") {
           : "No music yet. Click 📁 Folders to choose where your music is.",
         "📂");
       if (!query && !books) showStudioHint(false); // an empty library is where a song-maker fits
+      paintAlbumBack();
       return;
     }
     const tbl = document.createElement("table");
     tbl.className = books ? "list books" : "list"; // books: a wider Time column for "left off / length"
-    tbl.innerHTML = `<thead><tr><th class="num">#</th><th>Title</th><th>Artist</th><th>Album</th><th class="num time">Time</th><th class="like-cell"><span class="sr-only">Liked</span></th></tr></thead>`;
+    tbl.innerHTML = `<thead><tr><th class="num">#</th><th>Title</th><th>Artist</th><th>Album</th><th class="num time">Time</th><th class="like-cell"><span class="sr-only">Liked</span></th><th class="more-cell"><span class="sr-only">Actions</span></th></tr></thead>`;
     const tb = document.createElement("tbody");
     const playingIdx = safePlayingIndex();
     tracks.forEach((t, i) => {
@@ -271,7 +282,11 @@ export async function render(root, api, kind = "music") {
             td.title = `Left off at ${fmtClock(t.resume)}`;
           }
           return td;
-        })(), likeCell(t));
+        })(), likeCell(t), moreCell(`Actions for ${t.title || "this song"}`, (point) => {
+          // The menu acts on the row the button belongs to, like the right-click path.
+          if (!selected.has(i)) selectRow(i);
+          openTrackMenu(i, point);
+        }));
       const activate = (mode) => activateRow(i, mode);
       tr.addEventListener("dblclick", () => activate("play"));
       tr.addEventListener("keydown", (e) => {
@@ -283,7 +298,12 @@ export async function render(root, api, kind = "music") {
           openTrackMenu(i, { x: rect.left, y: rect.bottom });
         }
       });
-      tr.addEventListener("click", (e) => selectRow(i, e));
+      // A touch screen has no right-click: long-press opens the same menu.
+      const consumed = bindLongPress(tr, (point) => {
+        if (!selected.has(i)) selectRow(i);
+        openTrackMenu(i, point);
+      });
+      tr.addEventListener("click", (e) => { if (consumed()) return; selectRow(i, e); });
       tr.addEventListener("contextmenu", (e) => {
         if (pickMode) return;
         e.preventDefault();
@@ -304,7 +324,6 @@ export async function render(root, api, kind = "music") {
       const loadNext = () => {
         if (requested) return;
         requested = true;
-        loadMoreObserver?.disconnect();
         offset = tracks.length;
         loadTracksAppend();
       };
@@ -319,7 +338,26 @@ export async function render(root, api, kind = "music") {
         }, { root: listEl.closest(".panel-body"), rootMargin: "0px 0px 240px" });
         loadMoreObserver.observe(more);
       }
+      // A request that failed must not leave the button switched off: the next
+      // click, and the observer, get another try.
+      loadMoreRetry = () => {
+        requested = false;
+        loadMoreObserver?.observe(more);
+      };
     }
+    paintAlbumBack();
+  }
+
+  // The way back out of an opened album. Every redraw of that album (selecting a
+  // row, "Load more") has to show it again: the list is replaced each time.
+  function paintAlbumBack() {
+    if (!currentAlbum) return;
+    const back = document.createElement("button");
+    back.className = "btn btn-ghost sm";
+    back.textContent = "← All albums";
+    back.style.margin = "6px 0";
+    back.addEventListener("click", () => { currentAlbum = null; tab = "albums"; renderList(); });
+    listEl.prepend(back);
   }
 
   function renderArtists() {
@@ -410,18 +448,20 @@ export async function render(root, api, kind = "music") {
     const generation = ++tracksGeneration;
     listEl.innerHTML = `<div style="padding:20px;text-align:center"><span class="spinner"></span></div>`;
     try {
-      const res = await api(`/api/library/tracks?${new URLSearchParams({ album: currentAlbum.album, artist: currentAlbum.artist || "", kind: apiKind, limit: "200", offset: "0" })}`);
+      // Exactly this card's group: the album title and its album artist (a blank
+      // artist is the "Unknown Artist" card), never a track that merely shares one.
+      const res = await api(`/api/library/tracks?${new URLSearchParams({ album: currentAlbum.album, artist: currentAlbum.artist || "", album_artist: currentAlbum.artist || "Unknown Artist", kind: apiKind, limit: "200", offset: "0" })}`);
       if (generation !== tracksGeneration) return;
       tracks = res.tracks || [];
       selected.clear();
       total = res.total ?? tracks.length;
       offset = 0;
       tab = "tracks"; renderTracks();
-      const back = document.createElement("button");
-      back.className = "btn btn-ghost sm"; back.textContent = "← All albums"; back.style.margin = "6px 0";
-      back.addEventListener("click", () => { currentAlbum = null; tab = "albums"; renderList(); });
-      listEl.prepend(back);
-    } catch (e) { if (generation === tracksGeneration) listElEmpty(listEl, e.message); }
+    } catch (e) {
+      if (generation !== tracksGeneration) return;
+      listElEmpty(listEl, e.message);
+      paintAlbumBack(); // the album stays open: keep the way back on screen
+    }
   }
 
   // ---- likes: a heart per track; the player owns the set (shared with the Hermes mini player)
@@ -572,7 +612,7 @@ export async function render(root, api, kind = "music") {
     const seq = ++itemMenuSeq;
     let tracks;
     try {
-      tracks = await fetchAllTracks({ album: al.album || "", artist: al.artist || "", kind: apiKind, sort: "album" });
+      tracks = await fetchAllTracks({ album: al.album || "", artist: al.artist || "", album_artist: al.artist || "Unknown Artist", kind: apiKind, sort: "album" });
     } catch (e) {
       return toast(e.message, { kind: "error" });
     }

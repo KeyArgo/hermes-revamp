@@ -184,8 +184,19 @@ export async function studioFolderButton(api, onAdded) {
   b.textContent = "Add Music Studio's songs folder to your library";
   b.setAttribute("aria-label", "Add Music Studio's songs folder to your library");
   b.addEventListener("click", async () => {
+    // The PUT replaces the whole folder list, and the list may have changed since
+    // this button was drawn (a folder added or removed, the library emptied):
+    // read it again now, and only then write. A failed read writes nothing.
+    let now;
     try {
-      await api("/api/library/folders", "PUT", { folders: foldersWith(have, dir) });
+      const res = await api("/api/library/folders");
+      if (!res || !Array.isArray(res.folders)) return;
+      now = res.folders;
+    } catch {
+      return;
+    }
+    try {
+      await api("/api/library/folders", "PUT", { folders: foldersWith(now, dir) });
       b.disabled = true;
       onAdded?.();
     } catch { /* the button stays; the library view shows server errors */ }

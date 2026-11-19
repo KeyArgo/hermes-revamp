@@ -558,20 +558,42 @@ _SORTERS = {
 }
 
 
+_UNKNOWN_ARTIST = "unknown artist"
+
+
+def _artist_key(value: Any) -> str:
+    """The comparison key for an artist name.
+
+    A blank artist is the "Unknown Artist" the lists show, so asking for that
+    row finds the tracks whose tags carry no artist at all.
+    """
+    key = str(value or "").strip().casefold()
+    return key or _UNKNOWN_ARTIST
+
+
+def _album_artist_key(t: Dict[str, Any]) -> str:
+    """A track's album artist, by the same rule the album list groups cards by."""
+    return _artist_key(t.get("album_artist") or t.get("artist"))
+
+
 def search(q: str = "", artist: str = "", album: str = "", kind: str = "",
+           album_artist: str = "",
            limit: int = 200, offset: int = 0, sort: str = "artist") -> Dict[str, Any]:
     tracks = all_tracks()
     kinds = _kinds_map()
     if q:
         tracks = [t for t in tracks if _matches(t, q.split())]
     if artist:
-        a = artist.casefold()
+        a = _artist_key(artist)
         tracks = [t for t in tracks
-                  if a == (t.get("artist") or "").casefold()
-                  or a == (t.get("album_artist") or "").casefold()]
+                  if a == _artist_key(t.get("artist"))
+                  or a == _artist_key(t.get("album_artist"))]
     if album:
         al = album.casefold()
         tracks = [t for t in tracks if al == (t.get("album") or "").casefold()]
+    if album_artist:
+        aa = _artist_key(album_artist)
+        tracks = [t for t in tracks if aa == _album_artist_key(t)]
     if kind:
         k = kind.lower()
         tracks = [t for t in tracks if kind_of(t, kinds) == k]
@@ -656,8 +678,11 @@ def albums(artist: Optional[str] = None, kind: str = "") -> List[Dict[str, Any]]
         if t.get("has_art"):
             a["art_track_id"] = t["id"]
     out = []
+    want = _artist_key(artist) if artist else ""
     for a in agg.values():
-        if artist and artist.lower() not in (a["artist"] or "").lower():
+        # Exact, case-insensitive match on the album artist (the same rule the
+        # search uses): "Queen" must not also list "Queens of the Stone Age".
+        if want and want != _artist_key(a["artist"]):
             continue
         out.append({
             "album": a["album"], "artist": a["artist"], "year": a["year"],

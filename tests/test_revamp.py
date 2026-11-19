@@ -138,7 +138,9 @@ def test_library_artists_albums(server):
     assert "The Artists" in names
     for a in artists:
         assert set(a) == {"name", "albums", "tracks"}
-    st, _, albums = server.client.get("/api/library/albums?artist=artists")
+    # An artist filter on albums is an exact album artist, not a substring: the
+    # name has to be the one the card shows.
+    st, _, albums = server.client.get("/api/library/albums?artist=The%20Artists")
     assert any(a["album"] == "Great Album" for a in albums)
     assert all("art_track_id" in a for a in albums)
 

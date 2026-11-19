@@ -1248,6 +1248,10 @@ function createEngine(ctx, url, bridgeKey = '') {
         $pageBorrow.set(true)
         if (parked) void bringBackFromDesktop()
         place()
+      } else if (e.data.type === 'revamp:open-plugin' && SIBLING_PLUGIN_IDS.includes(e.data.plugin)) {
+        // The library page is the control frame, so its "Find … in Plugins" buttons
+        // arrive here; the host's public route is the only way out.
+        try { host.navigate(`/capabilities?tab=plugins&plugin=${encodeURIComponent(e.data.plugin)}`) } catch { /* no router, no move */ }
       }
       return
     }
