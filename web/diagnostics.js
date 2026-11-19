@@ -28,7 +28,7 @@ export function diagnosticRecord(kind, detail = {}) {
 }
 
 function placement() {
-  const body = document.body;
+  const body = globalThis.document?.body;
   if (body?.classList.contains("embed")) return "frame";
   if (body?.classList.contains("mode-winamp")) return "pop-out";
   return "page";
@@ -39,6 +39,44 @@ function placement() {
 const seen = new Set();
 let lastSent = 0;
 
+// The server keeps its own private log (revamp.log). A failure in a plain browser tab
+// or the pop-out never reaches Hermes' diagnostic storage, so the page also POSTs it to
+// /api/client_log. The server bounds and re-cleans this; the limits here keep the request
+// small and strip URL queries (which carry the bridge token) before anything is sent.
+const SERVER_MAX_MESSAGE = 500;
+const SERVER_MAX_STACK = 2000;
+
+function stripQueries(value, limit) {
+  let text = String(value ?? "");
+  text = text.replace(/https?:\/\/[^\s"'<>]+/gi, (u) => u.split(/[?#]/)[0]);
+  text = text.replace(/([?&](?:t|access_token|token|key)=)[^&#\s"']+/gi, "$1[redacted]");
+  text = text.replace(/[\r\n\t]+/g, " ");
+  return text.slice(0, limit);
+}
+
+export function clientLogRecord(kind, detail = {}) {
+  const fallback = kind === "rejection" ? "Unhandled promise rejection" : "Unhandled browser error";
+  return {
+    message: stripQueries(detail.message || fallback, SERVER_MAX_MESSAGE),
+    stack: stripQueries(detail.stack, SERVER_MAX_STACK),
+    placement: placement(),
+  };
+}
+
+function sendClientLog(record) {
+  try {
+    if (typeof fetch !== "function") return;
+    const token = globalThis.document?.querySelector?.('meta[name="revamp-token"]')?.content || "";
+    if (!token) return; // no key (e.g. a unit harness): nothing to authenticate with
+    fetch("/api/client_log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Revamp-Token": token },
+      body: JSON.stringify(record),
+      keepalive: true,
+    }).catch(() => { /* the log is best-effort; never surface a second error */ });
+  } catch { /* a broken report must never break the page */ }
+}
+
 function report(kind, detail) {
   const key = `${kind}:${detail?.message}`;
   const now = Date.now();
@@ -46,6 +84,7 @@ function report(kind, detail) {
   seen.add(key); lastSent = now;
   const record = diagnosticRecord(kind, { ...detail, placement: placement() });
   if (window.parent !== window && !untrustedEmbed()) window.parent.postMessage({ type: "revamp:diagnostic", record }, "*");
+  sendClientLog(clientLogRecord(kind, detail));
 }
 
 if (typeof window !== "undefined") {

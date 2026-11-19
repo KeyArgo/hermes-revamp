@@ -32,6 +32,13 @@ async function pageFor(serverPort, width = 1440, height = 900, query = "") {
 }
 async function evalJs(page, expression) { return (await page.cdp("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result.value; }
 async function snap(page, name) { const out = await page.cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }); writeFileSync(join(output, name), Buffer.from(out.data, "base64")); }
+async function snapClip(page, name, selector, pad = 12) {
+  const rect = await evalJs(page, `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; })()`);
+  if (!rect || !rect.width) throw Error(`no visible element for ${name}: ${selector}`);
+  const clip = { x: Math.max(0, rect.x - pad), y: Math.max(0, rect.y - pad), width: rect.width + pad * 2, height: rect.height + pad * 2, scale: 2 };
+  const out = await page.cdp("Page.captureScreenshot", { format: "png", clip, captureBeyondViewport: true });
+  writeFileSync(join(output, name), Buffer.from(out.data, "base64"));
+}
 async function close(page) { page.socket.close(); page.process.kill("SIGTERM"); await sleep(250); rmSync(page.profile, { recursive: true, force: true }); }
 async function playing(page, p, t, items, at = 2) { await waitFor(() => connected(p, t), "player connection"); await command(p, t, { action: "load", items, mode: "replace", play: true }); await sleep(1100); await command(p, t, { action: "seek", seconds: at }); }
 async function view(page, id, text) { await evalJs(page, `window.revampSetView(${JSON.stringify(id)})`); await waitFor(() => evalJs(page, `document.querySelector('#panel-body')?.innerText.includes(${JSON.stringify(text)})`), `${id} view`); }
@@ -63,13 +70,13 @@ try {
   let page;
   if (capture("player")) {
   await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: true, ticker: true, duck_on_approval: true } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(3500); await snap(page, "full-player.png"); await close(page);
-  await put(p, token, { playlist: music, current_index: 0, skin: "builtin:REVamp-Nous.wsz", settings: { milkdropOpen: false } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(1800); await snap(page, "nous.png"); await close(page);
+  await put(p, token, { playlist: music, current_index: 0, skin: "builtin:REVamp-Nous.wsz", settings: { milkdropOn: false } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(1800); await snap(page, "nous.png"); await close(page);
   }
   if (capture("views", "books")) {
-  await put(p, token, { playlist: [book], current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p); await playing(page, p, token, [book], 74); await view(page, "books", "The REVamp Field Guide"); await waitFor(() => evalJs(page, "document.querySelector('.np-book:not([hidden])') && document.querySelector('.np-chapter:not([hidden])')"), "book controls"); await snap(page, "books.png"); await close(page);
+  await put(p, token, { playlist: [book], current_index: 0, skin: "classic", settings: { milkdropOn: false } }); page = await pageFor(p); await playing(page, p, token, [book], 74); await view(page, "books", "The REVamp Field Guide"); await waitFor(() => evalJs(page, "document.querySelector('.np-book:not([hidden])') && document.querySelector('.np-chapter:not([hidden])')"), "book controls"); await snap(page, "books.png"); await close(page);
   }
   if (capture("views", "radio")) {
-  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p); await playing(page, p, token, music); await view(page, "hermes-radio", "Hermes Radio"); await waitFor(() => evalJs(page, "Boolean(document.querySelector('.hermes-hero'))"), "Hermes Radio hero"); await snap(page, "radio.png"); await close(page);
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: false } }); page = await pageFor(p); await playing(page, p, token, music); await view(page, "hermes-radio", "Hermes Radio"); await waitFor(() => evalJs(page, "Boolean(document.querySelector('.hermes-hero'))"), "Hermes Radio hero"); await snap(page, "radio.png"); await close(page);
   }
   if (capture("views", "library")) {
   page = await pageFor(p); await playing(page, p, token, music); await evalJs(page, "window.revampSetView('library')"); await sleep(900); await evalJs(page, "document.querySelector('button[data-t=artists]')?.click()"); await sleep(600); await snap(page, "library.png"); await close(page);
@@ -82,13 +89,40 @@ try {
   page = await pageFor(p); await playing(page, p, token, music); await post(p, token, "/api/agent_event", { kind: "tool_start", tool: "revamp_library", preview: "Queueing a focused work mix" }); await post(p, token, "/api/agent_event", { kind: "approval_request", tool: "shell", preview: "Waiting for approval" }); await waitFor(() => evalJs(page, "document.querySelector('#ticker-track')?.innerText.includes('revamp_library')"), "agent activity"); await snap(page, "agent-activity.png"); await close(page);
   }
   if (capture("modes", "mini")) {
-  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } }); page = await pageFor(p, 620, 620, "?embed=1"); await playing(page, p, token, music); await sleep(1000); await snap(page, "mini-player.png"); await close(page);
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: false } }); page = await pageFor(p, 620, 620, "?embed=1"); await playing(page, p, token, music); await sleep(1000); await snap(page, "mini-player.png"); await close(page);
   }
   if (capture("modes", "milkdrop")) {
   await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: true } }); page = await pageFor(p, 900, 620, "?mode=winamp"); await page.cdp("Emulation.setDefaultBackgroundColorOverride", { color: { r: 8, g: 12, b: 18, a: 1 } }); await playing(page, p, token, music); await evalJs(page, "window.revampPlayerApi?.setVisualizerPlacement('floating')"); await sleep(8000); await snap(page, "winamp-milkdrop.png"); await close(page);
   }
   if (capture("modes", "settings")) {
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: false } });
   page = await pageFor(p); await playing(page, p, token, music); await view(page, "agent", "Chime and dip for approvals"); await snap(page, "settings.png"); await close(page);
+  }
+  if (capture("tour")) {
+  // Album right-click menu: the Albums grid with the song menu open on the first card.
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: false } });
+  page = await pageFor(p); await playing(page, p, token, music);
+  await evalJs(page, "window.revampSetView('library')"); await sleep(700);
+  await evalJs(page, "document.querySelector('button[data-t=albums]')?.click()");
+  await waitFor(() => evalJs(page, "Boolean(document.querySelector('.album-card'))"), "albums grid");
+  await sleep(400);
+  await evalJs(page, `(() => { const c = document.querySelector('.album-card'); const r = c.getBoundingClientRect(); c.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 })); })()`);
+  await waitFor(() => evalJs(page, "Boolean(document.querySelector('.track-menu'))"), "album menu");
+  await sleep(350); await snap(page, "album-menu.png"); await close(page);
+  // The "Turn off" pill on the running visualizer (same home as winamp-milkdrop).
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: true } });
+  page = await pageFor(p, 900, 620, "?mode=winamp");
+  await page.cdp("Emulation.setDefaultBackgroundColorOverride", { color: { r: 8, g: 12, b: 18, a: 1 } });
+  await playing(page, p, token, music);
+  await evalJs(page, "window.revampPlayerApi?.setVisualizerPlacement('floating')");
+  await waitFor(() => evalJs(page, "Boolean(document.querySelector('.revamp-md-off'))"), "Turn off pill");
+  await waitFor(() => evalJs(page, "Boolean(window.revampPlayerApi?.visualizerMetrics?.().canvas)"), "visualizer canvas");
+  await sleep(9000); await snap(page, "milkdrop-off.png"); await close(page);
+  // The version chip under the REVamp name, cropped from the sidebar header.
+  await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: false } });
+  page = await pageFor(p); await playing(page, p, token, music);
+  await waitFor(() => evalJs(page, "(() => { const c = document.querySelector('#app-version'); return Boolean(c && !c.hidden && c.textContent.trim()); })()"), "version chip");
+  await sleep(400); await snapClip(page, "version-chip.png", ".brand"); await close(page);
   }
   rmSync(join(output, "nous-dark.png"), { force: true }); console.log(`Saved screenshots in ${output}`);
   if (capture("scenes")) {
@@ -98,7 +132,7 @@ try {
     sakura: { theme: "sunset", grad: "sunset", scene: "shrine", fx: "sakura", fxLevel: 2, look: "sakura" },
     neon: { theme: "violet", grad: "grape", scene: "neon", fx: "rain", fxLevel: 2, look: "neon" } };
   for (const [name, look] of Object.entries(looks)) {
-    await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOpen: false } });
+    await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: false } });
     page = await pageFor(p);
     await evalJs(page, `localStorage.setItem("revamp.theme.v1", ${JSON.stringify(JSON.stringify(look))})`);
     await page.cdp("Page.reload");

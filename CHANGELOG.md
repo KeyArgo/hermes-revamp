@@ -32,6 +32,9 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 - The data folder, the lease folder and backups follow the standard XDG locations (`XDG_STATE_HOME`, `XDG_DATA_HOME`) and `%LOCALAPPDATA%` on Windows. When those variables are not set, every path stays exactly where it was, so nothing moves.
 - The player server and `revampctl` resolve the profile folder through Hermes's own resolver, so switching profiles is followed instead of reading the gateway's home.
 - Housekeeping: the docked-pane switch lost its "research spike" name, and the diagnostics report "unknown" for the Hermes version when the host does not provide one.
+- Browser-side failures now reach the private server log, not just Hermes. The page forwards `window.onerror` and unhandled promise rejections to a new token-gated `POST /api/client_log`: message bounded to 500 characters and stack to 2000, at most 20 reports a minute per server, logged at WARNING as `page error: …`, with URL queries and tokens stripped so a copied media link never carries its key into the log.
+- The README was rewritten to match the rest of the suite: one hero, a copy-paste "Try it in five minutes", a feature tour with current screenshots, a "Turning off MilkDrop" section, a symptom-to-fix troubleshooting table and a "Send a useful bug report" guide. New `docs/TROUBLESHOOTING.md` explains every log line, the once-a-minute health fields and the three warning thresholds; new `docs/ARCHITECTURE.md` maps the processes and where state lives. `EXTENDING.md`, `NOTES.md` and `CONTRIBUTING.md` were brought up to date (every test suite, the no-AI-names commit rule).
+- Three new screenshots (`album-menu.png`, `milkdrop-off.png`, `version-chip.png`) and all web screenshots regenerated against the current UI. The screenshot script now sets the canonical `milkdropOn` key so the visualizer state cannot leak between shots.
 
 ## 1.0.0 — next catalog version
 
