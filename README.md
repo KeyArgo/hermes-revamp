@@ -11,7 +11,7 @@
   <img alt="Hermes plugin" src="https://img.shields.io/badge/Hermes-plugin-0000F2?style=flat-square">
   <img alt="Licence" src="https://img.shields.io/badge/licence-MIT-0000F2?style=flat-square">
   <img alt="Built by InovinLabs" src="https://img.shields.io/badge/built%20by-InovinLabs-0000F2?style=flat-square">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-962%20passed-2ea44f?style=flat-square">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-988%20passed-2ea44f?style=flat-square">
   <img alt="Hermes Agent 0.22.5 or newer" src="https://img.shields.io/badge/hermes%20agent-%E2%89%A5%200.22.5-7c3aed?style=flat-square">
 </p>
 
@@ -22,8 +22,8 @@
 </p>
 
 <p align="center">
-  <img src="assets/catalog/banner.png" alt="REVamp with a classic skin and the MilkDrop visualizer" width="100%">
-  <br/><sub>Designed banner: the REVamp player beside a classic skin and the MilkDrop visualizer.</sub>
+  <img src="assets/screenshots/hermes-home.png" alt="REVamp docked in the Frame beside a Hermes chat, with the MilkDrop visualizer running" width="760">
+  <br/><sub>Docked in the Frame beside a Hermes chat, with the MilkDrop visualizer running.</sub>
 </p>
 
 <p align="center"><i>Applies to REVamp 1.0.0 · revised 2026-11-19 · <a href="CHANGELOG.md">changelog</a></i></p>
@@ -36,7 +36,7 @@ The version chip under the name reads `v1.0.0-dev.N · short sha · date`, taken
 
 ## What it is
 
-REVamp is a local-first player that lives beside your Hermes chat. It keeps a music and audiobook library in the player, with playlists, radio, lyrics, classic skins and a MilkDrop visualizer. You can run it as a small status-bar widget, a docked pane, a floating window, its own desktop window or full screen. The point is to manage and play your own library without leaving Hermes.
+REVamp is a local-first player that lives beside your Hermes chat. It keeps a music and audiobook library in the player, with playlists, radio, lyrics, classic skins and a MilkDrop visualizer. Run it as a small status-bar widget, a docked pane, a floating window, its own desktop window or full screen. The point is to manage and play your own library without leaving Hermes.
 
 ## Why it is different
 
@@ -44,14 +44,21 @@ One player state on a loopback server feeds every surface and the agent as well.
 
 ## Try it in five minutes
 
-Install from the catalog when it is available, or from this repository:
+REVamp needs Hermes Agent 0.22.5 or newer.
 
-```bash
-hermes plugins install revamp
-hermes plugins install https://github.com/KeyArgo/hermes-revamp
-```
+1. Install from this repository (or from the catalog by name once it is listed there):
 
-REVamp needs Hermes Agent 0.22.5 or newer. After installing, open **Capabilities → Plugins** in Hermes Desktop and switch REVamp on in both places: the agent part under General, and the Desktop part under the **Desktop** filter. The Desktop part adds the sidebar entry, the player and the status-bar controls. Then open REVamp from the sidebar.
+   ```bash
+   hermes plugins install KeyArgo/hermes-revamp
+   ```
+
+   You should see the installer fetch the plugin and add it to your plugins list.
+
+2. Open **Capabilities → Plugins** in Hermes Desktop and switch REVamp on in both places: the agent part under **General**, and the Desktop part under the **Desktop** filter. The Desktop part adds the sidebar entry, the player and the status-bar controls. You should see REVamp appear in the sidebar and the status bar.
+
+3. Open REVamp from the sidebar. You should see the player page: the classic player in the middle, your library on the right, and the version chip under the REVamp name. The default library scans `~/Music`; change or add folders in the library settings, the `library_dirs` Hermes setting, or `REVAMP_LIBRARY_DIRS`.
+
+4. Double-click a track, or press play. You should hear it, and see the position advance in every place the player is open.
 
 Tags and durations are read in Python, so FFmpeg is not needed for those. `ffprobe` from FFmpeg is optional and is what audiobook chapters use. A Chrome or Chromium family browser is only needed for the optional external pop-out window.
 
@@ -76,11 +83,6 @@ The pi and omp extension is in `integrations/pi/revamp.ts`. Load that exact file
 
 ## What it does
 
-<p align="center">
-  <img src="assets/screenshots/hermes-home.png" alt="REVamp docked in the Hermes Frame beside a chat, with MilkDrop running" width="760">
-  <br/><sub>Docked in the Frame beside a Hermes chat, with MilkDrop running.</sub>
-</p>
-
 Pick a place from the player menu in the status bar:
 
 - **Mini player**, a status bar widget only.
@@ -89,31 +91,49 @@ Pick a place from the player menu in the status bar:
 - **Pop out to desktop**, its own OS window.
 - **Full screen**.
 
-In narrow panes the player scales to fit and the menu becomes a compact row. In wide panes it scales up in crisp 2x, 3x and 4x steps. Library mode opens the full REVamp page while the player stays in its Frame or pop-out, so you can browse, queue and build playlists without moving the music.
+In the Hermes status bar the player wears a compact now-playing pill (play state and title) and round previous / play-pause / next buttons, with the same height, radius and focus ring in light and dark themes. In narrow panes the player scales to fit and the menu becomes a compact row. In wide panes it scales up in crisp 2x, 3x and 4x steps. Library mode opens the full REVamp page while the player stays in its Frame or pop-out, so you can browse, queue and build playlists without moving the music.
 
 <p align="center">
-  <img src="assets/screenshots/hermes-desktop-window.png" alt="REVamp in its own desktop window with MilkDrop" width="49%">
-  <img src="assets/screenshots/hermes-frame-sakura.png" alt="REVamp in the Frame with the Sakura shrine look" width="49%">
-  <br/><sub>Left: popped out to its own desktop window, while the page in Hermes keeps the library and controls. Right: the Frame with the Sakura shrine look and a playlist open.</sub>
+  <img src="assets/screenshots/full-player.png" alt="The classic player with EQ, playlist and the Visualizer control" width="49%">
+  <img src="assets/screenshots/nous.png" alt="The REVamp Nous light skin" width="49%">
+  <br/><sub>Left: the classic player, EQ, playlist and the named Visualizer control. Right: the REVamp Nous light skin.</sub>
 </p>
 
+### Turning off MilkDrop
+
+The visualizer is the one part that uses real CPU and GPU. Turn it off and the renderer really closes; no hidden canvas keeps drawing.
+
+- **Settings → REVamp → MilkDrop visualizer → Off**, or
+- the **Turn off** pill on the visualizer itself.
+
 <p align="center">
-  <img src="assets/screenshots/hermes-mini-player.png" alt="The mini player and its place menu" width="49%">
-  <img src="assets/screenshots/winamp-milkdrop.png" alt="The classic player with MilkDrop" width="49%">
-  <br/><sub>Left: the mini player, radio genres and every place the player can go. Right: the classic skin with MilkDrop.</sub>
+  <img src="assets/screenshots/milkdrop-off.png" alt="The MilkDrop visualizer with the Turn off pill at its bottom-right" width="49%">
+  <br/><sub>The "Turn off" pill sits at the bottom-right of the visualizer. One saved choice covers every place the player can be.</sub>
+</p>
+
+Off saves CPU and GPU. The Mini player cannot show MilkDrop; switch out of Mini first. A machine without WebGL gets a plain error instead of a blank window. More shortcuts are under [Settings and shortcuts](#settings-and-shortcuts).
+
+### Albums and artists have the song menu
+
+In the Albums and Artists views, and in the Hermes mini player's Music tab, right-click, long-press, the ⋯ button, Shift+F10 or the context-menu key opens the same menu a song has: Play, Play next, Add to queue and Add to playlist. It acts on every track of the album or artist, in disc/track order, and confirms with a toast.
+
+<p align="center">
+  <img src="assets/screenshots/album-menu.png" alt="The Albums view with the right-click menu open on an album card" width="760">
+  <br/><sub>The Albums view with the song menu open on a card: Play, Play next, Add to queue, Add to playlist.</sub>
+</p>
+
+### The version chip
+
+The chip under the name is the running build, read from the server's own stamp, so it cannot announce an old version. Click it to copy the line for a bug report. It turns amber while the tree it came from is dirty.
+
+<p align="center">
+  <img src="assets/screenshots/version-chip.png" alt="The REVamp name with the version chip beneath it" width="280">
+  <br/><sub>The version chip: version, short commit, date. Click to copy.</sub>
 </p>
 
 ### Music, books and radio
 
 Separate local Music and Books folders keep libraries apart. Search artists and albums, read cover art, build queues and likes, save playlists, and resume audiobooks with chapters and a speed control. Radio uses Radio Browser for popular stations ranked by listener votes, genre, country and language browsing, search, favourites and endless scrolling.
-
-Albums and artists are right-clickable. In the Albums and Artists views, and in the Hermes mini player's Music tab, right-click, long-press, the ⋯ button, Shift+F10 or the context-menu key opens the same menu a song has: Play, Play next, Add to queue and Add to playlist.
-
-<p align="center">
-  <img src="assets/screenshots/full-player.png" alt="The classic player with EQ, playlist and the Visualizer control" width="49%">
-  <img src="assets/screenshots/nous.png" alt="The REVamp Nous light skin" width="49%">
-  <br/><sub>Left: classic player, EQ, playlist and the named Visualizer control. Right: the REVamp Nous light skin.</sub>
-</p>
 
 <p align="center">
   <img src="assets/screenshots/books.png" alt="Audiobook resume, speed and chapter picker" width="32%">
@@ -154,14 +174,14 @@ The ticker shows what the agent is doing. Optional chime and dip alerts flag app
 
 Two sibling plugins that pair naturally with a music player. Neither is required; REVamp works alone.
 
-- **Aura** — plays films and MilkDrop-style scenes in its own page or pane and listens to the system audio loopback, so the visuals react to whatever REVamp plays with no configuration. A quiet hint in REVamp's Settings (only when the visualizer is switched off) points to it in Capabilities → Plugins.
-- **Music Studio** — turns a song idea into lyrics and a style you approve, then renders the audio locally (ACE-Step, or MiniMax via ComfyUI). Finished takes are plain `.wav` files; when REVamp finds that folder it offers one click to add it to your library, and empty-library / empty-playlist screens mention where it lives.
+- **Aura** plays films and audio-reactive visuals in its own page or pane. It listens to the system audio loopback, so its visuals react to whatever REVamp plays with no configuration. Aura draws nothing behind the Hermes chat; it keeps to its own page or pane. A quiet hint in REVamp's Settings (only when the visualizer is switched off) points to it in Capabilities → Plugins.
+- **Music Studio** turns a song idea into lyrics and a style you approve, then renders the audio locally (ACE-Step, or MiniMax via ComfyUI). Finished takes are plain `.wav` files; when REVamp finds that folder it offers one click to add it to your library, and empty-library / empty-playlist screens mention where it lives.
 
 ## Settings and shortcuts
 
-Player settings live under **Settings → REVamp** in Hermes Desktop. That page holds the approval chime and dip controls, recovery backup actions and the event log. The player menu holds the five places, the EQ, skins and the named Visualizer control.
+Player settings live under **Settings → REVamp** in Hermes Desktop. That page holds the MilkDrop visualizer switch, the approval chime and dip controls, recovery backup actions and the event log. The player menu holds the five places, the EQ, skins and the named Visualizer control.
 
-**Turn MilkDrop off** with the **Visualizer** button in the player, or press `Ctrl+Alt+Shift+V` (`Cmd+Option+Shift+V` on Mac). In the classic skin the Winamp menu also offers Visualizer (`Ctrl+Shift+M`). One saved choice covers every place the player can be, so closing MilkDrop in the Frame keeps it closed in the pop-out. The Mini player cannot show MilkDrop; switch out of Mini first. A machine without WebGL gets a plain error instead of a blank window.
+**Turn MilkDrop off** with the **Visualizer** button in the player, or press `Ctrl+Alt+Shift+V` (`Cmd+Option+Shift+V` on Mac). In the classic skin the Winamp menu also offers Visualizer (`Ctrl+Shift+M`). One saved choice covers every place the player can be, so closing MilkDrop in the Frame keeps it closed in the pop-out.
 
 Click the **×** at the top of the Frame to hide it. Your music keeps playing. Press `Ctrl+Alt+F` (`Cmd+Option+F` on Mac), or run **REVamp: Show / Hide Frame** from the command palette, to bring it back. All REVamp shortcuts are listed under REVamp in Hermes's Keyboard Shortcuts settings and can be changed there.
 
@@ -175,15 +195,32 @@ REVamp reads tags and durations itself. It may also run `ffprobe` for audiobook 
 
 REVamp makes private automatic backups every 10 minutes under `~/.local/share/revamp/backups/` (or `REVAMP_BACKUP_DIR`) and stores a short, credential-masked local record of agent activity for the player ticker. State lives in `$REVAMP_HOME`, otherwise `$HERMES_HOME/revamp`, otherwise `~/.hermes/revamp`. It holds the library index, playlists, likes, settings, server token, lyric cache, installed skins and pop-out browser profile. There are no accounts, no telemetry, no usage analytics and no stored passwords.
 
+A private log at `~/.hermes/revamp/logs/revamp.log` records failures and one health line a minute. Browser-side errors are forwarded to it too (URL queries and tokens stripped, at most 20 a minute). See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
 ## Troubleshooting
 
-- If the mini player is offline, choose **Reconnect**. The server keeps its queue and position.
-- If the mini player is gone after a restart, Hermes is probably in Simple mode, which hides the status bar each time it starts. Switch to Advanced from the command palette. `Ctrl+Shift+S` (`Cmd+Shift+S` on Mac) shows the bar until the next restart.
-- Reopen Hermes after a plugin update. **REVamp: Reload Player** reloads the player view, its embedded iframe, not the installed plugin or an update.
-- Set `REVAMP_FLOAT_BROWSER` to a Chrome or Chromium executable when pop-out browser discovery fails.
-- Install FFmpeg for `ffprobe` if audiobook chapters are missing. Durations and basic tags are read without it.
-- For a slow leak, a stalled server or a file that will not scan, read `~/.hermes/revamp/logs/revamp.log` (or `<REVAMP_HOME>/logs/revamp.log`). It is private to you, rotates at 1 MB with three backups, and writes one health line a minute with memory, threads, open files, SSE clients and uptime. It warns when memory jumps, threads pass 200 or open files pass 1000. Set `REVAMP_LOG_LEVEL=DEBUG` to see per-file problems, or `REVAMP_TRACEMALLOC=1` to add memory allocation tracking to the warnings. `GET /api/diagnostics` needs the REVamp token and shows the latest health line and the log path.
-- Turning the MilkDrop visualizer off saves CPU and GPU: use the **Visualizer** button in the player or the switch in Settings.
+| Symptom | Fix |
+|---|---|
+| No sound | Press play; check the volume slider and the OS output device. Radio also needs the station reachable. |
+| Player missing from the status bar | Hermes is in Simple mode, which hides the bar at each start. Switch to Advanced from the command palette. `Ctrl+Shift+S` (`Cmd+Shift+S` on Mac) shows it until the next restart. |
+| High CPU or GPU | Turn MilkDrop off (Settings → REVamp → MilkDrop visualizer → Off, or the "Turn off" pill). Terminal sessions now read `now.json` instead of polling a process, so they use no CPU while idle. |
+| "REVamp restarted with a new key" | The server behind the page was replaced. Click **Reconnect** once; the music keeps playing. |
+| Library empty | Check the scanned folder (default `~/Music`) in the library settings, `library_dirs` or `REVAMP_LIBRARY_DIRS`, then press **Rescan**. |
+| Radio not loading | Radio needs its public hosts reachable. Try another station; a persistent Radio Browser failure is remembered for a minute. |
+| Mini player offline | Choose **Reconnect**. The server keeps the queue and position. |
+| Audiobook chapters missing | Install FFmpeg for `ffprobe`. Tags and durations do not need it. |
+| Pop-out will not open | Set `REVAMP_FLOAT_BROWSER` to a Chrome or Chromium executable. |
+
+The long form, with what each log line means and the health-warning thresholds, is in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). How the processes fit together is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### Send a useful bug report
+
+1. Click the **version chip** to copy the build line, and paste it in.
+2. Attach `~/.hermes/revamp/logs/revamp.log` (or `<REVAMP_HOME>/logs/revamp.log`). Remove library paths, tokens and personal media names first.
+3. Add `GET /api/diagnostics` (token required): it returns the latest health line and the log path.
+4. For a slow leak, reproduce with `REVAMP_LOG_LEVEL=DEBUG`, and with `REVAMP_TRACEMALLOC=1` if memory grows, then attach the warnings and allocation sites.
+
+The in-player bug report button prefills a GitHub issue with the version and environment. Nothing is sent automatically.
 
 ## Limits
 
@@ -200,11 +237,11 @@ REVamp makes private automatic backups every 10 minutes under `~/.local/share/re
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q -p no:cacheprovider --deselect tests/test_nav_rail_e2e.py
-# 962 passed, 16 skipped, 12 deselected (measured 2026-11-19, Python 3.12)
+python3 -m pytest -q tests/ --deselect tests/test_nav_rail_e2e.py
+node --test tests/*.test.mjs
 ```
 
-CI runs one Python process per test file across Linux, Windows and macOS, with a separate Ubuntu job for browser end-to-end tests.
+The Python suite measured 988 passed, 16 skipped (2026-11-19). `tests/test_nav_rail_e2e.py` drives a real browser and needs Chrome; the deselect skips it for a fast run. CI runs one Python process per test file across Linux, Windows and macOS, with a separate Ubuntu job for browser end-to-end tests. Every suite, including the terminal plugin's, is listed in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Platform support
 

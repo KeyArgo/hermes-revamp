@@ -106,6 +106,57 @@ def redact_url(text: str) -> str:
     return _TOKEN_IN_URL.sub(r"\1[redacted]", text)
 
 
+# ---------------------------------------------------------------------------
+# Browser-side error reports (POST /api/client_log)
+# ---------------------------------------------------------------------------
+# The page forwards window.onerror / unhandledrejection here so a failure in a
+# plain browser tab or the pop-out (which never reaches Hermes' own diagnostic
+# storage) still lands in the private log. Bounded, rate-limited per server
+# process, and stripped of URL queries so a copied media/SSE link cannot carry
+# its token into the log.
+CLIENT_LOG_MAX_MESSAGE = 500
+CLIENT_LOG_MAX_STACK = 2000
+CLIENT_LOG_RATE = 20            # reports logged per minute, per server process
+CLIENT_LOG_WINDOW = 60.0
+_client_log_lock = threading.Lock()
+_client_log_times: List[float] = []
+
+_CLIENT_URL = re.compile(r"https?://[^\s\"'<>\\]+")
+_CLIENT_TOKEN_QS = re.compile(r"([?&](?:t|access_token|token|key)=)[^&#\s\"']*", re.IGNORECASE)
+_CLIENT_CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _strip_url_queries(text: str) -> str:
+    """Drop the query string and fragment from every URL, then redact any
+    token-like query value left anywhere. The path stays (it names the script
+    that failed); the part that carries a key never does."""
+    text = _CLIENT_URL.sub(lambda m: re.split(r"[?#]", m.group(0), maxsplit=1)[0], text)
+    return _CLIENT_TOKEN_QS.sub(r"\1[redacted]", text)
+
+
+def clean_client_text(value: Any, limit: int) -> str:
+    """One safe log line from a browser-supplied field: strip URL queries and
+    tokens, fold whitespace so a report cannot forge a second log entry, drop
+    other control characters, then bound the length."""
+    text = "" if value is None else str(value)
+    text = _strip_url_queries(text)
+    text = re.sub(r"[\r\n\t]+", " ", text)
+    text = _CLIENT_CTRL.sub("", text)
+    return text[:limit].strip()
+
+
+def _client_log_allow() -> bool:
+    """True when fewer than CLIENT_LOG_RATE reports were logged in the last
+    CLIENT_LOG_WINDOW seconds. A sliding window, pruned on each call."""
+    now = time.monotonic()
+    with _client_log_lock:
+        _client_log_times[:] = [t for t in _client_log_times if now - t <= CLIENT_LOG_WINDOW]
+        if len(_client_log_times) >= CLIENT_LOG_RATE:
+            return False
+        _client_log_times.append(now)
+        return True
+
+
 def bridge_key(token: str) -> str:
     """Key for the page's postMessage bridge: proves a request comes from the Hermes plugin."""
     import hmac, hashlib
@@ -876,6 +927,22 @@ class Handler(BaseHTTPRequestHandler):
             ev = store.add_agent_event(ev)
             HUB.broadcast("agent", ev)
             return self._send_json({"ok": True})
+        if path == "/api/client_log":
+            # A browser-side failure (window.onerror / unhandledrejection). Token-gated
+            # by the /api/ boundary above. Bounded, stripped of URL queries/tokens, and
+            # rate-limited per server process so a per-frame error cannot flood the log.
+            message = clean_client_text(body.get("message"), CLIENT_LOG_MAX_MESSAGE)
+            stack = clean_client_text(body.get("stack"), CLIENT_LOG_MAX_STACK)
+            if not message and not stack:
+                return self._err(400, "message or stack required")
+            if not _client_log_allow():
+                return self._send_json({"ok": True, "logged": False})  # over the rate: dropped, not an error
+            placement = clean_client_text(body.get("placement"), 32)
+            log.warning("page error: %s%s%s",
+                        message or "(no message)",
+                        f" [{placement}]" if placement else "",
+                        f" | stack: {stack}" if stack else "")
+            return self._send_json({"ok": True, "logged": True})
         if path == "/api/heartbeat":
             return self._send_json(store.heartbeat(body.get("now_playing")))
         if path == "/api/backups/snapshot":
