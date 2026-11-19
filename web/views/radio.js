@@ -2,6 +2,7 @@
 // Every directory list pages in with an IntersectionObserver sentinel and keeps
 // going until Radio Browser runs out of stations, like the Music view.
 import { textPrompt, toast } from "./modal.js";
+import { openExternal } from "../open-external.js";
 
 const PAGE = 50;
 // No in-app composer: Hermes Desktop doesn't take a prompt from this frame.
@@ -268,7 +269,7 @@ export async function render(root, api) {
       }
     });
     if (st.homepage) {
-      addItem("🌐 Open website", () => window.open(st.homepage, "_blank", "noopener"));
+      addItem("🌐 Open website", () => openExternal(st.homepage));
     }
     root.appendChild(menu);
     const rect = menu.getBoundingClientRect();

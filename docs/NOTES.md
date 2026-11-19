@@ -59,7 +59,8 @@
 - The long-lived Desktop backend (`hermes serve`) normally owns it. If a short-lived CLI owns it instead,
   the player loses its server when that process exits. The page then reconnects (SSE backoff), and the
   next tool call or hook in any process restarts the server.
-- The data dir is `$REVAMP_HOME`, else `$HERMES_HOME/revamp`, else `~/.hermes/revamp`. It holds `token`
+- The data dir is `$REVAMP_HOME`, else the active Hermes profile home (Hermes's own resolver,
+  falling back to `$HERMES_HOME`)/`revamp`, else `~/.hermes/revamp`. It holds `token`
   (0600), `state.json`, `library.json`, `playlists/`, `skins/` and `radio_favorites.json`.
 
 ## Security review notes

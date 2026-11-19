@@ -19,7 +19,8 @@ Agent events carry $REVAMP_SOURCE (e.g. "codex") when it is set, so the player
 knows which harness is asking.
 
 Port: $REVAMP_PORT or 8114. Token: <data dir>/token, data dir = $REVAMP_HOME,
-else $HERMES_HOME/revamp, else ~/.hermes/revamp.
+else Hermes's profile home (its own resolver, falling back to $HERMES_HOME)/revamp,
+else ~/.hermes/revamp.
 """
 from __future__ import annotations
 
@@ -35,8 +36,15 @@ from pathlib import Path
 def data_dir() -> Path:
     if os.environ.get("REVAMP_HOME"):
         return Path(os.environ["REVAMP_HOME"]).expanduser()
-    if os.environ.get("HERMES_HOME"):
-        return Path(os.environ["HERMES_HOME"]).expanduser() / "revamp"
+    # Hermes's own resolver follows the active profile; the env var is the fallback
+    # when this script runs outside a Hermes install (same order as revamp_core.config).
+    try:
+        from hermes_constants import get_hermes_home
+        home = str(get_hermes_home())
+    except ImportError:
+        home = os.environ.get("HERMES_HOME")
+    if home:
+        return Path(home).expanduser() / "revamp"
     return Path.home() / ".hermes" / "revamp"
 
 
