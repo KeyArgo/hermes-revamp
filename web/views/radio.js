@@ -458,7 +458,7 @@ export async function render(root, api, opts = {}) {
 
   // A station pressed but not playing yet. A live stream takes a moment to connect, and
   // without this the button looked dead until the first sound.
-  let starting = null; // { url, name, timer }
+  let starting = null; // { url, name, timer, fromUrl }
   const START_TIMEOUT_MS = 20000;
   function clearStarting() {
     if (starting) clearTimeout(starting.timer);
@@ -467,7 +467,9 @@ export async function render(root, api, opts = {}) {
 
   function paintTransport(cur) {
     if (starting && cur.status === "PLAYING" && cur.url === starting.url) clearStarting();
-    if (starting && cur.url && cur.url !== starting.url && cur.status === "PLAYING") clearStarting();
+    // Another station playing cancels the wait, but not the one that was on when play was pressed:
+    // it keeps playing until the new stream connects.
+    if (starting && cur.url && cur.url !== starting.url && cur.url !== starting.fromUrl && cur.status === "PLAYING") clearStarting();
     listEl.querySelectorAll(".hermes-station").forEach((el) => {
       const playing = cur.status === "PLAYING" && cur.url === el.dataset.url;
       const waiting = !playing && starting?.url === el.dataset.url;
@@ -581,13 +583,22 @@ export async function render(root, api, opts = {}) {
         else if (starting?.url === st.url) { clearStarting(); player.stop?.(); } // a second press cancels
         else {
           clearStarting();
-          const timer = setTimeout(() => {
+          const fromUrl = cur.url || null;
+          const timer = setTimeout(async () => {
             if (starting?.url !== st.url) return;
+            // Polling pauses while the window is hidden: ask the player once more before saying so.
+            try { await window.revampPlayerApi?.refreshLive?.(); } catch { /* answer below from what we have */ }
+            if (starting?.url !== st.url) return;
+            const now = currentStream();
             clearStarting();
-            if (gen === listGen) notePlaying(gen);
+            if (gen !== listGen || !root.isConnected) return;
+            notePlaying(gen);
+            if (now.status === "PLAYING" && now.url === st.url) return;
+            // Something else was started meanwhile (the status bar, the agent): not a failure.
+            if (now.status === "PLAYING" && now.url && now.url !== fromUrl) return;
             toast(`${st.name} didn't start. Check your connection, or try another channel.`, { kind: "error", ttl: 6000 });
           }, START_TIMEOUT_MS);
-          starting = { url: st.url, name: st.name, timer };
+          starting = { url: st.url, name: st.name, timer, fromUrl }; // the last stream known, playing or not
           if (cur.url === st.url) player.play();
           else done = Promise.resolve(player.playItemsAt(index, lineup.map(hermesItem)));
         }
@@ -1028,6 +1039,7 @@ export async function render(root, api, opts = {}) {
   const onWindowScroll = () => closeStationMenu();
   const onViewChanging = () => {
     closeStationMenu();
+    stopLive(); // the poll, the 15 s refresh and a pending "didn't start" timer go with the view
     window.removeEventListener("scroll", onWindowScroll, true);
     window.removeEventListener("revamp:view-changing", onViewChanging);
   };

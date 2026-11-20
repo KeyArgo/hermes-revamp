@@ -501,13 +501,13 @@ window.revampPlayerApi = global.revampPlayerApi;
 # the fix the buttons never showed a press, and a second press restarted instead of pausing.
 NODE_CONTROL = NODE_SMOKE[:NODE_SMOKE.index("const calls = [];")] + r"""
 const calls = [];
-const server = { url: null, status: 'STOPPED', loads: 0, pauses: 0, refreshes: 0 };
+const server = { url: null, status: 'STOPPED', loads: 0, pauses: 0, refreshes: 0, slow: false };
 global.revampPlayerApi = {
   control: true,
   live: { url: null, status: 'STOPPED' },
   liveStream() { return this.live; },
   async refreshLive() { server.refreshes += 1; this.live = { url: server.url, status: server.status }; return this.live; },
-  async playItemsAt(index, list) { server.loads += 1; server.url = list[index].url; server.status = 'PLAYING'; },
+  async playItemsAt(index, list) { server.loads += 1; if (server.slow) return; server.url = list[index].url; server.status = 'PLAYING'; },
   pause() { server.pauses += 1; server.status = 'PAUSED'; },
   play() { server.status = 'PLAYING'; },
   stop() { server.status = 'STOPPED'; },
@@ -536,6 +536,19 @@ window.revampPlayerApi = global.revampPlayerApi;
   await new Promise((r) => _st(r, 700));
   if (server.pauses !== 1 || server.loads !== 1) fail('second press restarted instead of pausing ' + JSON.stringify(server));
   if (plays[2].getAttribute('aria-pressed') !== 'false') fail('still pressed after pause');
+  // Switching from a playing station: the old one keeps playing while the new one connects,
+  // and that must not cancel the new one's Starting state (it used to, at once).
+  server.status = 'PLAYING';
+  server.slow = true;
+  await new Promise((r) => _st(r, 1100));
+  plays[4].click();
+  await new Promise((r) => _st(r, 1300));
+  if (plays[4].getAttribute('aria-busy') !== 'true') fail('switching stations dropped the Starting state');
+  // Leaving the Radio view stops its polling (and the pending "didn't start" timer).
+  for (const fn of listeners.get('revamp:view-changing') || []) fn();
+  const before = server.refreshes;
+  await new Promise((r) => _st(r, 1500));
+  if (server.refreshes !== before) fail('still polling after leaving the view: ' + (server.refreshes - before));
   root.remove ? root.remove() : null;
   console.log('ok');
   process.exit(0);

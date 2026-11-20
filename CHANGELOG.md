@@ -4,6 +4,7 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- Hermes Radio: switching from one playing channel to another keeps the new one's "Starting…" state; leaving the Radio page stops its checks; no false "didn't start" warning after the window was hidden or another station was started.
 - Fixed: an empty Playlists page now shows the Music Studio pointer (it failed silently); resizing the Hermes window no longer throws an error each time; moving the player no longer posts to a removed channel. Dead code and unused styles removed.
 - New setting, Settings → REVamp → Status bar: **Full controls** (as before) or **Menu only**, which keeps just the REVamp pill in the status bar. Play, pause, skip, the queue and the player's place stay inside its menu.
 - The status-bar menu's bottom buttons (Mini player, Frame, Pop into Hermes, Pop out to desktop, Full screen, Report a bug, Copy details, Recover player, Copy diagnostics) are now pills like the genre chips; the active place is the filled pill.
