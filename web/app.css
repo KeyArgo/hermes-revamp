@@ -252,9 +252,6 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-size: 12px; c
 .album-card .a-artist { padding: 0 10px 8px; color: var(--txt-dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* artist list */
-.artist-row { display: flex; justify-content: space-between; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
-.artist-row:hover { background: rgba(255,255,255,0.05); }
-.artist-row .count { color: var(--txt-dim); font-size: 12px; }
 
 /* buttons */
 .btn {
@@ -294,8 +291,6 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-size: 12px; c
 .card-row .grow { flex: 1; min-width: 0; }
 .card-row .name { font-weight: 600; font-size: 13.5px; }
 .card-row .sub { color: var(--txt-dim); font-size: 12px; }
-.fav-star { background: none; border: 0; font-size: 16px; color: var(--txt-dim); padding: 2px 4px; }
-.fav-star.on { color: var(--warn); }
 
 .skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .skin-card { border: 1px solid var(--glass-brd); border-radius: 10px; overflow: hidden; cursor: pointer; background: rgba(255,255,255,0.03); transition: border-color .15s, transform .12s; }

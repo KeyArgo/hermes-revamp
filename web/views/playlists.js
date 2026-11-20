@@ -1,6 +1,7 @@
 // playlists.js — list, open (items), play/append, rename/delete, save current queue,
 // import m3u/pls (file input), export links.
 import { confirmDialog, textPrompt, toast } from "./modal.js";
+import { mountHint, STUDIO_LINE } from "./siblings.js";
 
 const LIKED = "__liked__"; // the editor's id for the Liked list (never a real playlist id)
 

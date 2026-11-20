@@ -18,8 +18,6 @@ import os
 import socket
 import stat
 import sys
-import shutil
-import tempfile
 import threading
 import time
 import urllib.parse
@@ -1385,7 +1383,6 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             # Pings go out every 15 s; a reader that takes none for a minute is gone.
             self.connection.settimeout(self.STREAM_WRITE_TIMEOUT)
-            hello = _jsonify({"hello": True})
             self.wfile.write(b"retry: 3000\n\n")
             self.wfile.write(b": ping\n\n")
             self.wfile.flush()

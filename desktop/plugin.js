@@ -732,9 +732,6 @@ function setPlayerLocation(loc, fromBus = false) {
     $playerLocation.set(loc)
     $winampOpen.set(loc === 'floating') // legacy view, kept in sync for existing UI
   }
-  // Other windows follow the pick (they have no engine: engine?.place() is a no-op there).
-  // The sender echoes too: its own atoms are already set, the echo is a cheap no-op.
-  try { locBus?.postMessage({ loc, from: locSender }) } catch { /* channel closed */ }
   if (loc === 'docked') {
     if ($frameHidden.get()) setFrameHidden(false)
     // Even when already docked the pane may be hidden: showing it again is the point.
@@ -1445,16 +1442,6 @@ function createEngine(ctx, url, bridgeKey = '') {
         try { host.notify({ kind, message: `REVamp: ${e.data.text.slice(0, 120)}` }) } catch { /* never break the listener */ }
       }
     }
-  })
-
-  // Narrow windows squeeze the chat: docked placement collapses to mini until it widens again
-  // (the saved choice stays 'docked', so this is placement only).
-  let wasNarrow = null
-  ctx.addEventListener(window, 'resize', () => {
-    const narrow = innerWidth < DOCKED_MIN_WIDTH
-    if (narrow === wasNarrow) return
-    wasNarrow = narrow
-    place()
   })
 
   function remove() {
