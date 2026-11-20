@@ -4,6 +4,7 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- New setting, Settings → REVamp → Status bar: **Full controls** (as before) or **Menu only**, which keeps just the REVamp pill in the status bar. Play, pause, skip, the queue and the player's place stay inside its menu.
 - The status-bar menu's bottom buttons (Mini player, Frame, Pop into Hermes, Pop out to desktop, Full screen, Report a bug, Copy details, Recover player, Copy diagnostics) are now pills like the genre chips; the active place is the filled pill.
 - Hermes Radio now lists only Hermes Agent Radio's six channels. The older desktop lineup (Nightride, Radio Paradise, EVE Radio) and the "Hermes FM — coming soon" card are gone. Pressing play shows "Starting…" straight away while the stream connects; pressing again cancels, and a station that does not start within 20 seconds says so. Browse lists Hermes Agent Radio first among the genres.
 - The optional desktop pop-out no longer opens a DevTools port on Windows: nothing else on the machine can connect to it, and the window keeps the size it was opened at. Linux and macOS keep using a private pipe that no other account can reach.

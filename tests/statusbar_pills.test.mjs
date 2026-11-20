@@ -25,7 +25,7 @@ const jsxsStub = jsxStub;
 const nowPlayingFn = new Function("state", between("function nowPlaying(state) {", "\nfunction label(").replace("function nowPlaying(state) {", "").replace(/\}\s*$/, ""));
 const labelFn = new Function("np", between("function label(np) {", "\n// One pet line").replace("function label(np) {", "").replace(/\}\s*$/, ""));
 
-function renderBar({ playing = true, online = true, playlist = [] } = {}) {
+function renderBar({ playing = true, online = true, playlist = [], bar = "full" } = {}) {
   const body = between("function RevampBar() {", "\n// ---------------------------------------------------------------- page + card");
   const calls = { command: [], toggle: 0, smallActions: [], likes: 0 };
   const live = { live: { now_playing: { status: playing ? "PLAYING" : "PAUSED", title: "Long Song Title", artist: "Artist" }, playlist }, player_connected: online };
@@ -33,7 +33,7 @@ function renderBar({ playing = true, online = true, playlist = [] } = {}) {
   const EN = { browse: "Choose music", title: "REVamp", play: "Play", pause: "Pause", prev: "Previous", next: "Next", clearQueue: "Clear", clearConfirm: "Confirm clear", showFrame: "Show Frame", hideFrame: "Hide Frame" };
   const run = new Function(
     "jsx", "jsxs", "Fragment", "usePluginI18n", "useValue", "useState", "useEffect", "useRef",
-    "$live", "$open", "$queueOpen", "$playerLocation", "$frameHidden", "$where",
+    "$live", "$open", "$queueOpen", "$playerLocation", "$frameHidden", "$where", "$barControls",
     "nowPlaying", "label", "maybeAnnounce", "command", "toggle", "loadLikes",
     "BarToast", "Waveform", "Popover", "PopoverTrigger", "PopoverContent", "Button", "SmallAction",
     "QueuePanel", "Picker", "LocationRowWithTip", "ReportBugRow", "Signal", "Transport", "EmptyState",
@@ -48,7 +48,7 @@ function renderBar({ playing = true, online = true, playlist = [] } = {}) {
     initial => [typeof initial === "function" ? initial() : initial, () => {}],
     () => undefined,
     () => ({ current: null }),
-    atom(online ? live : null), atom(false), atom(false), atom("docked"), atom(false), atom("pane"),
+    atom(online ? live : null), atom(false), atom(false), atom("docked"), atom(false), atom("pane"), atom(bar),
     nowPlayingFn, labelFn, () => {},
     (...a) => calls.command.push(a), () => { calls.toggle++; }, () => { calls.likes++; },
     "BarToast", "Waveform", "Popover", "PopoverTrigger", "PopoverContent", "Button",
@@ -160,4 +160,24 @@ test("filter chips match the pills: full radius, same height, focus ring", () =>
   assert.match(chip, /height:22px/);
   assert.match(src, /\.revamp-chip:focus-visible\{outline:2px solid var\(--ui-accent\)/);
   assert.match(src, /\.revamp-chip\[aria-pressed=true\]\{background:color-mix\(in srgb,var\(--ui-accent\) 12%,transparent\)\}/);
+});
+
+test("Menu only: the bar keeps just the REVamp pill, the menu keeps the controls", () => {
+  const { tree, calls } = renderBar({ playing: true, playlist: [{ title: "a" }], bar: "menu" });
+  assert.equal(calls.smallActions.length, 0, "no prev/play/next/clear/Frame pills");
+  assert.equal(findAll(tree, "Waveform").length, 0, "no waveform");
+  const np = findAll(tree, "Button").find(n => String(n.props.className || "").includes("revamp-np-pill"));
+  assert.ok(np, "the REVamp menu pill stays");
+  assert.ok(findAll(tree, "Transport").length >= 1, "transport still inside the menu");
+  // Full controls (the default) still shows them.
+  const full = renderBar({ playing: true, playlist: [{ title: "a" }] });
+  assert.ok(full.calls.smallActions.length >= 4);
+  assert.equal(findAll(full.tree, "Waveform").length, 1);
+});
+
+test("the Status bar setting is saved in ui.barControls and offered in Settings", () => {
+  assert.match(src, /writeUiSettings\(\{ barControls: next \}\)/);
+  assert.match(src, /savedUi\.barControls === 'menu' \? 'menu' : 'full'/);
+  assert.match(src, /onClick: \(\) => setBarControls\('menu'\), children: t\('barControlsMenu'\)/);
+  assert.match(src, /barControlsMenu: 'Menu only'/);
 });

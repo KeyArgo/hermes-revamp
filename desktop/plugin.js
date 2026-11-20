@@ -225,6 +225,10 @@ const EN = {
   crispScaleHint: 'Snap the Frame to whole pixels (1×–4×). Off fills the frame.',
   on: 'On',
   off: 'Off',
+  barControls: 'Status bar',
+  barControlsHelp: 'Menu only keeps just the REVamp pill in the status bar. Play, pause, skip and the rest stay inside its menu.',
+  barControlsFull: 'Full controls',
+  barControlsMenu: 'Menu only',
   milkdropTitle: 'MilkDrop visualizer',
   milkdropHelp: 'The animated picture beside the player. Turning it off saves CPU/GPU.',
   showDocked: 'Show the docked player',
@@ -658,6 +662,9 @@ const scopedPaneId = side => `${ID}:${PANE_IDS[side]}`
 const $dockedPlayerSide = atom('right')
 // Off by default: fractional scale fills the frame. Whole numbers are an explicit choice.
 const $crispScale = atom(false)
+// Status bar: 'full' (now-playing pill, waveform, transport, queue, Frame) or 'menu'
+// (only the REVamp menu pill; everything else lives inside the menu). Saved in ui.barControls.
+const $barControls = atom('full')
 let refitPane = () => {}
 
 // fit is the limiting side's ratio (pane room / classic window). Crisp snaps to a
@@ -677,6 +684,11 @@ function writeUiSettings(patch) {
   const next = { ...readUiSettings(), ...patch }
   ctxRef?.storage.set('ui', next)
   return next
+}
+function setBarControls(mode) {
+  const next = mode === 'menu' ? 'menu' : 'full'
+  writeUiSettings({ barControls: next })
+  $barControls.set(next)
 }
 function setCrispScale(on) {
   writeUiSettings({ crispScale: !!on })
@@ -3140,6 +3152,8 @@ function RevampBar() {
     setClearArmed(false)
   }
   const np = nowPlaying(live)
+  // Menu only: the bar keeps just the REVamp pill; transport and the rest are in its menu.
+  const full = useValue($barControls) !== 'menu'
   const triggerRef = useRef(null)
   // The hidden dock's home: a zero-size holder the engine parks the player
   // iframe in while no visible surface shows it. The bar is always mounted
@@ -3167,7 +3181,7 @@ function RevampBar() {
   return jsxs('div', { className: 'revamp-bar', 'data-playing': np.playing, style: { position: 'relative' }, children: [
     jsx('span', { ref: dockRef, 'aria-hidden': true, style: { position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' } }),
     jsx(BarToast, {}),
-    jsx(Waveform, { compact: true }),
+    full ? jsx(Waveform, { compact: true }) : null,
     jsxs(Popover, { open, onOpenChange, children: [
       jsx(PopoverTrigger, { asChild: true, children: jsx(Button, {
         ref: triggerRef, variant: 'ghost', size: 'micro', className: 'revamp-pill revamp-np-pill',
@@ -3199,17 +3213,17 @@ function RevampBar() {
           ] })
       })
     ] }),
-    np.online ? jsx(SmallAction, { label: t('prev'), icon: PrevIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('prev') }) : null,
-    np.online ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, className: 'revamp-pill revamp-pill-icon', onClick: toggle }) : null,
-    np.online ? jsx(SmallAction, { label: t('next'), icon: NextIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('next') }) : null,
-    hasQueue ? jsx(SmallAction, {
+    full && np.online ? jsx(SmallAction, { label: t('prev'), icon: PrevIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('prev') }) : null,
+    full && np.online ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, className: 'revamp-pill revamp-pill-icon', onClick: toggle }) : null,
+    full && np.online ? jsx(SmallAction, { label: t('next'), icon: NextIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('next') }) : null,
+    full && hasQueue ? jsx(SmallAction, {
       label: clearArmed ? t('clearConfirm') : t('clearQueue'), icon: TrashIcon, pressed: clearArmed,
       className: 'revamp-pill revamp-pill-icon', onClick: clearQueue
     }) : null,
-    jsx(SmallAction, {
+    full ? jsx(SmallAction, {
       label: t(frameOpen ? 'hideFrame' : 'showFrame'), icon: DockIcon, pressed: frameOpen, className: 'revamp-pill revamp-pill-icon revamp-dock-toggle',
       onClick: () => frameOpen ? setFrameHidden(true) : setPlayerLocation('docked')
-    })
+    }) : null
   ] })
 }
 
@@ -3433,6 +3447,7 @@ function RevampSettings() {
   const dockedSide = useValue($dockedPlayerSide)
   const frameHidden = useValue($frameHidden)
   const crisp = useValue($crispScale)
+  const barControls = useValue($barControls)
   useValue($desktop)
   const item = (loc, key, suffix = '') => jsx(Button, {
     variant: 'ghost', size: 'sm',
@@ -3443,6 +3458,12 @@ function RevampSettings() {
   const extra = (key, label, on, onClick) => jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': on, onClick, children: label }, key)
   return jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, padding: 12, alignItems: 'flex-start' }, children: [
     jsx(MilkdropSettings, {}),
+    jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('barControls') }),
+    jsx('span', { style: { fontSize: 11, color: 'var(--ui-text-tertiary)' }, children: t('barControlsHelp') }),
+    jsxs('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('barControls'), children: [
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': barControls !== 'menu', onClick: () => setBarControls('full'), children: t('barControlsFull') }),
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': barControls === 'menu', onClick: () => setBarControls('menu'), children: t('barControlsMenu') })
+    ] }),
     jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('location') }),
     jsx('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 }, role: 'group', 'aria-label': t('location'), children: placeItems(item, extra, t) }),
     jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('dockedPlayerSide') }),
@@ -3571,6 +3592,7 @@ export default {
     // persisted (possibly left-drifted) layout cannot win over this fresh id.
     const savedUi = ctx.storage.get('ui', null)
     $crispScale.set(!!(savedUi && typeof savedUi === 'object' && savedUi.crispScale === true))
+    $barControls.set(savedUi && typeof savedUi === 'object' && savedUi.barControls === 'menu' ? 'menu' : 'full')
     const savedSide = ctx.storage.get('dockedPlayerSide', 'right')
     const dockedSide = DOCKED_PLAYER_SIDES.includes(savedSide) ? savedSide : 'right'
     if (savedSide !== dockedSide) ctx.storage.set('dockedPlayerSide', dockedSide)
