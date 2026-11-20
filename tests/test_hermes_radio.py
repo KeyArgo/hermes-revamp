@@ -432,6 +432,15 @@ window.revampPlayerApi = global.revampPlayerApi;
   if (root.querySelector('audio')) fail('audio element on first paint');
   const web = root.querySelector('.hermes-web-link');
   if (!web || web.getAttribute('href') !== 'https://hermesagentradio.com/' || web.getAttribute('target') !== '_blank') fail('web listening link');
+  // Clicking it must open the site through openExternal (a sandboxed frame blocks plain target=_blank).
+  const opened = [];
+  const prevOpen = global.open, prevParent = global.parent;
+  global.open = (url) => { opened.push(url); return null; };
+  global.parent = { postMessage: (m) => { if (m && m.type === 'revamp:open-external') opened.push(m.url); } };
+  web.click();
+  global.open = prevOpen;
+  global.parent = prevParent;
+  if (opened[0] !== 'https://hermesagentradio.com/') fail('web link did not open the site: ' + JSON.stringify(opened));
   if (state.plays !== 0 || calls.some((p) => p.includes('nowplaying') || p.includes('/stream'))) fail('autoplay ' + JSON.stringify(calls));
   const search = root.querySelector('input');
   if (!search) fail('search field missing');

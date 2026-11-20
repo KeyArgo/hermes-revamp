@@ -520,6 +520,8 @@ export async function render(root, api, opts = {}) {
     web.setAttribute("target", "_blank");
     web.setAttribute("rel", "noopener");
     web.textContent = "Check out the new Hermes Radio on the web: hermesagentradio.com ↗";
+    // Inside Hermes the page is a sandboxed frame that may not open tabs: Hermes opens it.
+    web.addEventListener("click", (ev) => { ev.preventDefault(); openExternal("https://hermesagentradio.com/"); });
     intro.append(h, lead, web);
     const ask = document.createElement("button");
     ask.type = "button";
