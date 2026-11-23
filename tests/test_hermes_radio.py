@@ -92,16 +92,24 @@ def test_agent_radio_endpoint(server):
     assert [_row(s) for s in body] == AGENT_RADIO_ROWS
 
 
-def test_status_bar_radio_list_leads_with_agent_radio_and_links_the_site():
+def test_status_bar_radio_list_leads_with_agent_radio_without_a_web_link():
+    """The status-bar menu lists the channels; the site link lives on the full page only (owner, 11-22)."""
     plugin = (REPO / "desktop" / "plugin.js").read_text(encoding="utf-8")
     assert "rest('/radio/agent-radio')" in plugin
     assert "const rows = [...leading, ...pinned," in plugin
-    assert "openExternal?.(AGENT_RADIO_SITE)" in plugin
+    assert "hermesagentradio.com" not in plugin
     link = "Check out the new Hermes Radio on the web: hermesagentradio.com ↗"
-    assert link in plugin and link in RADIO_JS.read_text(encoding="utf-8")
-    assert "const AGENT_RADIO_SITE = 'https://hermesagentradio.com/'" in plugin
+    assert link in RADIO_JS.read_text(encoding="utf-8")
     api = (REPO / "dashboard" / "plugin_api.py").read_text(encoding="utf-8")
     assert '@router.get("/radio/agent-radio")' in api
+
+
+def test_open_external_failure_is_reported():
+    """A link Hermes refuses to open must show an error, not do nothing (owner, 11-22)."""
+    plugin = (REPO / "desktop" / "plugin.js").read_text(encoding="utf-8")
+    handler = plugin[plugin.index("e.data.type === 'revamp:open-external'"):]
+    handler = handler[:handler.index("return\n")]
+    assert "ok === false" in handler and "could not open" in handler
 
 
 def test_hermes_radio_is_only_hermes_agent_radio():

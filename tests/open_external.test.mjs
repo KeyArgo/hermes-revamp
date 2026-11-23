@@ -54,7 +54,8 @@ test("the host accepts revamp:open-external only from REVamp's frames and only h
   assert.match(plugin, /const fromPage = e\.source === frame\.contentWindow \|\| e\.source === controlFrame\.contentWindow/);
   assert.match(block, /if \(fromPage && e\.data\.type === 'revamp:open-external'\)/);
   assert.match(block, /typeof u === 'string' && \/\^https\?:\\\/\\\/\/i\.test\(u\)/);
-  assert.match(block, /typeof ctxRef\?\.os\?\.openExternal === 'function'/);
+  assert.match(block, /typeof ctxRef\?\.os\?\.openExternal !== 'function'/);
+  assert.match(block, /ok === false/);
   assert.match(block, /ctxRef\.os\.openExternal\(u\)/);
 });
 

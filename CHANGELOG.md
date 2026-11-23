@@ -4,6 +4,8 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- The status-bar menu no longer shows the hermesagentradio.com link; it stays on the full Radio page.
+- When Hermes refuses to open a link, REVamp now says so instead of doing nothing.
 - The "Check out the new Hermes Radio on the web" link on the Radio page now opens your browser inside Hermes Desktop (the page's frame cannot open tabs itself).
 - Hermes Radio: switching from one playing channel to another keeps the new one's "Starting…" state; leaving the Radio page stops its checks; no false "didn't start" warning after the window was hidden or another station was started.
 - Fixed: an empty Playlists page now shows the Music Studio pointer (it failed silently); resizing the Hermes window no longer throws an error each time; moving the player no longer posts to a removed channel. Dead code and unused styles removed.
