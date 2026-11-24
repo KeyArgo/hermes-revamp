@@ -69,3 +69,55 @@ test("the bar waveform slows and rests in the background under software renderin
   assert.match(wave, /pauseWhenUnfocused: hostRendersInSoftware\(\)/);
   assert.match(plugin, /const SOFTWARE_WAVE_FPS = 6/);
 });
+
+// Hunt 3: in the library control frame (the player sits in Frame, Pop-out or Desktop),
+// Settings showed defaults and silently dropped every change, and "Not now" on a hint was
+// never saved: the stand-in player api had no getSettings / setSavedSettings.
+function fnBody(source, sig) {
+  const a = source.indexOf(sig);
+  assert.notEqual(a, -1, sig);
+  let depth = 0;
+  for (let i = source.indexOf("{", a + sig.length - 1); i < source.length; i++) {
+    if (source[i] === "{") depth++;
+    else if (source[i] === "}" && --depth === 0) return source.slice(a, i + 1);
+  }
+  throw new Error("unbalanced");
+}
+
+function controlApi(state) {
+  const posts = [];
+  const win = {};
+  const install = new Function("window", "apiPost", "apiGet",
+    `${fnBody(app, "function installControlPlayerApi() {")}\ninstallControlPlayerApi();`);
+  install(win, async (path, body) => { posts.push([path, body]); return { ok: true }; },
+    async (path) => { assert.equal(path, "/api/state"); return state; });
+  return { pApi: win.revampPlayerApi, posts };
+}
+
+test("the control stand-in reads the live player's saved settings and sends changes to it", async () => {
+  const { pApi, posts } = controlApi({ settings: { duck_on_approval: true, ticker: false } });
+  assert.equal(typeof pApi.getSettings, "function");
+  await pApi.refreshSettings();
+  assert.deepEqual(pApi.getSettings(), { duck_on_approval: true, ticker: false });
+  await pApi.setSavedSettings({ duck_on_approval: false });
+  assert.deepEqual(posts, [["/api/command", { action: "settings", duck_on_approval: false }]]);
+  assert.equal(pApi.getSettings().duck_on_approval, false, "the next render shows the change");
+  // Boot waits for the saved settings before the first view renders.
+  const boot = between(app, "async function boot()", "boot().catch");
+  const control = between(boot, "if (CONTROL) {", "showStartView();");
+  assert.match(control, /await window\.revampPlayerApi\.refreshSettings\(\)/);
+});
+
+test("the live player accepts the ticker and hint dismissals sent from the control frame", () => {
+  const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
+  const block = between(player, 'case "settings": {', "        default: break;");
+  const saved = [];
+  const run = new Function("cmd", "api", "applyMilkdropChoice", "hasWebGL",
+    `switch (cmd.action) { ${block} }`);
+  const api = { setSavedSettings: (p) => saved.push(p) };
+  run({ action: "settings", ticker: false }, api, () => {}, () => true);
+  run({ action: "settings", siblingHintsDismissed: { "hermes-music-studio": 1700000000 } }, api, () => {}, () => true);
+  run({ action: "settings", siblingHintsDismissed: { aura: "soon" } }, api, () => {}, () => true);
+  run({ action: "settings", siblingHintsDismissed: "x" }, api, () => {}, () => true);
+  assert.deepEqual(saved, [{ ticker: false }, { siblingHintsDismissed: { "hermes-music-studio": 1700000000 } }]);
+});

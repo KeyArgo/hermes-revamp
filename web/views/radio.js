@@ -220,12 +220,12 @@ export async function render(root, api, opts = {}) {
       if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && e.target === row) {
         e.preventDefault();
         const rect = row.getBoundingClientRect();
-        openStationMenu(st, getList, { x: rect.left, y: rect.bottom });
+        openStationMenu(st, getList, { x: rect.left, y: rect.bottom }, row);
       }
     });
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      openStationMenu(st, getList, { x: e.clientX, y: e.clientY });
+      openStationMenu(st, getList, { x: e.clientX, y: e.clientY }, row);
     });
     return row;
   }
@@ -240,7 +240,8 @@ export async function render(root, api, opts = {}) {
     if (returnFocus) row?.focus();
   }
 
-  function openStationMenu(st, getList, point) {
+  // row: the station's own row, where Escape gives focus back (never a lookup by name).
+  function openStationMenu(st, getList, point, row) {
     closeStationMenu();
     const menu = document.createElement("div");
     menu.className = "track-menu";
@@ -281,8 +282,7 @@ export async function render(root, api, opts = {}) {
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(8, Math.min(point.x, window.innerWidth - rect.width - 8))}px`;
     menu.style.top = `${Math.max(8, Math.min(point.y, window.innerHeight - rect.height - 8))}px`;
-    const rows = [...listEl.querySelectorAll(".radio-row")];
-    stationMenu = { element: menu, row: rows.find((r) => r.querySelector(".name")?.textContent.includes(st.name)) };
+    stationMenu = { element: menu, row };
     const onKeydown = (e) => {
       const buttons = [...menu.querySelectorAll('[role="menuitem"]')];
       const current = buttons.indexOf(document.activeElement);
@@ -1050,6 +1050,7 @@ export async function render(root, api, opts = {}) {
 
   // init: favorites first so hearts are right everywhere, then the default tab
   try { const f = await api("/api/radio/favorites"); favIds = new Set(f.map((x) => x.id)); } catch { /* offline */ }
+  if (listGen !== 0) return repaintHearts(); // a tab picked during the wait has its own list
   if (tab === "hermes") await loadHermes();
   else loadPopular();
 }

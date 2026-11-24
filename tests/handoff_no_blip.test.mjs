@@ -322,13 +322,13 @@ test("nothing selected yet and the status lags: the volume stays down until the 
   assert.equal(api.place().track, "t1");
 });
 
-test("any track change, queue change or relative seek before the answer drops the handoff", () => {
+test("any track change, new queue or relative seek before the answer drops the handoff (append/next do not)", () => {
   const c = claimBlock();
   assert.match(src, /const trackAtClaim = curTrack\(\);/);
   assert.match(c, /if \(trackAtClaim != null && curTrack\(\) !== trackAtClaim\) return;/);
   for (const name of ["    next() {", "    prev() {"]) assert.match(methodSource(name), /actSeq\+\+/, name);
   assert.match(methodSource("    async playIndex(i) {"), /actSeq\+\+;/);
-  assert.match(methodSource('    async loadTracks(tracks, { mode = "replace", play = true } = {}) {'), /if \(play \|\| mode === "replace"\) \{ actSeq\+\+; place = null; startPending = false; endSilence\(\); \}/);
+  assert.match(methodSource('    async loadTracks(tracks, { mode = "replace", play = true } = {}) {'), /if \(mode === "replace" \|\| \(play && other\)\) \{ actSeq\+\+; place = null; startPending = false; endSilence\(\); \}/);
   const sb = methodSource("    seekBy(delta) {");
   assert.ok(sb.indexOf("place = null;") < sb.indexOf("seekInternally(to)") && sb.includes("actSeq++;"));
 });

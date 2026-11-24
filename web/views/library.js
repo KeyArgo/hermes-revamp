@@ -161,8 +161,12 @@ export async function render(root, api, kind = "music") {
       if (generation !== tracksGeneration) return;
       if (requestQuery !== query || requestOffset !== offset) return;
       if (requestOffset === 0) {
+        // A reload of the same list (the scan poll) keeps the chosen songs chosen; a new
+        // search or tab has already cleared the selection.
+        const keep = new Set([...selected].map((i) => tracks[i]?.id).filter((id) => id != null));
         tracks = res.tracks || [];
         selected.clear();
+        tracks.forEach((t, i) => { if (keep.has(t.id)) selected.add(i); });
       } else {
         tracks.push(...(res.tracks || []));
       }
@@ -176,7 +180,12 @@ export async function render(root, api, kind = "music") {
         loadMoreRetry?.();
         return;
       }
+      // The error stays on screen: no "No music yet" over it, and no older list (a
+      // previous search) left behind to play from.
+      tracks = []; selected.clear(); total = 0;
+      statusEl.textContent = "";
       listElEmpty(listEl, e.message);
+      return;
     }
     if (generation !== tracksGeneration) return;
     statusEl.textContent = `${tracks.length} / ${total}`;
@@ -190,7 +199,8 @@ export async function render(root, api, kind = "music") {
     let rows = [];
     try { rows = await api(`/api/library/artists?kind=${apiKind}`); } catch (e) {
       if (generation !== tracksGeneration) return;
-      listElEmpty(listEl, e.message);
+      statusEl.textContent = "";
+      return listElEmpty(listEl, e.message); // not "No artists yet" over the error
     }
     if (generation !== tracksGeneration) return;
     artists = rows;
@@ -207,7 +217,8 @@ export async function render(root, api, kind = "music") {
       rows = await api(`/api/library/albums?${q}`);
     } catch (e) {
       if (generation !== tracksGeneration) return;
-      listElEmpty(listEl, e.message);
+      statusEl.textContent = "";
+      return listElEmpty(listEl, e.message); // not "No albums yet" over the error
     }
     if (generation !== tracksGeneration) return;
     albums = rows;
@@ -689,11 +700,13 @@ export async function render(root, api, kind = "music") {
     addItem("Play next", run(() => queueItems(items, "next")));
     addItem("Add to queue", run(() => queueItems(items, "append")));
     if (withLike) {
-      const allLiked = chosenTracks().every((track) => {
+      // The songs as chosen when the menu opened: a reload meanwhile must not widen it.
+      const likeTracks = chosenTracks();
+      const allLiked = likeTracks.every((track) => {
         const player = window.revampPlayerApi;
         return player?.isLiked ? player.isLiked(track.id) : !!track.liked;
       });
-      addItem(allLiked ? "Unlike" : "Like", run(() => setChosenLiked(!allLiked)));
+      addItem(allLiked ? "Unlike" : "Like", run(() => setChosenLiked(!allLiked, likeTracks)));
     }
 
     // Add to playlist ▸: saved playlists plus a new one. The list is fetched when the
@@ -852,8 +865,8 @@ export async function render(root, api, kind = "music") {
     queueItems(chosenTracks().map(trackToItem), "append");
   }
 
-  function setChosenLiked(liked) {
-    chosenTracks().forEach((track) => window.revampPlayerApi?.setLiked?.(track.id, liked));
+  function setChosenLiked(liked, list = chosenTracks()) {
+    list.forEach((track) => window.revampPlayerApi?.setLiked?.(track.id, liked));
   }
 
   async function addChosenTracksToPlaylist() {
