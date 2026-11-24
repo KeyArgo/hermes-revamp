@@ -115,3 +115,43 @@ def test_a_checkpoint_is_marked_incomplete_until_the_scan_finishes(tmp_path, mon
     (home / "library.json").write_text(json.dumps({"tracks": {}, "last_scan": 1.0}), encoding="utf-8")
     library.load_index()
     assert library.index_complete() is True  # older index files (no flag) count as complete
+
+
+def test_duration_save_can_finish_alongside_scan(tmp_path, monkeypatch):
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    offline = str(tmp_path / "offline")
+    monkeypatch.setattr(library, "_INDEX", {"a": {"id": "a", "root": offline}})
+    duration_ready = threading.Event()
+    scan_ready = threading.Event()
+    duration_waiting = threading.Event()
+    lock = threading.RLock()
+    save = library.save_index
+
+    class IndexLock:
+        def __enter__(self):
+            if threading.current_thread() is writer and duration_ready.is_set():
+                duration_waiting.set()
+            assert lock.acquire(timeout=3), "index lock blocked during save"
+
+        def __exit__(self, *exc):
+            lock.release()
+
+    def synchronized_save(*args, **kwargs):
+        if threading.current_thread() is writer:
+            duration_ready.set()
+            assert scan_ready.wait(2)
+        else:
+            scan_ready.set()
+            assert duration_waiting.wait(2)
+        save(*args, **kwargs)
+
+    results = []
+    writer = threading.Thread(target=lambda: results.append(library.set_learned_duration("a", 90)))
+    monkeypatch.setattr(library, "_LOCK", IndexLock())
+    monkeypatch.setattr(library, "save_index", synchronized_save)
+    writer.start()
+    assert duration_ready.wait(2)
+    library.scan_sync([offline])
+    writer.join(2)
+    assert results == [90]
+    assert library.get_track("a")["duration"] == 90

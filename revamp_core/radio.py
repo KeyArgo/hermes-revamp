@@ -372,7 +372,7 @@ def _rb_open(req: urllib.request.Request, timeout: float):
     target (see _SafeRedirect).
     """
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SafeRedirect(),
-                                         _FirstAddressHTTPSHandler())
+                                         _PinnedHTTPHandler(), _FirstAddressHTTPSHandler())
     return opener.open(req, timeout=timeout)
 
 

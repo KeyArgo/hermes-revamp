@@ -28,9 +28,8 @@ log = logging.getLogger("revamp")
 
 INDEX_NAME = "library.json"
 
+# Hold the index lock through replacement so older snapshots cannot overwrite newer ones.
 _LOCK = threading.RLock()
-# Serialises index writes: without it an older payload could be written after a newer one.
-_SAVE_LOCK = threading.Lock()
 # Scans are numbered. Only the newest one may commit, so an older scan of
 # folders the user just removed can't finish last and overwrite the index.
 _GEN = 0          # number of the newest scan started
@@ -81,11 +80,10 @@ def save_index(complete: bool = True) -> None:
 
     global _COMPLETE
     path = _index_path()
-    with _SAVE_LOCK:
-        with _LOCK:
-            _COMPLETE = complete
-            payload = {"tracks": {k: dict(v) for k, v in _INDEX.items()},
-                       "last_scan": _LAST_SCAN, "complete": complete}
+    with _LOCK:
+        _COMPLETE = complete
+        payload = {"tracks": {k: dict(v) for k, v in _INDEX.items()},
+                   "last_scan": _LAST_SCAN, "complete": complete}
         try:
             fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".lib-", suffix=".tmp")
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -587,7 +585,7 @@ def search(q: str = "", artist: str = "", album: str = "", kind: str = "",
         a = _artist_key(artist)
         tracks = [t for t in tracks
                   if a == _artist_key(t.get("artist"))
-                  or a == _artist_key(t.get("album_artist"))]
+                  or str(t.get("album_artist") or "").strip().casefold() == a]
     if album:
         al = album.casefold()
         tracks = [t for t in tracks if al == (t.get("album") or "").casefold()]

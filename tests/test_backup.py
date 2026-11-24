@@ -428,3 +428,73 @@ def test_api_marks_empty_backups(server):
     lst = c.get("/api/backups")[2]["backups"]
     assert lst[0]["empty"] is False
     assert all(isinstance(b["empty"], bool) for b in lst)
+
+
+def test_export_fails_on_unreadable_playlist(env, monkeypatch):
+    data, _ = env
+    read = Path.read_bytes
+
+    def read_bytes(path):
+        if path == data / "playlists/road-trip.m3u8":
+            raise PermissionError("unreadable")
+        return read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    with pytest.raises(OSError, match="playlists/road-trip.m3u8"):
+        bk.export_zip(data)
+
+
+def test_restore_undo_removes_previously_absent_files(env):
+    data, root = env
+    snapshot = bk.snapshot(data, root=root)
+    queue = b'{"playlist":[{"url":"https://station.example/live"}]}'
+    (data / "state.json").write_bytes(queue)
+    absent = [data / "settings.json", data / "radio_favorites.json"]
+    for path in absent:
+        path.unlink()
+    bk.restore(snapshot["id"], data, root=root)
+    assert all(path.exists() for path in absent)
+    bk.restore(bk.list_backups(root)[0]["id"], data, root=root)
+    assert (data / "state.json").read_bytes() == queue
+    assert all(not path.exists() for path in absent)
+
+
+@pytest.mark.parametrize("operation", ["restore", "import"])
+def test_restored_folders_replace_index(tmp_path, monkeypatch, operation):
+    from revamp_core import library, server, store
+
+    data = tmp_path / "profile"
+    monkeypatch.setenv("REVAMP_HOME", str(data))
+    monkeypatch.setattr(store, "_STATE", None)
+    monkeypatch.setattr(library, "_INDEX", {})
+    monkeypatch.setattr(library, "_entry_for", lambda path, cached: {"id": path, "path": path})
+    monkeypatch.setattr(library, "scan_async", library.scan_sync)
+    first, second = tmp_path / "first", tmp_path / "second"
+    for folder in (first, second):
+        folder.mkdir()
+        (folder / "song.mp3").touch()
+    server.set_library_folders([str(first)])
+    if operation == "restore":
+        body = {"id": bk.snapshot(data)["id"]}
+    else:
+        body = {"zip_b64": base64.b64encode(bk.export_zip(data)).decode()}
+    server.set_library_folders([str(second)])
+    library.scan_sync(server.library_dirs())
+    assert [t["root"] for t in library.all_tracks()] == [str(second)]
+    handler = object.__new__(server.Handler)
+    handler._body_json = lambda: body
+    handler._send_json = lambda payload: payload
+    handler._api_post("/api/backups/" + operation)
+    assert [t["root"] for t in library.all_tracks()] == [str(first)]
+
+
+@pytest.mark.parametrize("preference", [{"settings": {"ticker": False}}, {"volume": 35}])
+def test_persisted_default_state_is_empty(tmp_path, monkeypatch, preference):
+    from revamp_core import store
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    monkeypatch.setattr(store, "_STATE", None)
+    store.update({})
+    assert bk.is_empty(tmp_path)
+    store.update(preference)
+    assert not bk.is_empty(tmp_path)

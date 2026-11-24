@@ -770,7 +770,10 @@ class Handler(BaseHTTPRequestHandler):
                                     "backups": listed,
                                     "data_empty": backup.is_empty(data_dir())})
         if path == "/api/backups/export":
-            blob = backup.export_zip(data_dir())
+            try:
+                blob = backup.export_zip(data_dir())
+            except OSError as exc:  # an incomplete backup must not download as if it were whole
+                return self._err(500, str(exc))
             return self._send(
                 200, blob, "application/zip",
                 extra={"Content-Disposition": 'attachment; filename="revamp-backup.zip"'})
@@ -953,7 +956,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(bid, str) or not bid:
                 return self._err(400, "id required")
             try:
-                restored = store.run_locked(lambda: backup.restore(bid, data_dir()))
+                restored = _restore_library(lambda: backup.restore(bid, data_dir()))
             except KeyError:
                 return self._err(404, "no such backup")
             except ValueError as exc:  # a damaged backup: nothing was written
@@ -966,7 +969,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, "zip_b64 required")
             try:
                 raw = base64.b64decode(blob, validate=True)
-                restored = store.run_locked(lambda: backup.import_zip(raw, data_dir()))
+                restored = _restore_library(lambda: backup.import_zip(raw, data_dir()))
             except (ValueError, TypeError) as exc:
                 return self._err(400, str(exc))
             HUB.broadcast("restored", {"restored": restored})
@@ -1029,8 +1032,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, "name must be a string")
             if isinstance(body.get("name"), str) and len(body["name"].strip()) > MAX_PLAYLIST_NAME:
                 return self._err(400, f"name is longer than {MAX_PLAYLIST_NAME} characters")
-            out = playlists.update_playlist(path[len("/api/playlists/"):],
-                                            body.get("name"), body.get("items"))
+            try:
+                out = playlists.update_playlist(path[len("/api/playlists/"):],
+                                                body.get("name"), body.get("items"))
+            except ValueError as exc:
+                return self._err(400, str(exc))
             if out is None:
                 return self._err(404, "no such playlist")
             HUB.broadcast("playlists", {"action": "updated", "id": out["id"]})
@@ -1651,6 +1657,17 @@ def _clean_library_folders(raw: List[Any]) -> Optional[List[Dict[str, str]]]:
     return out
 
 
+def _restore_library(operation):
+    def restore():
+        previous = library_folders()
+        restored = operation()
+        if library_folders() != previous:
+            library.scan_async(library_dirs())
+        return restored
+
+    return store.run_locked(restore)
+
+
 def _library_folders_payload() -> Dict[str, Any]:
     configured = library_folders()
     paths = [os.path.normpath(os.path.expanduser(str(f.get("path") or ""))) for f in configured]
@@ -1875,6 +1892,7 @@ def build_server(port: Optional[int] = None, data: Optional[str] = None,
     srv.revamp_version = version or VERSION
     srv.revamp_build = build or web_build()
     srv.revamp_owner = "service" if owner == "service" else "plugin"
+    diaglog.set_client_counter(HUB.count)
     srv.revamp_started_at = time.time()
     import secrets as _secrets
     srv.revamp_instance = _secrets.token_hex(8)

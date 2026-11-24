@@ -63,3 +63,16 @@ def test_music_tab_has_a_tracks_albums_artists_switch():
 def test_new_menu_labels_are_translated():
     for key in ("albums", "artists", "addToPlaylist", "newPlaylist", "addedToPlaylist", "createdPlaylist"):
         assert f"{key}:" in PLUGIN, key
+
+
+def test_unknown_artist_row_matches_only_uncredited_tracks(tmp_path, monkeypatch):
+    from revamp_core import library, store
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    monkeypatch.setattr(store, "_STATE", None)
+    monkeypatch.setattr(library, "_INDEX", {
+        "anon": {"id": "anon"}, "credited": {"id": "credited", "artist": "A"}})
+    row = next(r for r in library.artists() if r["name"] == "Unknown Artist")
+    result = library.search(artist=row["name"])
+    assert result["total"] == row["tracks"] == 1
+    assert [t["id"] for t in result["tracks"]] == ["anon"]

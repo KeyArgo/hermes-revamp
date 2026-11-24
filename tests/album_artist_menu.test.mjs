@@ -523,3 +523,10 @@ test("an artist row opens the same menu and queues all their tracks in album ord
   // The artist row also carries a ⋯ button for the same menu.
   assert.ok(document.querySelector("#lib-list tr .album-more"), "artist ⋯ button");
 });
+
+test("desktop album rows request the exact album artist", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../desktop/plugin.js", import.meta.url), "utf8");
+  const helper = source.slice(source.indexOf("const albumItems ="), source.indexOf("const artistItems ="));
+  assert.match(helper, /album_artist:\s*a\.artist\b/);
+});

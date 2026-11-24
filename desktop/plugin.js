@@ -2368,7 +2368,7 @@ async function allTrackItems(params, key, cache) {
 }
 
 const albumItems = (a, version) => allTrackItems(
-  { album: a.album || '', artist: a.artist || '', kind: 'music' },
+  { album: a.album || '', album_artist: a.artist || '', kind: 'music' },
   `${version}|${a.artist || ''}|${a.album || ''}`, albumCache
 )
 const artistItems = (name, version) => allTrackItems(

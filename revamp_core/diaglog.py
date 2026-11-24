@@ -21,7 +21,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .config import data_dir
 
@@ -38,6 +38,7 @@ _T0 = time.monotonic()  # process uptime baseline (module loads with the server)
 _lock = threading.Lock()
 _handler: Optional[logging.Handler] = None
 _sampler_thread: Optional[threading.Thread] = None
+_client_count: Optional[Callable[[], int]] = None
 _stop = threading.Event()
 _last: Optional[Dict[str, Any]] = None
 _history: List[Tuple[float, Optional[float]]] = []  # (monotonic, rss_mb), pruned to WINDOW
@@ -136,6 +137,11 @@ def _rss_mb() -> Tuple[Optional[float], Optional[float]]:
         return None, None
 
 
+def set_client_counter(count: Callable[[], int]) -> None:
+    global _client_count
+    _client_count = count
+
+
 def sample() -> Dict[str, Any]:
     """One health sample. Every read is best-effort: a missing /proc (non-Linux)
     leaves that field None instead of failing the whole sample."""
@@ -147,8 +153,8 @@ def sample() -> Dict[str, Any]:
         pass
     sse: Optional[int] = None
     try:
-        from . import server as _srv  # late import: server imports this module
-        sse = _srv.HUB.count()
+        if _client_count is not None:
+            sse = _client_count()
     except Exception:
         pass
     return {

@@ -317,8 +317,12 @@ def get_playlist(pid: str) -> Optional[Dict[str, Any]]:
         return {"id": p.stem, "name": _stored_name(p), "items": items}
 
 
-def _write_and_return(slug: str, name: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
-    items = [n for n in map(_normalize, items) if n is not None]
+def _write_and_return(slug: str, name: str, items: List[Dict[str, Any]],
+                      *, strict: bool = False) -> Dict[str, Any]:
+    normalized = [n for n in map(_normalize, items) if n is not None]
+    if strict and len(normalized) != len(items):
+        raise ValueError("playlist contains an invalid or unresolved item")
+    items = normalized
     with _LOCK:
         p = playlists_dir() / f"{slug}.m3u8"
         _write_m3u(p, name, items)
@@ -342,7 +346,7 @@ def update_playlist(pid: str, name: Optional[str] = None,
         new_items = list(items) if items is not None else existing["items"]
         # The id never changes: the display name is stored in the file, so a rename keeps
         # every link, open view and queue reference to this playlist working.
-        return _write_and_return(existing["id"], new_name, new_items)
+        return _write_and_return(existing["id"], new_name, new_items, strict=items is not None)
 
 
 def delete_playlist(pid: str) -> bool:

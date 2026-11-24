@@ -154,3 +154,20 @@ def test_relative_playlist_entry_follows_the_redirected_playlist(monkeypatch):
     monkeypatch.setattr(radio, "_open", lambda *a, **k: resp)
     monkeypatch.setattr(radio, "safe_stream_url", lambda u: True)
     assert radio.resolve_playlist_url("https://station.example/list.m3u") == "https://cdn.example/radio/live.mp3"
+
+
+def test_directory_opener_pins_both_redirect_schemes(monkeypatch):
+    handlers = []
+
+    class OfflineOpener:
+        def open(self, req, timeout):
+            return None
+
+    def build(*parts):
+        handlers.extend(type(part) for part in parts)
+        return OfflineOpener()
+
+    monkeypatch.setattr(radio.urllib.request, "build_opener", build)
+    radio._rb_open(radio.urllib.request.Request("https://mirror.example/"), 1)
+    assert radio._FirstAddressHTTPSHandler in handlers
+    assert radio._PinnedHTTPHandler in handlers
