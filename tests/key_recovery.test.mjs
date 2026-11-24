@@ -37,7 +37,7 @@ test("MilkDrop: old per-place choices carry over; automatic toggles never overwr
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   assert.match(player, /const legacy = LEGACY_MILKDROP\[visualizerPlacement\];\s*if \(legacy && has\(legacy\)\) return saved\.settings\[legacy\] === true;/);
   assert.match(player, /if \(!milkdropSuspended && !autoMilkdrop\) api\.setSavedSettings/);
-  assert.equal((player.match(/applyMilkdropChoice\(/g) || []).length, 4, "start-up + new place + resume + the Settings switch");
+  assert.equal((player.match(/applyMilkdropChoice\(/g) || []).length, 5, "start-up + new place + resume + the Settings switch + a choice saved from the status bar");
   assert.doesNotMatch(player, /visualizerOpen\(\) !== wantOpen\) api\.toggleVisualizer/);
   // Full screen counts only while the browser really is full screen (a refused request must
   // not freeze the desktop window's layout).
