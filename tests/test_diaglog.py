@@ -34,6 +34,7 @@ def isolated_diaglog(tmp_path, monkeypatch):
     monkeypatch.setattr(diaglog, "_handler", None)
     monkeypatch.setattr(diaglog, "_sampler_thread", None)
     monkeypatch.setattr(diaglog, "_last", None)
+    monkeypatch.setattr(diaglog, "_client_count", None)
     diaglog._history.clear()
     diaglog._stop.clear()
     yield tmp_path / "data"
@@ -254,3 +255,21 @@ def test_now_json_failure_warns_once(monkeypatch, caplog):
     warnings = [r for r in caplog.records
                 if r.name == "revamp.store" and "now.json" in r.getMessage()]
     assert len(warnings) == 1
+
+
+def test_standalone_server_samples_its_own_listeners(isolated_diaglog, monkeypatch):
+    import importlib.util
+    from types import SimpleNamespace
+    from revamp_core import server
+
+    # Like python -m, execute the server in a second module namespace.
+    spec = importlib.util.spec_from_file_location("revamp_core.standalone", server.__file__)
+    standalone = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(standalone)
+    monkeypatch.setattr(standalone, "ThreadingHTTPServer", lambda *args: SimpleNamespace())
+    standalone.build_server(8114, build="test", owner="service")
+    listener = standalone.HUB.register()
+    try:
+        assert diaglog.sample()["sse_clients"] == 1
+    finally:
+        standalone.HUB.unregister(listener)

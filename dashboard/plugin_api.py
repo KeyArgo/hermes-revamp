@@ -184,13 +184,15 @@ def _clamp(value: int, lo: int, hi: int) -> int:
 
 @router.get("/library/tracks")
 def library_tracks(q: str = "", limit: int = 50, kind: str = "", offset: int = 0,
-                   artist: str = "", album: str = "", sort: str = "") -> Response:
+                   artist: str = "", album: str = "", sort: str = "", album_artist: str = "") -> Response:
     params: dict = {"q": q, "limit": _clamp(limit, 1, 200), "offset": _clamp(offset, 0, 10_000_000)}
     if kind:
         params["kind"] = kind
     # One album's tracks (disc then track order) or one artist's, for the row menus.
     if artist:
         params["artist"] = artist
+    if album_artist:
+        params["album_artist"] = album_artist
     if album:
         params["album"] = album
     if sort:

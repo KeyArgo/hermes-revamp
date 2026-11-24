@@ -25,6 +25,8 @@ import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from . import store
+
 logger = logging.getLogger(__name__)
 log = logging.getLogger("revamp")
 
@@ -324,13 +326,16 @@ def restore(backup_id, data_dir, *, root=None) -> List[str]:
         if src.is_symlink() or not src.is_file() or _sha256(src) != digest:
             raise ValueError(f"backup {manifest['id']} is damaged: {rel}")
     snapshot(data_dir, root=root)
-    saved = _undo_point(data_dir, files)
+    saved = _undo_point(data_dir, set(files).union(BACKED_UP_FILES))
     try:
         for rel in sorted(files):
             src = src_dir / rel
             dst = data_dir / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             _atomic_copy(src, dst)
+        for rel in BACKED_UP_FILES:
+            if rel not in files:
+                (data_dir / rel).unlink(missing_ok=True)
     except OSError:
         # Half old, half new is worse than either: put the current files back.
         _roll_back(data_dir, saved)
@@ -367,8 +372,8 @@ def export_zip(data_dir) -> bytes:
             # even if the player saves this file mid-export.
             try:
                 payload = (data_dir / rel).read_bytes()
-            except OSError:
-                continue
+            except OSError as exc:
+                raise OSError(f"could not export {rel}") from exc
             z.writestr(rel, payload)
             files[rel] = hashlib.sha256(payload).hexdigest()
         manifest = {"created": time.time(), "source": str(data_dir.resolve()), "files": files}
@@ -511,14 +516,16 @@ def is_empty(data_dir) -> bool:
     data_dir = Path(data_dir)
     try:
         raw = json.loads((data_dir / "state.json").read_text(encoding="utf-8"))
-        likes = raw.get("likes") if isinstance(raw, dict) else None
-        meaningful_state = any(raw.get(key) for key in ("resume", "resume_at", "playlist", "settings")) \
-            if isinstance(raw, dict) else False
     except (OSError, ValueError):
-        likes = None
-        meaningful_state = False
-    if likes or meaningful_state:
-        return False
+        raw = None
+    if isinstance(raw, dict):
+        defaults = store._defaults()
+        prefs = raw.get("settings")
+        if isinstance(prefs, dict) and any(v != defaults["settings"].get(k) for k, v in prefs.items()):
+            return False
+        if any(raw[k] != defaults.get(k) for k in (*store.MERGEABLE_KEYS, "likes")
+               if k != "settings" and k in raw):
+            return False
     try:
         settings = json.loads((data_dir / "settings.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):

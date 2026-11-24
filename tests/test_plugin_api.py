@@ -258,3 +258,21 @@ def test_playlist_create_route(api):
     assert resp.status_code in (200, 201), resp.body
     created = json.loads(resp.body)
     assert any(p["id"] == created["id"] and p["name"] == "Mini menu" for p in _json(api.playlists()))
+
+
+def test_library_tracks_forwards_exact_album_artist(monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
+    _stub_fastapi()
+    api = importlib.import_module("dashboard.plugin_api")
+    paths = []
+
+    def request(method, path):
+        paths.append(path)
+        return 200, {}
+
+    monkeypatch.setattr(api, "_request", request)
+    api.library_tracks(album="Greatest Hits", album_artist="A & B")
+    query = parse_qs(urlsplit(paths[0]).query)
+    assert query["album_artist"] == ["A & B"]
+    assert query["album"] == ["Greatest Hits"]

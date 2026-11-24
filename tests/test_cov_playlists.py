@@ -208,3 +208,23 @@ def test_lookup_keeps_the_real_id_on_case_insensitive_disks(home, monkeypatch):
     monkeypatch.setattr(pathlib.Path, "exists", folded(real_exists))
     assert pl.get_playlist("Chill")["id"] == "chill"
     assert pl.get_playlist("CHILL")["id"] == "chill"
+
+
+def test_unresolved_replacement_preserves_playlist(home):
+    from revamp_core.server import Handler
+
+    track = {"url": "https://station.example/live"}
+    playlist = pl.create_playlist("Saved", [track])
+    path = pl.playlists_dir() / "saved.m3u8"
+    original = path.read_bytes()
+    body = {"items": [track, {"id": "missing:track/1"}]}
+    handler = object.__new__(Handler)
+    handler._body_json = lambda: body
+    handler._err = lambda status, message: status
+    handler._send_json = lambda result: 200
+    route = "/api/playlists/" + playlist["id"]
+    assert handler._api_put(route) == 400
+    assert path.read_bytes() == original
+    body["items"] = []
+    assert handler._api_put(route) == 200
+    assert pl.get_playlist("saved")["items"] == []
