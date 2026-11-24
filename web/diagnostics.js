@@ -35,9 +35,12 @@ function placement() {
 }
 
 // An error inside an animation loop fires every frame: pass each distinct message on
-// at most once, and nothing at all faster than once a second.
+// at most once, and nothing at all faster than once a second. A different message that
+// comes sooner waits its turn (a start-up cascade's second error is often the useful one).
 const seen = new Set();
 let lastSent = 0;
+const waiting = [];
+let flushTimer = null;
 
 // The server keeps its own private log (revamp.log). A failure in a plain browser tab
 // or the pop-out never reaches Hermes' diagnostic storage, so the page also POSTs it to
@@ -77,14 +80,27 @@ function sendClientLog(record) {
   } catch { /* a broken report must never break the page */ }
 }
 
-function report(kind, detail) {
-  const key = `${kind}:${detail?.message}`;
-  const now = Date.now();
-  if (seen.has(key) || now - lastSent < 1000 || seen.size >= 20) return;
-  seen.add(key); lastSent = now;
-  const record = diagnosticRecord(kind, { ...detail, placement: placement() });
+function send({ kind, detail, record }) {
+  lastSent = Date.now();
   if (window.parent !== window && !untrustedEmbed()) window.parent.postMessage({ type: "revamp:diagnostic", record }, "*");
   sendClientLog(clientLogRecord(kind, detail));
+}
+
+function flush() {
+  flushTimer = null;
+  const wait = 1000 - (Date.now() - lastSent);
+  if (wait > 0) { flushTimer = setTimeout(flush, wait); return; }
+  const next = waiting.shift();
+  if (next) send(next);
+  if (waiting.length) flushTimer = setTimeout(flush, 1000);
+}
+
+function report(kind, detail) {
+  const key = `${kind}:${detail?.message}`;
+  if (seen.has(key) || seen.size >= 20) return;
+  seen.add(key);
+  waiting.push({ kind, detail, record: diagnosticRecord(kind, { ...detail, placement: placement() }) });
+  if (!flushTimer) flush();
 }
 
 if (typeof window !== "undefined") {

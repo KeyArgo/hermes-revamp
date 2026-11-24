@@ -33,12 +33,19 @@ export async function render(root, api) {
   root.appendChild(detail);
 
   refreshLive = { el: listEl, fn: () => refresh() };
+  // A write refreshes here and the server's "playlists" event refreshes again: only the
+  // newest run may fill the list, or both append a full set.
+  let refreshSeq = 0;
   async function refresh() {
+    const mine = ++refreshSeq;
     listEl.innerHTML = `<div style="padding:16px"><span class="spinner"></span></div>`;
     let pls = [];
-    try { pls = await api("/api/playlists"); } catch (e) { return errBox(listEl, e); }
+    try { pls = await api("/api/playlists"); } catch (e) { return mine === refreshSeq && errBox(listEl, e); }
+    if (mine !== refreshSeq) return;
+    const liked = await likedRow();
+    if (mine !== refreshSeq) return;
     listEl.innerHTML = "";
-    listEl.appendChild(await likedRow());
+    listEl.appendChild(liked);
     if (!pls.length) {
       const d = document.createElement("div");
       d.className = "empty";

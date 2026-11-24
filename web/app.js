@@ -815,8 +815,21 @@ runWhileVisible(400, reportBox);
 function installControlPlayerApi() {
   if (window.revampPlayerApi) return;
   const cmd = (body) => apiPost("/api/command", body);
+  // Saved settings (Settings toggles, hint dismissals) belong to the live player: read its
+  // last saved copy, and send changes to it as a command. Never PUT them here, or the live
+  // player's next save would overwrite them.
+  let settings = {};
   window.revampPlayerApi = {
     control: true,
+    getSettings: () => ({ ...settings }),
+    setSavedSettings(patch) {
+      settings = { ...settings, ...patch };
+      return cmd({ action: "settings", ...patch });
+    },
+    async refreshSettings() {
+      try { settings = { ...((await apiGet("/api/state"))?.settings || {}) }; } catch { /* keep the last copy */ }
+      return this.getSettings();
+    },
     loadTracks: (items, o = {}) => cmd({ action: "load", items: items || [], mode: o.mode || "replace", play: o.play !== false }),
     playIndex: (index) => cmd({ action: "play_index", index: Math.max(0, index | 0) }),
     async playItemsAt(index, list) {
@@ -974,6 +987,7 @@ async function boot() {
       const h = await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
       setConn(true, `v${h.version || "?"}`);
     } catch { setConn(false, "server down"); }
+    await window.revampPlayerApi.refreshSettings();
     showStartView();
     if (hosted) window.parent.postMessage({ type: "revamp:ready", bridge: Boolean(BRIDGE_KEY), control: true }, "*");
     return;

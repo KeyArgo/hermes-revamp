@@ -433,13 +433,14 @@ export async function initPlayer(ctx) {
     webamp,
     get items() { return webampItems(); },
     async loadTracks(tracks, { mode = "replace", play = true } = {}) {
-      // A new queue or track (or another backend, Focus): no old place, and no pending start
-      // left to fire alongside it; a list loaded to play plays itself.
-      if (play || mode === "replace") { actSeq++; place = null; startPending = false; endSilence(); }
       if (mode === "replace") playedTid = null; // a book started from the list goes on where you were
       const all = normalizeItems(tracks);
       // A list for another backend (focus...) goes to that backend; Webamp keeps its queue.
       const other = all[0] && all[0].playback.backend !== "webamp" ? all[0].playback.backend : null;
+      // A new queue or track (or another backend, Focus): no old place, and no pending start
+      // left to fire alongside it; a list loaded to play plays itself. Append and next only
+      // edit Webamp's queue and play nothing: a resuming book keeps its place.
+      if (mode === "replace" || (play && other)) { actSeq++; place = null; startPending = false; endSilence(); }
       if (other) {
         const ex = backends.get(other);
         if (!ex) { toast(`Can't play that here (${other})`, { kind: "error" }); return; }
@@ -1880,6 +1881,11 @@ export async function initPlayer(ctx) {
           // The place-menu tip is dismissed through this command too: keep the flag
           // the desktop half sends, or a new profile shows the tip again.
           if (typeof cmd.place_menu_tip_seen === "boolean") patch.place_menu_tip_seen = cmd.place_menu_tip_seen;
+          // The library control frame saves these through here as well (its Settings and hints).
+          if (typeof cmd.ticker === "boolean") patch.ticker = cmd.ticker;
+          const hints = cmd.siblingHintsDismissed;
+          if (hints && typeof hints === "object" && !Array.isArray(hints)
+            && Object.values(hints).every((v) => Number.isFinite(v))) patch.siblingHintsDismissed = { ...hints };
           if (Object.keys(patch).length) {
             api.setSavedSettings(patch);
             // The switch must really stop (or start) the renderer, not just remember

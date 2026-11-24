@@ -39,3 +39,25 @@ test("an error thrown every frame is passed on once", async () => {
 test("the player's own script locations stay readable", () => {
   assert.match(diagnosticRecord("error", { stack: "at paint (/web/player.js:12:3)" }).stack, /\/web\/player\.js:12/);
 });
+
+test("a second, different error right after the first is passed on too (a moment later)", async () => {
+  // Hunt 3: the once-a-second limit dropped it for good, and in a start-up cascade the
+  // second error is often the useful one.
+  const sent = [];
+  const listeners = {};
+  globalThis.window = {
+    parent: { postMessage: (m) => sent.push(m) },
+    addEventListener: (k, f) => { listeners[k] = f; },
+  };
+  globalThis.document = { body: null };
+  globalThis.location = { ancestorOrigins: ["file://"] };
+  await import("../web/diagnostics.js?cascade");
+  listeners.error({ message: "first failure" });
+  await new Promise((r) => setTimeout(r, 10));
+  listeners.unhandledrejection({ reason: { message: "second failure" } });
+  listeners.unhandledrejection({ reason: { message: "second failure" } }); // the same one again: still once
+  assert.deepEqual(sent.map((m) => m.record.message), ["first failure"], "at most one a second");
+  await new Promise((r) => setTimeout(r, 1100));
+  assert.deepEqual(sent.map((m) => m.record.message), ["first failure", "second failure"]);
+  delete globalThis.window; delete globalThis.document; delete globalThis.location;
+});
