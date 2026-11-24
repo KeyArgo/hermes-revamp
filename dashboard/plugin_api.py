@@ -150,6 +150,7 @@ def info() -> dict:
         "bridge_key": hmac.new(tok.encode("utf-8"), b"revamp-bridge", hashlib.sha256).hexdigest() if tok else "",
         "ok": status == 200 and health.get("app") == "revamp",
         "version": health.get("version"),
+        "build": health.get("build"),
     }
 
 

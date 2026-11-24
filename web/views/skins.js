@@ -143,7 +143,7 @@ function card({ name, shot, active, onApply, onRemove, link, badge }) {
     const a = document.createElement("a");
     a.href = link; a.target = "_blank"; a.rel = "noopener"; a.textContent = "↗";
     a.title = "Open in the Skin Museum"; a.setAttribute("aria-label", `${name} in the Skin Museum`);
-    a.addEventListener("click", (e) => e.stopPropagation());
+    a.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); openExternal(link); });
     // Keyboard Enter on the link must not also run the card's apply handler.
     a.addEventListener("keydown", (e) => { if (e.key === "Enter") e.stopPropagation(); });
     row.appendChild(a);

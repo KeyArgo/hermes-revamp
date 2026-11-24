@@ -2136,7 +2136,10 @@ export async function initPlayer(ctx) {
 
   // expose for views (library picker, playlist save, agent settings)
   window.revampPlayerApi = api;
-  api.setSavedSettings = (s) => { saved.settings = { ...saved.settings, ...s }; stagePersist({ settings: saved.settings }); };
+  api.setSavedSettings = (patch) => {
+    saved.settings = { ...saved.settings, ...patch };
+    stagePersist({ settings: { ...persistState.settings, ...patch } });
+  };
   api.mainVisualizerPrefs = () => mainVisPrefs(saved.settings);
   api.getSettings = () => ({ ...saved.settings });
   api.nowStatus = () => safe(() => currentInfo().status) || "STOPPED"; // PLAYING / PAUSED / STOPPED
@@ -2196,7 +2199,13 @@ export async function initPlayer(ctx) {
     handleCommand,
     (evs, bulk) => handleAgentEvents(evs, bulk),
     () => window.revampRefreshView?.(), // library changed
-    (state) => { if (state?.settings) { saved.settings = state.settings; applyMainVis(); } }, // state broadcast: adopt settings
+    (state) => {
+      if (!state?.settings) return;
+      const changed = state.settings.milkdropOn !== saved.settings?.milkdropOn;
+      saved.settings = state.settings;
+      if (changed && !milkdropSuspended) applyMilkdropChoice(hasWebGL() && wantsMilkdropOpen());
+      applyMainVis();
+    },
   );
 
   return api;

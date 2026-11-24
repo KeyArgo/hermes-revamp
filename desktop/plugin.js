@@ -502,8 +502,16 @@ function notifyError(message, { always = false } = {}) {
 }
 
 function command(action, extra = {}) {
-  return rest('/command', { method: 'POST', body: { action, ...extra }, timeoutMs: 5000 }).catch(err => {
+  if (action === 'settings') {
+    return rest('/state', { method: 'PUT', body: { settings: extra } })
+      .then(() => refreshLive()).catch(err => notifyError(`REVamp: ${err?.message || 'settings update failed'}`))
+  }
+  return rest('/command', { method: 'POST', body: { action, ...extra }, timeoutMs: 5000 }).then(res => {
+    if (res?.ok === false || res?.accepted === false || res?.delivered === 0) throw new Error(res.error || 'No player received the command.')
+    return true
+  }).catch(err => {
     notifyError(`REVamp: ${err?.message || 'command failed'}`)
+    return false
   })
 }
 
@@ -579,14 +587,15 @@ async function collectPluginBugEnv() {
   let revampVersion = 'unknown'
   let revampBuild = 'unknown'
   try {
-    const h = bridge?.ready ? await bridge.request('/api/health', { timeoutMs: 4000 }) : null
+    const h = bridge?.ready ? await bridge.request('/health', { timeoutMs: 4000 }) : null
     if (h?.version) revampVersion = String(h.version)
     if (h?.build) revampBuild = String(h.build)
   } catch { /* player not ready */ }
-  if (revampVersion === 'unknown') {
+  if (revampVersion === 'unknown' || revampBuild === 'unknown') {
     try {
       const info = await rest('/info', { timeoutMs: 3000 })
       if (info?.version) revampVersion = String(info.version)
+      if (info?.build) revampBuild = String(info.build)
     } catch { /* gateway down */ }
   }
   const live = $live.get()
@@ -612,7 +621,13 @@ async function collectPluginBugEnv() {
 async function recoverPlayer() {
   engine?.reload()
   wakeEngineRetry?.()
-  const ready = await engine?.whenReady?.(7000)
+  const deadline = Date.now() + 7000
+  if (!engine) await new Promise(resolve => {
+    const finish = () => { clearTimeout(timer); off(); resolve() }
+    const timer = setTimeout(finish, 7000)
+    const off = $engineVersion.listen(() => { if (engine) finish() })
+  })
+  const ready = await engine?.whenReady(Math.max(0, deadline - Date.now()))
   if (ready) {
     void refreshLive()
     host.notify({ kind: 'success', message: EN.recoveryStarted })
@@ -622,18 +637,23 @@ async function recoverPlayer() {
 async function openBugReport(copyOnly = false) {
   if (!ctxRef) return
   const env = await collectPluginBugEnv()
-  if (copyOnly) {
-    if (typeof ctxRef.os?.writeClipboard !== 'function') {
-      return notifyError('Copying to the clipboard is not available in this host.')
-    }
-    await ctxRef.os.writeClipboard(formatBugReportBody(env))
-    host.notify({ kind: 'success', message: EN.bugCopied })
-  } else {
-    if (typeof ctxRef.os?.openExternal !== 'function') {
-      return notifyError('Opening a link is not available in this host.')
-    }
-    await ctxRef.os.openExternal(buildBugReportUrl(env))
+  if (copyOnly) return copyReportText(formatBugReportBody(env), EN.bugCopied)
+  if (typeof ctxRef.os?.openExternal !== 'function') {
+    return notifyError('Opening a link is not available in this host.')
   }
+  try {
+    if (await ctxRef.os.openExternal(buildBugReportUrl(env)) === false) notifyError('Hermes could not open the bug report.')
+  } catch (err) { notifyError(err?.message || 'Hermes could not open the bug report.') }
+}
+
+async function copyReportText(text, message) {
+  if (!ctxRef || typeof ctxRef.os?.writeClipboard !== 'function') {
+    return notifyError('Copying to the clipboard is not available in this host.')
+  }
+  try {
+    if (await ctxRef.os.writeClipboard(text) === false) return notifyError('Hermes could not copy to the clipboard.')
+    host.notify({ kind: 'success', message })
+  } catch (err) { notifyError(err?.message || 'Hermes could not copy to the clipboard.') }
 }
 
 function readPlaceMenuTipSeen() {
@@ -1035,9 +1055,10 @@ async function bringBackFromDesktop() {
 // stream arrive in order, so play_index lands after the new queue.
 async function playItems(items, index = 0) {
   if (!items.length) return
-  await command('load', { items, mode: 'replace', play: index === 0 })
+  if (!(await command('load', { items, mode: 'replace', play: index === 0 }))) return false
   if (index > 0) await command('play_index', { index })
   setTimeout(refreshLive, 600)
+  return true
 }
 
 // Shuffle only the rows the person can see in the mini picker.  Replacing the
@@ -1049,9 +1070,8 @@ async function shuffleVisible(rows, toItem) {
     const j = Math.floor(Math.random() * (i + 1))
     ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
-  await playItems(shuffled.map(toItem))
-  holdNp('shuffle', true)
-  command('shuffle', { on: true })
+  if (!(await playItems(shuffled.map(toItem)))) return
+  if (await command('shuffle', { on: true })) holdNp('shuffle', true)
 }
 
 function stationItem(s) {
@@ -1327,7 +1347,7 @@ function createEngine(ctx, url, bridgeKey = '') {
   }
 
   ctx.addEventListener(window, 'message', e => {
-    if (!e.data || typeof e.data !== 'object') return
+    if (!e.source || !e.data || typeof e.data !== 'object') return
     const fromPage = e.source === frame.contentWindow || e.source === controlFrame.contentWindow
     if (fromPage && typeof e.data.type === 'string' && e.data.type.startsWith('revamp:theme-')) {
       const others = [frame.contentWindow, controlFrame.contentWindow].filter(w => w && w !== e.source)
@@ -1340,6 +1360,10 @@ function createEngine(ctx, url, bridgeKey = '') {
         ctx.storage.set('themeBg', themeBg)
         for (const w of others) themeTo(w)
       }
+      return
+    }
+    if (fromPage && e.data.type === 'revamp:diagnostic') {
+      saveDiagnostic(e.data.record)
       return
     }
     // A page's "open in browser" links: the iframe has no allow-popups, so
@@ -1422,7 +1446,6 @@ function createEngine(ctx, url, bridgeKey = '') {
     if (e.data.type === 'revamp:location' && PLAYER_LOCATIONS.includes(e.data.location)) {
       setPlayerLocation(e.data.location)
     }
-    if (e.data.type === 'revamp:diagnostic') saveDiagnostic(e.data.record)
     // "Find <name> in Plugins" in the web UI: one hop, then the host's public
     // route. Only REVamp's own frames may ask, and a host without a router
     // leaves the click harmless — nothing outside our iframes is touched.
@@ -1868,14 +1891,12 @@ function SmallAction({ label, icon, onClick, size = 'micro', pressed, className,
   }) })
 }
 
-function toggle() {
-  command('toggle')
-  // Optimistic: flip the cached status now; the next poll confirms it.
-  const s = $live.get()
-  const np = s?.live?.now_playing
+async function toggle() {
+  const np = $live.get()?.live?.now_playing
+  if (!(await command('toggle'))) return
   if (np) {
     heldStatus = { status: String(np.status).toUpperCase() === 'PLAYING' ? 'PAUSED' : 'PLAYING', until: Date.now() + 4000 }
-    $live.set(withHeld(s))
+    $live.set(withHeld($live.get()))
   }
   setTimeout(refreshLive, 400)
 }
@@ -1944,10 +1965,10 @@ function Row({ name, sub, current, playing, onPlay, pin, extra, item, items }) {
       const list = await batch()
       if (!list.length) return
       if (action === 'next') {
-        await command('load', { items: list, mode: 'next' })
+        if (!(await command('load', { items: list, mode: 'next' }))) return
         host.notify({ kind: 'success', message: list.length === 1 ? t('addedNext') : t('addedNextMany').replace('{n}', list.length) })
       } else {
-        await command('load', { items: list, mode: 'append' })
+        if (!(await command('load', { items: list, mode: 'append' }))) return
         host.notify({ kind: 'success', message: list.length === 1 ? t('addedToQueue') : t('addedToQueueMany').replace('{n}', list.length) })
       }
       setMenu(null)
@@ -2229,7 +2250,7 @@ function RadioList({ text, np, onPending, onText }) {
   })
   const searchItems = searchActive ? search.items : []
   const pinned = Array.isArray(favorites.data) ? favorites.data : []
-  const isPinned = s => pinned.some(p => p.id === s.id || p.url === s.url)
+  const favoriteFor = s => pinned.find(p => p.id === s.id || p.url === s.url)
   // Same fold the server applies (NFKD, strip marks): 'cafe' must find 'Café' even
   // when only the local favourites/presets are reachable (offline path).
   const fold = v => String(v ?? '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
@@ -2243,7 +2264,8 @@ function RadioList({ text, np, onPending, onText }) {
     .filter(s => s?.url && (matches(s) || searchItems.includes(s)) && !seen.has(s.url) && seen.add(s.url))
   async function pinToggle(s) {
     try {
-      if (isPinned(s)) await rest(`/radio/favorites?${new URLSearchParams({ id: s.id })}`, { method: 'DELETE' })
+      const favorite = favoriteFor(s)
+      if (favorite) await rest(`/radio/favorites?${new URLSearchParams({ id: favorite.id })}`, { method: 'DELETE' })
       else await rest('/radio/favorites', { method: 'POST', body: s })
       favorites.refetch()
     } catch (err) {
@@ -2267,7 +2289,7 @@ function RadioList({ text, np, onPending, onText }) {
       // The whole list is queued, so next/previous move between stations.
       onPlay: () => playItems(rows.map(stationItem), rows.indexOf(s)),
       item: stationItem(s),
-      pin: { pinned: isPinned(s), toggle: () => void pinToggle(s) }
+      pin: { pinned: Boolean(favoriteFor(s)), toggle: () => void pinToggle(s) }
     }, s.url)),
     searchActive ? jsx(LoadMore, {
       hasMore: search.hasMore, loading: search.loading && Boolean(searchItems.length),
@@ -2317,7 +2339,7 @@ function LibraryList({ text, np, onPending, kind = 'music' }) {
             ? t('scanningOf').replace('{done}', progress.done.toLocaleString()).replace('{total}', progress.total.toLocaleString())
             : t('scanning') }, 'scan'),
           ...tracks.map((tr, i) => jsx(Row, {
-            name: tr.title || tr.path?.split('/').pop() || '?',
+            name: tr.title || (tr.path && baseName(tr.path)) || '?',
             sub: [tr.artist, tr.album, tr.resume > 0 && t('leftOff').replace('{time}', clock(tr.resume))].filter(Boolean).join(' · '),
             current: np.kind !== 'stream' && np.kind !== 'focus' && sameUrl(np.url, tr.url), playing: np.playing,
             // Play from here, with the rest of the results queued behind it.
@@ -2428,7 +2450,7 @@ function ArtistList({ text, np, onPending }) {
   return jsx(Fragment, { children: [
     ...rows.map(a => jsx(Row, {
       name: a.name || '?',
-      sub: `${a.tracks} ${t('tracks')} · ${a.albums} ${t('albums').toLowerCase()}`,
+      sub: `${a.tracks} ${t('tracks')} · ${Array.isArray(a.albums) ? a.albums.length : a.albums} ${t('albums').toLowerCase()}`,
       current: false, playing: false,
       onPlay: () => play(a),
       items: () => artistItems(a.name, version)
@@ -2467,7 +2489,7 @@ async function watchScan() {
   }
 }
 
-const baseName = path => path.replace(/\/+$/, '').split('/').pop() || path
+const baseName = path => path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() || path
 
 // Music folders: list, remove, and add one by browsing (the renderer has no
 // native folder dialog for plugins, so the Revamp server lists directories).
@@ -2546,7 +2568,9 @@ function FolderPanel({ kind = 'music', onClose }) {
     ] })
   }
   const here = dirs.data
-  const jumps = [{ label: t('home'), path: '' }, { label: '/', path: '/' }, { label: '/mnt', path: '/mnt' }]
+  const windows = here?.path ? /^(?:[a-z]:|\\\\)/i.test(here.path) : /^Win/i.test(navigator.platform)
+  const jumps = [{ label: t('home'), path: '' }]
+  if (!windows) jumps.push({ label: '/', path: '/' }, { label: '/mnt', path: '/mnt' })
   return jsxs('div', { children: [
     head,
     jsxs('form', {
@@ -2737,7 +2761,10 @@ function QueuePanel({ np }) {
     $live.set(withHeld($live.get()))
     queueEdits = queueEdits
       .then(() => command(next.action, next.extra))
-      .then(() => setTimeout(refreshLive, 500))
+      .then(ok => {
+        if (ok) setTimeout(refreshLive, 500)
+        else { heldQueue = null; void refreshLive() }
+      })
       // One failed edit used to leave the chain rejected, so every later edit silently
       // never ran. Drop the optimistic view and re-read the real queue instead.
       .catch(() => { heldQueue = null; refreshLive() })
@@ -2981,11 +3008,11 @@ function Transport({ np, compact = false, extended = false }) {
     jsx(SmallAction, { label: t('next'), icon: NextIcon, size, onClick: () => command('next') }),
     extended ? jsx(SmallAction, {
       label: t('shuffle'), icon: ShuffleIcon, size, pressed: np.shuffle,
-      onClick: () => { holdNp('shuffle', !np.shuffle); command('shuffle', { on: !np.shuffle }) }
+      onClick: async () => { if (await command('shuffle', { on: !np.shuffle })) holdNp('shuffle', !np.shuffle) }
     }) : null,
     extended ? jsx(SmallAction, {
       label: t('repeat'), icon: RepeatIcon, size, pressed: np.repeat,
-      onClick: () => { holdNp('repeat', !np.repeat); command('repeat', { on: !np.repeat }) }
+      onClick: async () => { if (await command('repeat', { on: !np.repeat })) holdNp('repeat', !np.repeat) }
     }) : null,
     jsx('span', { className: 'revamp-space' }),
     compact ? null : jsx(SmallAction, {
@@ -3079,7 +3106,7 @@ function ReportBugRow({ compact = false }) {
       jsx(Pill, { onClick: () => void openBugReport(false), children: t('reportBug') }, 'bug'),
       jsx(Pill, { onClick: () => void openBugReport(true), children: t('copyBugDetails') }, 'details'),
       jsx(Pill, { onClick: () => void recoverPlayer(), children: t('recoverPlayer') }, 'recover'),
-      jsx(Pill, { onClick: () => void ctxRef?.os.writeClipboard(formatDiagnostics()), children: t('copyDiagnostics') }, 'diag')
+      jsx(Pill, { onClick: () => void copyReportText(formatDiagnostics(), 'Diagnostics copied'), children: t('copyDiagnostics') }, 'diag')
     ]
   })
 }
@@ -3125,12 +3152,13 @@ function RevampBar() {
     const timer = setTimeout(() => setClearArmed(false), 3000)
     return () => clearTimeout(timer)
   }, [clearArmed])
-  const clearQueue = () => {
+  const clearQueue = async () => {
     if (!clearArmed) { setClearArmed(true); return }
+    setClearArmed(false)
+    if (!(await command('queue_clear'))) return
     heldQueue = { playlist: [], index: -1, until: Date.now() + 3000 }
     $live.set(withHeld($live.get()))
-    command('queue_clear')
-    setClearArmed(false)
+    setTimeout(refreshLive, 500)
   }
   const np = nowPlaying(live)
   // Menu only: the bar keeps just the REVamp pill; transport and the rest are in its menu.
@@ -3183,7 +3211,7 @@ function RevampBar() {
               jsx(LocationRowWithTip, {}),
               jsx(ReportBugRow, { compact: true }),
               jsx(Signal, { np }),
-              jsx(Transport, { np, extended: true })
+              np.connected ? jsx(Transport, { np, extended: true }) : null
             ] })
           : jsxs('div', { style: { padding: 8 }, children: [
             jsx(EmptyState, { title: t('offline'), description: t('offlineHint') }),
@@ -3194,10 +3222,10 @@ function RevampBar() {
           ] })
       })
     ] }),
-    full && np.online ? jsx(SmallAction, { label: t('prev'), icon: PrevIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('prev') }) : null,
-    full && np.online ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, className: 'revamp-pill revamp-pill-icon', onClick: toggle }) : null,
-    full && np.online ? jsx(SmallAction, { label: t('next'), icon: NextIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('next') }) : null,
-    full && hasQueue ? jsx(SmallAction, {
+    full && np.connected ? jsx(SmallAction, { label: t('prev'), icon: PrevIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('prev') }) : null,
+    full && np.connected ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, className: 'revamp-pill revamp-pill-icon', onClick: toggle }) : null,
+    full && np.connected ? jsx(SmallAction, { label: t('next'), icon: NextIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('next') }) : null,
+    full && np.connected && hasQueue ? jsx(SmallAction, {
       label: clearArmed ? t('clearConfirm') : t('clearQueue'), icon: TrashIcon, pressed: clearArmed,
       className: 'revamp-pill revamp-pill-icon', onClick: clearQueue
     }) : null,
@@ -3331,8 +3359,8 @@ function FloatPane() {
 // borrow), or hosts the audio-free control shell (Frame / Pop-out / desktop).
 function Page() {
   const t = usePluginI18n(ID)
+  const version = useValue($engineVersion)
   const where = useValue($where)
-  const desktop = useValue($desktop)
   const location = useValue($playerLocation)
   const hostRef = useRef(null)
   const np = nowPlaying(useValue($live))
@@ -3345,7 +3373,7 @@ function Page() {
     if (!el || !engine) return undefined
     engine.showPage(el)
     return () => engine?.hidePage(el)
-  }, [where === 'none' || where === 'elsewhere', desktop])
+  }, [where === 'none' || where === 'elsewhere', version])
 
   if (where === 'none' || (where === 'elsewhere' && !np.online)) {
     return jsx('div', { style: { padding: 24 }, children: jsx(EmptyState, { title: t('offline'), description: t('offlineHint') }) })
@@ -3404,12 +3432,9 @@ function MilkdropSettings() {
   const t = k => EN[k] || k
   const live = useValue($live)
   const st = live?.settings || {}
-  const [local, setLocal] = useState({})
   // Before the unified key existed, the page's own open choice stood in for it.
-  const saved = st.milkdropOn === true || (st.milkdropOn === undefined && st.milkdropOpen === true)
-  const on = local.milkdropOn ?? saved
+  const on = st.milkdropOn ?? st.milkdropOpen ?? !hostRendersInSoftware()
   const set = want => {
-    setLocal(cur => ({ ...cur, milkdropOn: want }))
     void command('settings', { milkdropOn: want })
   }
   return jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 }, children: [
@@ -3463,15 +3488,13 @@ function RevampSettings() {
   ] })
 }
 
-// Volume dips for approvals: saved by the player, so changes go to it as a "settings" command.
+// Volume dips for approvals follow the same saved settings as the player.
 function DuckSettings() {
   const t = k => EN[k] || k
   const live = useValue($live)
   const st = live?.settings || {}
-  const [local, setLocal] = useState({})
-  const value = k => local[k] ?? st[k]
+  const value = k => st[k]
   const set = patch => {
-    setLocal(cur => ({ ...cur, ...patch }))
     void command('settings', patch)
   }
   const on = value('duck_on_approval') === true
@@ -3653,7 +3676,7 @@ export default {
         ['winamp', 'cmdWinamp', () => setPlayerLocation($playerLocation.get() === 'floating' ? 'docked' : 'floating'), ['mod+alt+w']],
         ['mini', 'cmdMini', () => setPlayerLocation('mini'), ['mod+alt+m']],
         ['reload', 'cmdReload', () => { engine?.reload(); void refreshLive() }, ['mod+alt+r']],
-        ['visualizer', 'cmdVisualizer', () => engine?.visualizer(), ['mod+alt+shift+v']],
+        ['visualizer', 'cmdVisualizer', () => ($desktop.get() || !engine) ? command('visualizer') : engine.visualizer(), ['mod+alt+shift+v']],
         ['desktop', 'cmdDesktop', () => void ($desktop.get() ? bringBackFromDesktop() : openOnDesktop()), ['mod+alt+shift+w']]
       ].flatMap(([id, key, run, defaults]) => [
         {

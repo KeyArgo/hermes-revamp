@@ -25,10 +25,10 @@ const jsxsStub = jsxStub;
 const nowPlayingFn = new Function("state", between("function nowPlaying(state) {", "\nfunction label(").replace("function nowPlaying(state) {", "").replace(/\}\s*$/, ""));
 const labelFn = new Function("np", between("function label(np) {", "\n// One pet line").replace("function label(np) {", "").replace(/\}\s*$/, ""));
 
-function renderBar({ playing = true, online = true, playlist = [], bar = "full" } = {}) {
+function renderBar({ playing = true, online = true, connected = online, playlist = [], bar = "full" } = {}) {
   const body = between("function RevampBar() {", "\n// ---------------------------------------------------------------- page + card");
   const calls = { command: [], toggle: 0, smallActions: [], likes: 0 };
-  const live = { live: { now_playing: { status: playing ? "PLAYING" : "PAUSED", title: "Long Song Title", artist: "Artist" }, playlist }, player_connected: online };
+  const live = { live: { now_playing: { status: playing ? "PLAYING" : "PAUSED", title: "Long Song Title", artist: "Artist" }, player_connected: connected }, playlist };
   const atom = v => ({ get: () => v });
   const EN = { browse: "Choose music", title: "REVamp", play: "Play", pause: "Pause", prev: "Previous", next: "Next", clearQueue: "Clear", clearConfirm: "Confirm clear", showFrame: "Show Frame", hideFrame: "Hide Frame" };
   const run = new Function(
@@ -122,8 +122,15 @@ test("offline: no transport pills, the now-playing pill still opens the panel", 
   assert.ok(findAll(tree, "Button").some(n => String(n.props.className || "").includes("revamp-np-pill")));
 });
 
+test("N6 disconnected player keeps the picker and hides transport and clear queue", () => {
+  const { tree, calls } = renderBar({ connected: false, playlist: [{ title: "Song" }] });
+  assert.ok(findAll(tree, "Picker").length);
+  assert.equal(findAll(tree, "Transport").length, 0);
+  assert.ok(!calls.smallActions.some(a => ["Previous", "Pause", "Next", "Clear"].includes(a.label)));
+});
+
 test("SmallAction renders a real button with the pill class and an aria-label", () => {
-  const body = between("function SmallAction({ label, icon, onClick", "\nfunction toggle()");
+  const body = between("function SmallAction({ label, icon, onClick", "\nasync function toggle()");
   const run = new Function("jsx", "Tip", "Button", "GlyphSpinner", body + "\nreturn SmallAction;");
   const SmallAction = run(jsxStub, "Tip", "Button", "GlyphSpinner");
   const node = SmallAction({ label: "Next", icon: "NextIcon", onClick: () => {}, className: "revamp-pill revamp-pill-icon" });

@@ -590,7 +590,7 @@ def search(q: str = "", artist: str = "", album: str = "", kind: str = "",
                   or a == _artist_key(t.get("album_artist"))]
     if album:
         al = album.casefold()
-        tracks = [t for t in tracks if al == (t.get("album") or "").casefold()]
+        tracks = [t for t in tracks if al == (t.get("album") or "Unknown Album").casefold()]
     if album_artist:
         aa = _artist_key(album_artist)
         tracks = [t for t in tracks if aa == _album_artist_key(t)]

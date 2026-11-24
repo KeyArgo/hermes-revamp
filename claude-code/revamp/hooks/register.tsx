@@ -108,8 +108,8 @@ let lastPlaying = false
 let connected = false // last known; agent events go out only while a player can show them
 
 export async function nowFilePath($: EngineInterface): Promise<string | null> {
-  const home = await $.env.get('HOME')
-  const tilde = (p: string) => (home && (p === '~' || p.startsWith('~/')) ? home + p.slice(1) : p)
+  const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
+  const tilde = (p: string) => (home && (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) ? home + p.slice(1) : p)
   const revamp = await $.env.get('REVAMP_HOME')
   if (revamp) return `${tilde(revamp)}/now.json`
   const hermes = await $.env.get('HERMES_HOME')
