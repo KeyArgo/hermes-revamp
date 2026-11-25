@@ -144,6 +144,8 @@ def test_windows_resize_reports_fixed_without_touching_devtools(monkeypatch, win
 def test_wayland_entry_claims_revamps_own_class_and_drops_the_shared_one(tmp_path, monkeypatch):
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
+    # Windows takes the home folder from USERPROFILE, not HOME.
+    monkeypatch.setattr(window.Path, "home", classmethod(lambda cls: home))
     monkeypatch.setattr(window, "data_dir", lambda: tmp_path / "data")
     monkeypatch.setattr(window.sys, "platform", "linux")
     apps = home / ".local" / "share" / "applications"
