@@ -22,6 +22,15 @@ import os
 import select
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from revamp_core.redact import mask as mask_secrets
+except ImportError:
+    # Standalone copies can still signal activity without sending raw previews.
+    def mask_secrets(text: str) -> str:
+        return ""
 
 EVENTS = {
     "session_start": "session_start",
@@ -59,17 +68,6 @@ def read_payload() -> dict:
         return {}
     except Exception:
         return {}
-
-
-def mask_secrets(text: str) -> str:
-    """Mask credential values before a preview is persisted or displayed."""
-    import re
-    pat = re.compile(r"((?:authorization|api[-_]?key|api[-_]?secret|token|secret|password|passwd|pwd"
-                     r"|bearer|basic)[-_ ]?[=: ]*(?:bearer|basic)?[ \t]*)(?:[^\s'\"]+)", re.IGNORECASE)
-    try:
-        return pat.sub(lambda m: f"{m.group(1)}***", text)
-    except Exception:
-        return text
 
 
 def tool_and_preview(p: dict) -> tuple[str, str]:

@@ -972,17 +972,21 @@ def fcntl_dup(fd):
 def _retire_watchers():
     # A watcher a test started must not outlive it: it would call the next test's ensure_server.
     yield
-    server._watch_gen += 1
+    _wait_for_watchers()
+
+
+def _wait_for_watchers():
+    import threading
+    with server._lock:
+        server._watch_gen += 1
+    for thread in threading.enumerate():
+        if thread.name == "revamp-watch":
+            thread.join(timeout=15)
+            assert not thread.is_alive(), "retired port watcher did not exit"
 
 
 def _reset_server_globals(monkeypatch):
-    server._watch_gen += 1
-    # A watcher from an earlier test may be mid-poll: it passed its generation check and
-    # would call this test's patched ensure_server. Let it finish first (slow CI runners).
-    import threading as _t
-    for th in _t.enumerate():
-        if th.name == "revamp-watch" and th is not _t.current_thread():
-            th.join(timeout=1.0)
+    _wait_for_watchers()
     for name, val in (("_started", False), ("_watching", False), ("_owned", False)):
         monkeypatch.setattr(server, name, val)
 
@@ -1796,3 +1800,32 @@ def test_a_retired_watcher_never_claims_the_watching_flag_again(monkeypatch):
     _time.sleep(0.2)
     assert calls and server._watching is False
 
+
+
+def test_watcher_retired_during_probe_skips_takeover(monkeypatch):
+    import threading
+
+    _reset_server_globals(monkeypatch)
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    def probe(port):
+        entered.set()
+        assert release.wait(5)
+        return None
+
+    monkeypatch.setattr(server, "WATCH_INTERVAL", 0.001)
+    monkeypatch.setattr(server, "_probe_health", probe)
+    monkeypatch.setattr(server, "_read_lease", lambda port: None)
+    monkeypatch.setattr(server, "_may_take_port", lambda *args: True)
+    monkeypatch.setattr(server, "_foreign_holder", lambda port: False)
+    monkeypatch.setattr(server, "ensure_server", lambda *a, **kw: calls.append(a) or 1)
+    server._watch_owner(18114, ours=True)
+    assert entered.wait(5)
+    watcher = next(t for t in threading.enumerate() if t.name == "revamp-watch")
+    with server._lock:
+        server._watch_gen += 1
+    release.set()
+    watcher.join(5)
+    assert not watcher.is_alive()
+    assert not calls

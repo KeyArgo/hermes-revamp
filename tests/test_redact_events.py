@@ -34,3 +34,38 @@ def test_nested_event_headers_and_arguments_are_masked():
         }
     }
     assert "secret-token" not in repr(redact.mask_event(event))
+
+
+def test_hook_masks_complete_values_before_persisting(tmp_path, monkeypatch):
+    import __init__ as plugin
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    monkeypatch.setattr(store, "_STATE", None)
+    events = []
+
+    def publish(kind, fields):
+        events.append(store.add_agent_event({"kind": kind, **fields}))
+
+    monkeypatch.setattr(plugin, "_post_agent_event", publish)
+    for arg in ('--password="fixture with spaces"', "--token 'fixture with spaces'",
+                "api_key: fixture", "--secret=fixture", '--pwd="' + "fixture " * 20 + '"'):
+        command = "deploy " + arg + " done"
+        plugin._hook_pre_tool_call(args={"command": command})
+        plugin._hook_pre_approval_request(command=command)
+        for event in events[-2:]:
+            assert "fixture" not in event["preview"]
+            assert event["preview"].endswith(" done")
+        assert "fixture" not in store._path().read_text()
+
+
+def test_mask_scrubs_partially_masked_quoted_values():
+    # Older senders sometimes replace the separator and leave the value.
+    assert "fixture" not in redact.mask('deploy --password***"fixture with spaces"')
+
+
+def test_quoted_user_credentials_and_shell_escaped_values():
+    for command in ('curl --user="bob:fixture with spaces" done',
+                    r"deploy --token=first\ fixture done",
+                    'deploy --password="fixture' + "\\"):
+        assert "fixture" not in redact.mask(command)
+    assert redact.mask("deploy --password=basic done").endswith("=*** done")

@@ -859,9 +859,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, f"name is longer than {MAX_PLAYLIST_NAME} characters")
             if not isinstance(body.get("items", []), list):
                 return self._err(400, "items must be a list")
-            pl = playlists.create_playlist(name, body.get("items") or [])
+            try:
+                pl = playlists.create_playlist(name, body.get("items") or [])
+            except ValueError as exc:
+                return self._err(400, str(exc))
             HUB.broadcast("playlists", {"action": "created", "id": pl["id"]})
             return self._send_json(pl, 201)
+        if path.startswith("/api/playlists/") and path.endswith("/append"):
+            if not isinstance(body.get("items"), list):
+                return self._err(400, "items must be a list")
+            pid = path[len("/api/playlists/"):-len("/append")]
+            try:
+                pl = playlists.update_playlist(pid, items=body["items"], append=True)
+            except ValueError as exc:
+                return self._err(400, str(exc))
+            if pl is None:
+                return self._err(404, "no such playlist")
+            HUB.broadcast("playlists", {"action": "updated", "id": pl["id"]})
+            return self._send_json(pl)
         if path == "/api/playlists/import":
             name = str(body.get("name") or "").strip()
             if len(name) > MAX_PLAYLIST_NAME:
@@ -2099,8 +2114,7 @@ def _watch_owner(port: int, owner: Optional[str] = None, ours: Optional[bool] = 
         if _watching:
             return
         _watching = True
-
-    gen = _watch_gen
+        gen = _watch_gen
 
     def run() -> None:
         global _watching, _started, _taking_over
@@ -2155,6 +2169,8 @@ def _watch_owner(port: int, owner: Optional[str] = None, ours: Optional[bool] = 
             if health is None and _foreign_holder(port):
                 continue  # someone else's app; ensure_server's warning covers it
             with _lock:
+                if gen != _watch_gen:
+                    return
                 _watching = False
                 _started = False
                 _taking_over = True  # main() keeps a service alive through this (probes take seconds)

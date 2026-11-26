@@ -51,23 +51,54 @@ _SNAP_LOCK = threading.Lock()
 # Locations
 # ---------------------------------------------------------------------------
 
+def _playlist_directory(data_dir: Path) -> Path:
+    directory = data_dir / PLAYLIST_DIR
+    try:
+        info = directory.lstat()
+    except FileNotFoundError:
+        return directory
+    if (not stat.S_ISDIR(info.st_mode)
+            or getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+        raise OSError(f"expected a local playlist directory: {directory}")
+    return directory
+
+
+def _check_destination_names(data_dir: Path, files) -> None:
+    directory = _playlist_directory(data_dir)
+    names = [Path(rel).name for rel in files if rel.startswith(PLAYLIST_DIR + "/")]
+    if os.name == "nt" and any(":" in name or Path(name).is_reserved() for name in names):
+        raise ValueError("invalid Windows playlist filename")
+    if len(names) < 2:
+        return
+    # The destination volume decides whether case or Unicode variants are aliases.
+    parent = directory
+    while not parent.exists():
+        parent = parent.parent
+    with tempfile.TemporaryDirectory(dir=parent) as probe:
+        for name in names:
+            try:
+                (Path(probe) / name).touch(exist_ok=False)
+            except FileExistsError as exc:
+                raise ValueError(f"playlist names collide on this volume: {name}") from exc
+
+
 def _backed_up_relpaths(data_dir: Path) -> List[str]:
     """Every backed-up relpath that exists in *data_dir*, sorted, playlists first-class."""
-    out = []
-    for name in BACKED_UP_FILES:
-        p = data_dir / name
-        # Only regular files: a symlinked state.json could leak token
-        # targets or point anywhere on disk.
-        if p.is_file() and not p.is_symlink():
-            out.append(name)
+    relpaths = list(BACKED_UP_FILES)
     try:
-        entries = sorted(os.listdir(data_dir / PLAYLIST_DIR))
-    except OSError:
+        entries = os.listdir(_playlist_directory(data_dir))
+    except FileNotFoundError:
         entries = []
-    for name in entries:
-        p = data_dir / PLAYLIST_DIR / name
-        if name.lower().endswith(PLAYLIST_EXTS) and p.is_file() and not p.is_symlink():
-            out.append(f"{PLAYLIST_DIR}/{name}")
+    relpaths.extend(f"{PLAYLIST_DIR}/{name}" for name in sorted(entries)
+                    if name.lower().endswith(PLAYLIST_EXTS))
+    out = []
+    for rel in relpaths:
+        try:
+            mode = (data_dir / rel).lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if stat.S_ISREG(mode):
+            out.append(rel)
     return out
 
 
@@ -129,11 +160,12 @@ def _same_content(a: Path, b: Path) -> bool:
         return False
 
 
-def snapshot(data_dir, *, root=None, now=None) -> Optional[Dict]:
+def snapshot(data_dir, *, root=None, now=None, undo=False) -> Optional[Dict]:
     """Copy the backed-up files into ``<root>/<YYYYmmdd-HHMMSS[-n]>/`` with a manifest.
 
     Returns the manifest, or None when there is nothing to back up or the
-    content equals the newest snapshot. Atomic: built in a temp dir, renamed.
+    content equals the newest snapshot. An undo point is always saved, even
+    for an empty profile. Atomic: built in a temp dir, renamed.
     Dirs 0o700, files 0o600."""
     data_dir = Path(data_dir)
     root = Path(root) if root is not None else backup_root(data_dir)
@@ -145,18 +177,15 @@ def snapshot(data_dir, *, root=None, now=None) -> Optional[Dict]:
     relpaths = _backed_up_relpaths(data_dir)
     current: Dict[str, str] = {}
     for rel in relpaths:
-        try:
-            current[rel] = _sha256(data_dir / rel)
-        except OSError:
-            continue
-    if not current:
+        current[rel] = _sha256(data_dir / rel)
+    if not current and not undo:
         return None
 
     # One lock from the dedupe check through the final rename: concurrent
     # snapshots in the same second must not pick the same id.
     with _SNAP_LOCK:
         existing = list_backups(root)
-        if existing:
+        if existing and not undo:
             # Dedupe only when the current set of files AND their hashes is exactly
             # the newest snapshot's: a deleted playlist must count as a change.
             if existing[0].get("files") == current:
@@ -257,11 +286,11 @@ def prune(root, *, keep_days=14, keep_min=3, keep_max=None) -> int:
 # Restore
 # ---------------------------------------------------------------------------
 
-def _atomic_copy(src: Path, dst: Path) -> None:
+def _atomic_write(dst: Path, payload: bytes) -> None:
     fd, tmp = tempfile.mkstemp(dir=str(dst.parent), prefix=".restore-", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as fh:
-            fh.write(src.read_bytes())
+            fh.write(payload)
         os.chmod(tmp, 0o600)
         os.replace(tmp, dst)
     except BaseException:
@@ -272,13 +301,20 @@ def _atomic_copy(src: Path, dst: Path) -> None:
         raise
 
 
+def _atomic_copy(src: Path, dst: Path) -> None:
+    _atomic_write(dst, src.read_bytes())
+
+
 def _undo_point(data_dir: Path, rels) -> Dict[str, Optional[bytes]]:
     """Current bytes of every file a restore will replace (None: not there yet). These are
     small (state, settings, playlists), and a write that fails half-way puts them back."""
     saved: Dict[str, Optional[bytes]] = {}
     for rel in rels:
         try:
-            saved[rel] = (data_dir / rel).read_bytes()
+            path = data_dir / rel
+            if not stat.S_ISREG(path.lstat().st_mode):
+                raise OSError(f"cannot replace a non-regular file: {path}")
+            saved[rel] = path.read_bytes()
         except FileNotFoundError:
             saved[rel] = None
     return saved
@@ -291,9 +327,7 @@ def _roll_back(data_dir: Path, saved: Dict[str, Optional[bytes]]) -> None:
             if payload is None:
                 dst.unlink(missing_ok=True)
             else:
-                tmp = dst.with_name(f".rollback-{dst.name}.tmp")
-                tmp.write_bytes(payload)
-                os.replace(tmp, dst)
+                _atomic_write(dst, payload)
         except OSError:
             logger.warning("revamp: could not roll back %s", rel)
 
@@ -317,6 +351,7 @@ def restore(backup_id, data_dir, *, root=None) -> List[str]:
     # Validate every relpath before anything is written: a tampered manifest
     # must not be able to escape the data dir (or silently skip a file).
     src_dir = root / manifest["id"]
+    _playlist_directory(src_dir)
     for rel, digest in files.items():
         if not _valid_relpath(rel):
             raise ValueError(f"invalid relpath in backup: {rel!r}")
@@ -325,34 +360,26 @@ def restore(backup_id, data_dir, *, root=None) -> List[str]:
         src = src_dir / rel
         if src.is_symlink() or not src.is_file() or _sha256(src) != digest:
             raise ValueError(f"backup {manifest['id']} is damaged: {rel}")
-    snapshot(data_dir, root=root)
-    saved = _undo_point(data_dir, set(files).union(BACKED_UP_FILES))
+    _check_destination_names(data_dir, files)
+    undo = snapshot(data_dir, root=root, undo=True)
+    previous = undo["files"]
+    extra = sorted(set(previous).difference(files))
+    saved = _undo_point(data_dir, set(files).union(extra))
+    changed = {}
     try:
+        # Remove old names first: case-only renames can alias an incoming
+        # playlist on this volume. Undo replays successful changes in reverse.
+        for rel in extra:
+            (data_dir / rel).unlink()
+            changed[rel] = saved[rel]
         for rel in sorted(files):
-            src = src_dir / rel
             dst = data_dir / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            _atomic_copy(src, dst)
-        for rel in BACKED_UP_FILES:
-            if rel not in files:
-                (data_dir / rel).unlink(missing_ok=True)
+            _atomic_copy(src_dir / rel, dst)
+            changed[rel] = saved[rel] if rel in previous else None
     except OSError:
-        # Half old, half new is worse than either: put the current files back.
-        _roll_back(data_dir, saved)
+        _roll_back(data_dir, dict(reversed(changed.items())))
         raise
-    # Playlists mirror the backup exactly: drop ones the backup lacks.
-    keep = {rel.split("/", 1)[1] for rel in files if rel.startswith(PLAYLIST_DIR + "/")}
-    try:
-        existing = os.listdir(data_dir / PLAYLIST_DIR)
-    except OSError:
-        existing = []
-    for name in existing:
-        if name in keep or not name.lower().endswith(PLAYLIST_EXTS):
-            continue
-        try:
-            (data_dir / PLAYLIST_DIR / name).unlink()
-        except OSError:
-            pass
     return sorted(files)
 
 
@@ -482,24 +509,14 @@ def import_zip(data: bytes, data_dir, *, root=None) -> List[str]:
                 raise ValueError(f"{rel} is damaged (it doesn't match the backup's manifest)")
 
     data_dir = Path(data_dir)
-    snapshot(data_dir, root=root)
+    _check_destination_names(data_dir, payloads)
+    snapshot(data_dir, root=root, undo=True)
     saved = _undo_point(data_dir, payloads)
     try:
         for rel, payload in sorted(payloads.items()):
             dst = data_dir / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(dir=str(dst.parent), prefix=".import-", suffix=".tmp")
-            try:
-                with os.fdopen(fd, "wb") as fh:
-                    fh.write(payload)
-                os.chmod(tmp, 0o600)
-                os.replace(tmp, dst)
-            except BaseException:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-                raise
+            _atomic_write(dst, payload)
     except OSError:
         _roll_back(data_dir, saved)
         raise

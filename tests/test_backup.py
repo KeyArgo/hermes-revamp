@@ -498,3 +498,141 @@ def test_persisted_default_state_is_empty(tmp_path, monkeypatch, preference):
     assert bk.is_empty(tmp_path)
     store.update(preference)
     assert not bk.is_empty(tmp_path)
+
+
+def test_restore_requires_complete_undo(env, monkeypatch):
+    data, root = env
+    chosen = bk.snapshot(data, root=root)
+    extra = data / "playlists/unique.m3u8"
+    extra.write_bytes(b"unique")
+    original = bk._sha256
+
+    def hash_file(path):
+        if path == extra:
+            raise PermissionError("cannot read unique playlist")
+        return original(path)
+
+    monkeypatch.setattr(bk, "_sha256", hash_file)
+    monkeypatch.setattr(bk, "_atomic_copy", lambda *args: pytest.fail("restore began"))
+    with pytest.raises(PermissionError):
+        bk.restore(chosen["id"], data, root=root)
+    assert extra.read_bytes() == b"unique"
+
+
+def test_export_requires_playlist_listing(env, monkeypatch):
+    from unittest.mock import Mock
+    from revamp_core import server
+
+    data, _ = env
+    listdir = os.listdir
+
+    def entries(path):
+        if path == data / "playlists":
+            raise PermissionError("cannot list playlists")
+        return listdir(path)
+
+    monkeypatch.setattr(os, "listdir", entries)
+    monkeypatch.setattr(server, "data_dir", lambda: data)
+    handler = Mock()
+    server.Handler._api_get(handler, "/api/backups/export", {})
+    handler._err.assert_called_once_with(500, "cannot list playlists")
+    with pytest.raises(PermissionError):
+        bk.export_zip(data)
+
+
+@pytest.mark.parametrize("operation", ["restore", "import"])
+def test_empty_profile_undo(env, tmp_path, operation):
+    data, root = env
+    target = tmp_path / "fresh"
+    target.mkdir()
+    if operation == "restore":
+        bk.restore(bk.snapshot(data, root=root)["id"], target, root=root)
+    else:
+        bk.import_zip(bk.export_zip(data), target, root=root)
+    assert (target / "playlists/road-trip.m3u8").exists()
+    undo = bk.list_backups(root)[0]
+    assert undo["files"] == {}
+    bk.restore(undo["id"], target, root=root)
+    assert not bk._backed_up_relpaths(target)
+
+
+def test_restore_rolls_back_cleanup(env, monkeypatch):
+    data, root = env
+    chosen = bk.snapshot(data, root=root)
+    state = data / "state.json"
+    state.write_bytes(b"current")
+    extras = [data / "playlists" / name for name in ("a.m3u8", "b.m3u8")]
+    for path in extras:
+        path.write_bytes(path.name.encode())
+    unlink = Path.unlink
+    removed = []
+
+    def remove(path, *args, **kwargs):
+        if path in extras:
+            if removed:
+                raise PermissionError("locked playlist")
+            removed.append(path)
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", remove)
+    with pytest.raises(PermissionError):
+        bk.restore(chosen["id"], data, root=root)
+    assert removed and state.read_bytes() == b"current"
+    assert all(path.read_bytes() == path.name.encode() for path in extras)
+
+
+def test_import_rejects_destination_name_collision(env, monkeypatch):
+    data, root = env
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("state.json", b"replacement")
+        z.writestr("playlists/Mix.m3u8", b"one")
+        z.writestr("playlists/mix.m3u8", b"two")
+    touch = Path.touch
+
+    def insensitive_touch(path, *args, **kwargs):
+        return touch(path.with_name(path.name.lower()), *args, **kwargs)
+
+    monkeypatch.setattr(Path, "touch", insensitive_touch)
+    before = (data / "state.json").read_bytes()
+    with pytest.raises(ValueError, match="collid"):
+        bk.import_zip(archive.getvalue(), data, root=root)
+    assert (data / "state.json").read_bytes() == before
+    assert not bk.list_backups(root)
+
+
+def test_import_uses_native_playlist_name_rules(env):
+    data, root = env
+    directory = data / "playlists"
+    probe = directory / "CaseProbe"
+    probe.touch()
+    insensitive = (directory / "caseprobe").exists()
+    probe.unlink()
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("playlists/Mix.m3u8", b"upper")
+        z.writestr("playlists/mix.m3u8", b"lower")
+    if insensitive:
+        with pytest.raises(ValueError, match="collid"):
+            bk.import_zip(archive.getvalue(), data, root=root)
+        assert not (directory / "Mix.m3u8").exists()
+    else:
+        bk.import_zip(archive.getvalue(), data, root=root)
+        assert (directory / "Mix.m3u8").read_bytes() == b"upper"
+        assert (directory / "mix.m3u8").read_bytes() == b"lower"
+
+
+def test_restore_refuses_redirected_playlist_directory(env, tmp_path):
+    data, root = env
+    chosen = bk.snapshot(data, root=root)
+    outside = tmp_path / "collection"
+    (data / "playlists").rename(outside)
+    try:
+        (data / "playlists").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory links unavailable")
+    sentinel = outside / "unique.m3u8"
+    sentinel.write_bytes(b"collection")
+    with pytest.raises((ValueError, OSError)):
+        bk.restore(chosen["id"], data, root=root)
+    assert sentinel.read_bytes() == b"collection"

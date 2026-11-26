@@ -112,9 +112,34 @@ def setup() -> logging.Logger:
 
 # Health sampling
 
+def _windows_rss_mb() -> Tuple[Optional[float], Optional[float]]:
+    import ctypes
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [("cb", ctypes.c_uint32), ("PageFaultCount", ctypes.c_uint32)] + [
+            (field, ctypes.c_size_t) for field in (
+                "PeakWorkingSetSize", "WorkingSetSize", "QuotaPeakPagedPoolUsage",
+                "QuotaPagedPoolUsage", "QuotaPeakNonPagedPoolUsage", "QuotaNonPagedPoolUsage",
+                "PagefileUsage", "PeakPagefileUsage")]
+
+    process = ctypes.windll.kernel32.GetCurrentProcess
+    process.argtypes = []
+    process.restype = ctypes.c_void_p
+    read = ctypes.windll.psapi.GetProcessMemoryInfo
+    read.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32]
+    read.restype = ctypes.c_int
+    counters = ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    if read(process(), ctypes.byref(counters), counters.cb):
+        return counters.WorkingSetSize / 1024**2, counters.PeakWorkingSetSize / 1024**2
+    return None, None
+
+
 def _rss_mb() -> Tuple[Optional[float], Optional[float]]:
-    """(rss, peak) in MB from getrusage. Its peak only grows, so a leak still shows as growth."""
+    """Current and peak working set on Windows, peak RSS on POSIX (MiB)."""
     try:
+        if sys.platform == "win32":
+            return _windows_rss_mb()
         import resource
         peak_kb_or_b = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         # Linux reports kB, macOS bytes; anything else is treated as kB.
