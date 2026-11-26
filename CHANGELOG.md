@@ -4,6 +4,11 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- Music list in the side panel: Title and Artist are readable again (Album gives way in a narrow panel), and the actions button keeps its own small column.
+- Artists list: the full artist name shows, and the count reads "4 tracks · 1 album" instead of listing album names.
+- Cover art: an oversized embedded picture is skipped when the optional `mutagen` reads it too, as the built-in readers already did.
+- Tests: two Windows tests set up the home folder and the DevTools path they meant to test; port-watcher tests no longer race a watcher left over from the previous test.
+- Screenshots retaken on the current build.
 - Bug hunt 3, 33 fixes, each with a test that fails on the previous build:
   - Player: a library rescan can no longer freeze REVamp; adding to the queue while an audiobook resumes keeps its place; Like in a song's menu during a scan likes only that song; playlists are no longer listed twice; a failed library load shows the error.
   - Backups and playlists: an export with an unreadable playlist fails instead of leaving it out; a playlist save with an unknown track is refused instead of dropping it; undoing a restore removes what it added; restored folders are rescanned; the "Welcome back" offer shows on a profile that holds only defaults.
