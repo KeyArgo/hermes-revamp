@@ -604,7 +604,17 @@ async function collectPluginBugEnv() {
     (storedTheme && typeof storedTheme === 'object' && (storedTheme.look || storedTheme.theme))
       ? String(storedTheme.look || storedTheme.theme)
       : 'unknown'
-  const hermesVersion = typeof host?.appVersion === 'string' ? host.appVersion : 'unknown'
+  // The SDK's status snapshot carries the Hermes version; a slow or missing one never
+  // holds the report up.
+  let hermesVersion = 'unknown'
+  try {
+    let timer = 0
+    const st = await Promise.race([
+      Promise.resolve(host?.status?.()),
+      new Promise(resolve => { timer = setTimeout(resolve, 1500, null) })
+    ]).finally(() => clearTimeout(timer))
+    if (typeof st?.version === 'string' && st.version) hermesVersion = st.version
+  } catch { /* status unavailable */ }
   return {
     revampVersion,
     revampBuild,
@@ -772,11 +782,10 @@ function setFrameHidden(hidden) {
   $frameHidden.set(hidden)
   const paneId = scopedPaneId($dockedPlayerSide.get())
   if (hidden) {
-    // Hiding must unregister as well as hide: hosts that retain an empty pane
-    // after hidePane otherwise leave a blank Frame in their layout.
+    // Hiding unregisters the pane: a host that kept it would leave a blank Frame
+    // in its layout.
     disposeDockedPlayerPane?.()
     disposeDockedPlayerPane = null
-    if (typeof host.hidePane === 'function') host.hidePane(paneId)
   } else {
     if (!disposeDockedPlayerPane && DOCKED_PANE && ctxRef) disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane($dockedPlayerSide.get()))
     try { host.revealPane?.(paneId) } catch { /* older hosts */ }
@@ -1478,6 +1487,8 @@ function createEngine(ctx, url, bridgeKey = '') {
     paneClip?.remove()
     paneClip = null
     if (scaleTimer) { clearTimeout(scaleTimer); scaleTimer = 0 }
+    // A control-frame reload armed by a refused key must not fire after dispose.
+    if (controlRetry) { clearTimeout(controlRetry); controlRetry = 0 }
     refitPane = () => {}
     floatHost = null
     dock.remove()

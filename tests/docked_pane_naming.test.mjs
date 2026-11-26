@@ -14,5 +14,6 @@ test("the docked pane constant is named for what it is", () => {
 
 test("the diagnostics report 'unknown' instead of reading a host global", () => {
   assert.ok(!src.includes("__HERMES_APP_VERSION__"));
-  assert.match(src, /const hermesVersion = typeof host\?\.appVersion === 'string' \? host\.appVersion : 'unknown'/);
+  // The version comes from the SDK's host.status() (tests/desktop_bug_env_version.test.mjs).
+  assert.match(src, /let hermesVersion = 'unknown'/);
 });

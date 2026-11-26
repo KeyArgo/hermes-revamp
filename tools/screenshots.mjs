@@ -70,7 +70,7 @@ try {
   let page;
   if (capture("player")) {
   await put(p, token, { playlist: music, current_index: 0, skin: "classic", settings: { milkdropOn: true, ticker: true, duck_on_approval: true } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(3500); await snap(page, "full-player.png"); await close(page);
-  await put(p, token, { playlist: music, current_index: 0, skin: "builtin:REVamp-Nous.wsz", settings: { milkdropOn: false } }); page = await pageFor(p); await playing(page, p, token, music); await sleep(1800); await snap(page, "nous.png"); await close(page);
+  await put(p, token, { playlist: music, current_index: 0, skin: "builtin:REVamp-Nous.wsz", settings: { milkdropOn: false } }); page = await pageFor(p); await playing(page, p, token, music); await waitFor(() => evalJs(page, "(() => { const d = window.__webamp?.store?.getState?.().display; return Boolean(d && !d.loading && d.skinImages && Object.keys(d.skinImages).length); })()"), "Nous skin"); await sleep(1800); await snap(page, "nous.png"); await close(page);
   }
   if (capture("views", "books")) {
   await put(p, token, { playlist: [book], current_index: 0, skin: "classic", settings: { milkdropOn: false } }); page = await pageFor(p); await playing(page, p, token, [book], 74); await view(page, "books", "The REVamp Field Guide"); await waitFor(() => evalJs(page, "document.querySelector('.np-book:not([hidden])') && document.querySelector('.np-chapter:not([hidden])')"), "book controls"); await snap(page, "books.png"); await close(page);
@@ -85,7 +85,7 @@ try {
   page = await pageFor(p); await playing(page, p, token, music); await view(page, "skins", "Winamp Skin Museum"); await sleep(1200); await snap(page, "skins.png"); await close(page);
   }
   if (capture("extras")) {
-  page = await pageFor(p); await playing(page, p, token, music); await waitFor(() => evalJs(page, "!document.querySelector('.np-lyrics-btn')?.hidden"), "lyrics"); await evalJs(page, "document.querySelector('.np-lyrics-btn')?.click()"); await sleep(900); await snap(page, "lyrics.png"); await close(page);
+  page = await pageFor(p); await playing(page, p, token, music); await waitFor(() => evalJs(page, "!document.querySelector('.np-lyrics-btn')?.hidden"), "lyrics"); await evalJs(page, "document.querySelector('.np-lyrics-btn')?.click()"); await waitFor(() => evalJs(page, "document.querySelectorAll('.lyrics-pane .lyr').length > 0"), "lyrics lines"); await sleep(900); await snap(page, "lyrics.png"); await close(page);
   page = await pageFor(p); await playing(page, p, token, music); await post(p, token, "/api/agent_event", { kind: "tool_start", tool: "revamp_library", preview: "Queueing a focused work mix" }); await post(p, token, "/api/agent_event", { kind: "approval_request", tool: "shell", preview: "Waiting for approval" }); await waitFor(() => evalJs(page, "document.querySelector('#ticker-track')?.innerText.includes('revamp_library')"), "agent activity"); await snap(page, "agent-activity.png"); await close(page);
   }
   if (capture("modes", "mini")) {

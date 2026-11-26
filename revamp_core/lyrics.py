@@ -141,6 +141,16 @@ def _key(artist: str, title: str, album: str, duration: Optional[float]) -> Tupl
             int(round(duration or 0)))
 
 
+def _norm_key(key: str) -> str:
+    """A file key in the form _cache_get looks up: another writer (JavaScript's
+    JSON.stringify) leaves out the spaces json.dumps puts after commas."""
+    try:
+        parsed = json.loads(key)
+    except ValueError:
+        return key
+    return json.dumps(parsed, ensure_ascii=False) if isinstance(parsed, list) else key
+
+
 def _load() -> None:
     global _loaded
     if _loaded:
@@ -149,7 +159,7 @@ def _load() -> None:
     try:
         raw = json.loads(_cache_path().read_text(encoding="utf-8"))
         if isinstance(raw, dict):
-            _CACHE.update({key: record for key, record in raw.items()
+            _CACHE.update({_norm_key(key): record for key, record in raw.items()
                            if isinstance(record, dict)})
     except (OSError, ValueError):
         pass

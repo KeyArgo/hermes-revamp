@@ -266,3 +266,16 @@ def test_non_object_json_is_not_a_crash(fake_net):
     answers["track_name=Weird"] = []
     out = lyrics.lyrics_for("X", "Weird")
     assert out["found"] is False
+
+
+def test_a_cache_file_written_with_compact_keys_is_still_found(fake_net, tmp_path):
+    # tools/screenshots.mjs (and any other writer using JavaScript's JSON.stringify) writes
+    # '["a","b","c",8]'; Python's json.dumps writes '["a", "b", "c", 8]'. Both are the same key.
+    calls, _answers = fake_net
+    data = {"synced": [{"t": 0, "line": "A small song begins"}], "plain": "", "instrumental": False}
+    key = json.dumps(["revamp studio", "late checkout", "night drive", 8], separators=(",", ":"))
+    (tmp_path / lyrics.CACHE_NAME).write_text(
+        json.dumps({key: {"hit": True, "ts": time.time(), "data": data}}), encoding="utf-8")
+    out = lyrics.lyrics_for("REVamp Studio", "Late Checkout", "Night Drive", 8.0)
+    assert out["found"] is True and out["synced"] == data["synced"]
+    assert calls == [], "served from the cache, no network"

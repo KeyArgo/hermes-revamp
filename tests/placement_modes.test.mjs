@@ -44,8 +44,9 @@ test("hiding Frame unregisters its pane so Hermes has no empty container", () =>
   const hidden = body.slice(body.indexOf("if (hidden)"), body.indexOf("} else {"));
   const dispose = hidden.indexOf("disposeDockedPlayerPane?.()");
   const clear = hidden.indexOf("disposeDockedPlayerPane = null");
-  const hide = hidden.indexOf("host.hidePane(paneId)");
-  assert.ok(dispose >= 0 && clear > dispose && hide > clear);
+  assert.ok(dispose >= 0 && clear > dispose);
+  // hidePane is not a Desktop SDK member: unregistering is the whole teardown.
+  assert.ok(!hidden.includes("hidePane"));
   assert.match(body, /if \(!disposeDockedPlayerPane && DOCKED_PANE && ctxRef\) disposeDockedPlayerPane = ctxRef\.register/);
 });
 

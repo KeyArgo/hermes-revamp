@@ -51,6 +51,19 @@ def data_dir() -> Path:
 BASE = f"http://127.0.0.1:{os.environ.get('REVAMP_PORT', '8114')}"
 
 
+def declared_version() -> str:
+    """plugin.yaml's version: (read the same way as revamp_core/version_stamp.py; this script
+    stays standalone)."""
+    try:
+        text = (Path(__file__).resolve().parent.parent / "plugin.yaml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "unknown"
+    for line in text.splitlines():
+        if line.startswith("version:"):
+            return line.split(":", 1)[1].strip().strip('"').strip("'") or "unknown"
+    return "unknown"
+
+
 def token() -> str:
     try:
         return (data_dir() / "token").read_text().strip()
@@ -231,7 +244,7 @@ def mcp_serve() -> int:
             send({"jsonrpc": "2.0", "id": mid, "result": {
                 "protocolVersion": params.get("protocolVersion") or "2025-06-18",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "revamp", "version": "1.0.0-alpha.10"},
+                "serverInfo": {"name": "revamp", "version": declared_version()},
                 "instructions": "REVamp is the user's music player. Use these tools only when the user asks about or for music."}})
         elif method == "ping":
             send({"jsonrpc": "2.0", "id": mid, "result": {}})

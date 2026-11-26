@@ -42,15 +42,16 @@ export async function render(root, api) {
     return { row, input };
   };
 
-  const mkSlider = (label, value, min, max, step, onInput) => {
+  // format: how the value reads next to the slider (a share as a percentage by default).
+  const mkSlider = (label, value, min, max, step, onInput, format = (v) => `${Math.round(v * 100)}%`) => {
     const row = document.createElement("div");
     row.className = "setting-row";
     const lab = document.createElement("label"); lab.textContent = label;
-    const val = document.createElement("span"); val.className = "muted"; val.textContent = `${Math.round(value * 100)}%`;
+    const val = document.createElement("span"); val.className = "muted"; val.textContent = format(Number(value));
     const rng = document.createElement("input");
     rng.type = "range"; rng.min = min; rng.max = max; rng.step = step; rng.value = value;
     rng.setAttribute("aria-label", label);
-    rng.addEventListener("input", () => { val.textContent = `${Math.round(rng.value * 100)}%`; onInput(Number(rng.value)); });
+    rng.addEventListener("input", () => { val.textContent = format(Number(rng.value)); onInput(Number(rng.value)); });
     row.append(lab, rng, val);
     return row;
   };
@@ -64,7 +65,7 @@ export async function render(root, api) {
     (v) => persist({ duck_on_approval: v })).row);
   box.appendChild(mkToggle("Chime", "Play a short two-tone chime with the dip.", settings.duck_chime !== false,
     (v) => persist({ duck_chime: v })).row);
-  box.appendChild(mkSlider("Dip length", settings.duck_dip_seconds ?? 2, 1, 5, 1, (v) => persist({ duck_dip_seconds: v })));
+  box.appendChild(mkSlider("Dip length", settings.duck_dip_seconds ?? 2, 1, 5, 1, (v) => persist({ duck_dip_seconds: v }), (v) => `${v} s`));
   box.appendChild(mkSlider("Duck level", settings.duck_level ?? 0.25, 0.05, 1, 0.05, (v) => persist({ duck_level: v })));
   root.appendChild(box);
 

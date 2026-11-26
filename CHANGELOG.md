@@ -4,6 +4,12 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- Bug reports from Hermes Desktop now include the Hermes version instead of "unknown".
+- Settings: Dip length reads in seconds ("2 s") instead of "200%".
+- Disabling or reloading REVamp in Hermes Desktop cancels a pending reload of the library controls.
+- The desktop window never opens a DevTools network port: where the private channel is not available it keeps its launch size.
+- The MCP server (`revampctl mcp`) reports REVamp's real version instead of an old alpha number.
+- A lyrics cache written by another tool (the screenshot script) is found again, and the screenshot script waits for the skin and the lyrics before taking those pictures.
 - Artists list: clicking an artist who only appears on a compilation shows that album instead of "No albums yet", and songs without an album tag count as an album, as the Albums view shows them.
 - An opened artist's albums stay that artist's while a library scan runs (they no longer switch to every album), and leaving for another tab clears the artist's name from the search box.
 - A setting, skin or equalizer change made while the REVamp server was briefly unreachable is saved once it is back, instead of being lost on the next start.

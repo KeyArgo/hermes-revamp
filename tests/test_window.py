@@ -39,9 +39,7 @@ def test_open_status_close(server, fake_browser):
     assert "--user-data-dir=" in args and "float-browser" in args  # its own profile
     if window.USE_CDP_PIPE:  # Linux/macOS: DevTools over a private pipe, no port
         assert "--remote-debugging-pipe" in args and "--remote-debugging-port" not in args
-    elif window.USE_DEVTOOLS:  # no pipe available: a loopback-only port
-        assert "--remote-debugging-port=0" in args and "--remote-debugging-address=127.0.0.1" in args
-    else:  # Windows: neither, so no listening socket
+    else:  # Windows, or no Python to pass the pipe: no DevTools, so no listening socket
         assert "--remote-debugging-port" not in args and "--remote-debugging-pipe" not in args
     if sys.platform.startswith("linux"):
         assert "--class=REVamp" in args

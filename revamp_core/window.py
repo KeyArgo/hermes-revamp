@@ -80,8 +80,11 @@ _PIPE_SHIM = ("import fcntl,os,sys\n"
               "r,w=(fcntl.fcntl(int(a),fcntl.F_DUPFD,10) for a in sys.argv[1:3])\n"
               "os.dup2(r,3);os.dup2(w,4);os.close(r);os.close(w)\n"
               "os.execvp(sys.argv[3],sys.argv[3:])")
-USE_DEVTOOLS = os.name != "nt"  # Windows: no fd passing for the pipe, and no listening port
-USE_CDP_PIPE = USE_DEVTOOLS and os.name == "posix" and bool(sys.executable)
+# DevTools only over the private pipe, which needs a Python to hand its ends over. Windows
+# (no fd passing) and a Python without sys.executable open no DevTools and no listening
+# port: the window keeps its launch size.
+USE_CDP_PIPE = os.name == "posix" and bool(sys.executable)
+USE_DEVTOOLS = USE_CDP_PIPE
 HANDOFF_TTL = 120.0
 LEASE = "float-window.json"  # survives a server restart, so an orphaned window can be found
 # One entry per window identity, each matching ONLY the pop-out:
@@ -388,10 +391,7 @@ def open_window(port: int, position: float = 0.0, playing: bool = False) -> Dict
             pipe_ends = (to_chrome_r, from_chrome_w)
             args.insert(1, "--remote-debugging-pipe")
             args = [sys.executable, "-I", "-c", _PIPE_SHIM, str(to_chrome_r), str(from_chrome_w)] + args
-        elif USE_DEVTOOLS:
-            # Only where a pipe is not available (a Python that cannot pass fds): the
-            # loopback port is still a listening socket, but the alternative is no resize.
-            args[1:1] = ["--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"]
+        # No pipe: no DevTools at all (never a listening port another local account could use).
         try:
             proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL, start_new_session=True,
@@ -488,7 +488,7 @@ def resize_window(content_w: float, content_h: float, inner_w: float, inner_h: f
     if out["resized"]:
         out["reason"] = "ok"
     else:
-        # "fixed": no DevTools here (Windows), so the window keeps its launch size and the
+        # "fixed": no DevTools here (Windows, or no pipe), so the window keeps its launch size and the
         # page should stop asking. "debugger": try again, the channel may not be up yet.
         out["reason"] = "debugger" if USE_DEVTOOLS else "fixed"
     return out
