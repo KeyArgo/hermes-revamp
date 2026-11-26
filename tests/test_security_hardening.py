@@ -977,6 +977,12 @@ def _retire_watchers():
 
 def _reset_server_globals(monkeypatch):
     server._watch_gen += 1
+    # A watcher from an earlier test may be mid-poll: it passed its generation check and
+    # would call this test's patched ensure_server. Let it finish first (slow CI runners).
+    import threading as _t
+    for th in _t.enumerate():
+        if th.name == "revamp-watch" and th is not _t.current_thread():
+            th.join(timeout=1.0)
     for name, val in (("_started", False), ("_watching", False), ("_owned", False)):
         monkeypatch.setattr(server, name, val)
 
