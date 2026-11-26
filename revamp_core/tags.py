@@ -233,7 +233,8 @@ def read_cover(path: str) -> Optional[bytes]:
         try:
             f = mutagen.File(path)
             pics = getattr(f, "pictures", None) or []
-            if pics:
+            # Same cap as the built-in readers: an oversized picture is skipped, not returned.
+            if pics and len(pics[0].data) <= _MAX_ART:
                 return bytes(pics[0].data)
             tags = getattr(f, "tags", None)
             if tags is not None:
@@ -246,7 +247,7 @@ def read_cover(path: str) -> Optional[bytes]:
                         if isinstance(val, list):
                             val = val[0]
                         data = getattr(val, "data", val)
-                        if isinstance(data, (bytes, bytearray)):
+                        if isinstance(data, (bytes, bytearray)) and len(data) <= _MAX_ART:
                             return bytes(data)
         except Exception:
             log.debug("could not read cover: %s", path, exc_info=True)
