@@ -276,6 +276,7 @@ PL_ROUTES = {
                        {"id": "gone", "name": "gone"}],
     "/api/playlists/Weird%20Name%21": {"id": "Weird Name!", "name": "mix one",
                                        "items": [{"kind": "track"}]},
+    "/api/playlists/gone/append": {"error": "no such playlist"},
     "/api/playlists/gone": {"error": "no such playlist"},
     "/api/library/tracks": {"total": 1, "tracks": [_item(9)]},
     "/api/command": {"delivered": 1},
@@ -308,13 +309,12 @@ def test_playlist_create_and_add_update(fake):
     assert f.calls[-1][2] == {"name": "New", "items": [{"kind": "track"}]}
     f.routes["/api/playlists"] = [{"id": "Weird Name!", "name": "mix one"}]
     f.routes["POST /api/playlists"] = {"id": "new", "name": "New", "items": []}
-    # add PUTs the raw pl["id"], not the quoted pid (ids are always slugs in practice)
-    f.routes["PUT /api/playlists/Weird Name!"] = {"ok": True}
+    f.routes["POST /api/playlists/Weird%20Name%21/append"] = {"id": "Weird Name!"}
     out = json.loads(plug._tool_playlist({"action": "add", "name": "weird name!",
                                           "query": "t"}))
     assert out["ok"] and out["added"] == 1
-    put = [c for c in f.calls if c[0] == "PUT"][-1]
-    assert len(put[2]["items"]) == 2
+    assert f.calls[-1][1].endswith("/append")
+    assert len(f.calls[-1][2]["items"]) == 1
 
 
 def test_playlist_play_and_missing_branches(fake):
@@ -569,3 +569,49 @@ def test_schemas_and_tools_table():
     for _, schema, _ in plug.TOOLS:
         assert schema["parameters"]["type"] == "object"
         assert isinstance(schema["parameters"]["required"], list)
+
+
+def test_delete_tool_prefers_exact_id(fake):
+    client = fake({"/api/playlists": [{"id": "a", "name": "z"}, {"id": "z", "name": "other"}],
+                   "/api/playlists/a": {}, "/api/playlists/z": {}})
+    _plugin()._tool_playlist({"action": "delete", "name": "z"})
+    assert client.calls[-1][:2] == ("DELETE", "/api/playlists/z")
+
+
+def test_simultaneous_tool_additions_keep_both_tracks(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from unittest.mock import Mock
+    from revamp_core import playlists, server
+
+    monkeypatch.setattr(playlists, "data_dir", lambda: tmp_path)
+    playlists.create_playlist("mix")
+    ready = Barrier(2, timeout=5)
+
+    class Client:
+        def get(self, path, **params):
+            if path == "/api/playlists":
+                return playlists.list_playlists()
+            if path == "/api/library/tracks":
+                return {"tracks": [_item(params["q"])]}
+            playlist = playlists.get_playlist("mix")
+            ready.wait()
+            return playlist
+
+        def put(self, path, body):
+            return playlists.update_playlist("mix", items=body["items"])
+
+        def post(self, path, body):
+            ready.wait()
+            handler = Mock()
+            handler._body_json.return_value = body
+            handler._send_json.side_effect = lambda out: out
+            return server.Handler._api_post(handler, path)
+
+    plug = _plugin()
+    monkeypatch.setattr(plug, "_client", Client)
+    with ThreadPoolExecutor(2) as pool:
+        results = pool.map(lambda q: json.loads(plug._tool_playlist(
+            {"action": "add", "name": "mix", "query": q})), ("1", "2"))
+        assert all(result["ok"] for result in results)
+    assert sorted(t["title"] for t in playlists.get_playlist("mix")["items"]) == ["Track 1", "Track 2"]

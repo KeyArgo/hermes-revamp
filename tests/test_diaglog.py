@@ -114,7 +114,7 @@ def test_sample_has_the_keys(isolated_diaglog):
     assert isinstance(s["threads"], int) and s["threads"] >= 1
     assert isinstance(s["gc_counts"], list) and len(s["gc_counts"]) == 3
     assert s["uptime_s"] >= 0
-    if os.name == "posix":  # getrusage is there: RSS must be readable
+    if os.name in ("posix", "nt"):
         assert s["rss_mb"] is not None and s["rss_mb"] > 0
 
 
@@ -290,3 +290,26 @@ def test_shipped_code_never_names_proc_self():
         if rule.search(p.read_text(encoding="utf-8", errors="ignore")):
             hits.append(rel)
     assert hits == []
+
+
+def test_windows_working_set_counters(monkeypatch):
+    import ctypes
+    from unittest.mock import Mock
+
+    dlls = Mock()
+    dlls.kernel32.GetCurrentProcess.return_value = -1
+
+    def sample(handle, pointer, size):
+        counters = pointer._obj
+        assert handle == -1 and counters.cb == size == ctypes.sizeof(counters)
+        counters.WorkingSetSize = 17 * 1024**2
+        counters.PeakWorkingSetSize = 29 * 1024**2
+        return 1
+
+    dlls.psapi.GetProcessMemoryInfo.side_effect = sample
+    monkeypatch.setattr(ctypes, "windll", dlls, raising=False)
+    monkeypatch.setattr(diaglog.sys, "platform", "win32")
+    assert diaglog._rss_mb() == (17, 29)
+    dlls.psapi.GetProcessMemoryInfo.side_effect = None
+    dlls.psapi.GetProcessMemoryInfo.return_value = 0
+    assert diaglog._rss_mb() == (None, None)

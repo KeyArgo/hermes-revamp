@@ -4,12 +4,25 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- Activity previews hide quoted passwords and tokens before shortening long commands.
+- Restore stops if it cannot save a complete undo copy of the current profile.
+- Renaming an unreadable playlist preserves its tracks and reports the read error.
+- Playlist commands honor an exact ID even when another playlist uses it as a display name.
+- Export reports an error if the playlists folder cannot be listed.
+- Restore and import can now be undone on a previously empty profile.
+- A failed playlist removal during restore rolls back the changes and reports the error.
+- Import checks that every playlist name is distinct on the destination volume.
+- Backups refuse a redirected playlists folder to protect the linked collection.
+- Creating a playlist reports unresolved tracks before saving it.
+- Simultaneous playlist additions keep tracks from both requests.
+- A retired port watcher now exits if its pending health check finishes after retirement.
+
 - Music list in the side panel: Title and Artist are readable again (Album gives way in a narrow panel), and the actions button keeps its own small column.
 - Artists list: the full artist name shows, and the count reads "4 tracks · 1 album" instead of listing album names.
 - Cover art: an oversized embedded picture is skipped when the optional `mutagen` reads it too, as the built-in readers already did.
 - Tests: two Windows tests set up the home folder and the DevTools path they meant to test; port-watcher tests no longer race a watcher left over from the previous test.
 - Screenshots retaken on the current build.
-- The health log no longer reads the process entries under `/proc`: memory comes from `getrusage` on every system and the open-file count is gone, so Hermes's install scanner no longer rates REVamp "caution" and a plain install from the repository works.
+- The health log no longer reads the process entries under `/proc`: Windows reports current and peak working-set memory, POSIX reports peak memory from `getrusage` and the open-file count is gone, so Hermes's install scanner no longer rates REVamp "caution" and a plain install from the repository works.
 - Bug hunt 3, 33 fixes, each with a test that fails on the previous build:
   - Player: a library rescan can no longer freeze REVamp; adding to the queue while an audiobook resumes keeps its place; Like in a song's menu during a scan likes only that song; playlists are no longer listed twice; a failed library load shows the error.
   - Backups and playlists: an export with an unreadable playlist fails instead of leaving it out; a playlist save with an unknown track is refused instead of dropping it; undoing a restore removes what it added; restored folders are rescanned; the "Welcome back" offer shows on a profile that holds only defaults.
