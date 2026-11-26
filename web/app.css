@@ -225,9 +225,8 @@ table.list { width: 100%; border-collapse: collapse; font-size: 13px; table-layo
 table.list th:first-child, table.list td:first-child { width: 36px; }
 table.list th:nth-child(2) { width: 42%; }
 table.list th:last-child { width: 64px; }
-table.list.books th:last-child { width: 136px; }
 table.list th.like-cell { width: 28px; }
-table.list th.more-cell { width: 34px; } /* the actions button; beats the last-child width above */
+table.list th.more-cell, table.list.books th.more-cell { width: 34px; } /* the actions button; beats the last-child width above */
 table.list th.time { width: 64px; }
 table.list.books th.time { width: 136px; }
 table.list td { max-width: none; }
@@ -750,7 +749,6 @@ html.revamp-classic #webamp .selected .playlist-top-title { background-image: ur
   table.list.books th:nth-child(3), table.list.books td:nth-child(3),
   table.list.books th:nth-child(4), table.list.books td:nth-child(4) { display: none; }
   table.list.books th:nth-child(2) { width: auto; }
-  table.list.books th:last-child { width: 118px; }
   table.list.books th.time { width: 118px; }
 }
 /* Hermes's docked pane is ~400px: with fixed table layout the artist and album columns
@@ -763,8 +761,11 @@ html.revamp-classic #webamp .selected .playlist-top-title { background-image: ur
 /* The panel is ~440px even on a wide window, so the window-width query above never fires
    there. In a narrow panel the music table drops Album and gives Artist real room. */
 @container (max-width: 560px) {
-  table.list:not(.events):not(.books) th:nth-child(4), table.list:not(.events):not(.books) td:nth-child(4) { display: none; }
-  table.list:not(.events):not(.books) th:nth-child(2) { width: auto; }
+  table.list.tracks th:nth-child(4), table.list.tracks td:nth-child(4) { display: none; }
+  table.list.tracks th:nth-child(2) { width: auto; }
+  table.list.books th:nth-child(3), table.list.books td:nth-child(3),
+  table.list.books th:nth-child(4), table.list.books td:nth-child(4) { display: none; }
+  table.list.books th:nth-child(2) { width: auto; }
 }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 

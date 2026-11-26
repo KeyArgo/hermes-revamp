@@ -268,7 +268,7 @@ export async function render(root, api, kind = "music") {
       return;
     }
     const tbl = document.createElement("table");
-    tbl.className = books ? "list books" : "list"; // books: a wider Time column for "left off / length"
+    tbl.className = books ? "list books" : "list tracks"; // books: a wider Time column for "left off / length"
     tbl.innerHTML = `<thead><tr><th class="num">#</th><th>Title</th><th>Artist</th><th>Album</th><th class="num time">Time</th><th class="like-cell"><span class="sr-only">Liked</span></th><th class="more-cell"><span class="sr-only">Actions</span></th></tr></thead>`;
     const tb = document.createElement("tbody");
     const playingIdx = safePlayingIndex();

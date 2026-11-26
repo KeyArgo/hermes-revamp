@@ -24,13 +24,13 @@ test("the panel body is a size container", () => {
 
 test("a narrow panel drops the Album column for music and keeps Artist", () => {
   const q = block("@container (max-width: 560px)");
-  assert.match(q, /table\.list:not\(\.events\):not\(\.books\) th:nth-child\(4\)/);
+  assert.match(q, /table\.list\.tracks th:nth-child\(4\)/);
   assert.match(q, /display:\s*none/);
-  assert.doesNotMatch(q, /:not\(\.books\) td:nth-child\(3\)/, "Artist stays visible");
+  assert.doesNotMatch(q, /\.tracks td:nth-child\(3\)/, "Artist stays visible");
 });
 
 test("the actions column keeps its own width instead of the 64px last-child rule", () => {
-  const m = css.match(/table\.list th\.more-cell\s*\{[^}]*width:\s*(\d+)px/);
+  const m = css.match(/table\.list th\.more-cell[^{]*\{[^}]*width:\s*(\d+)px/);
   assert.ok(m, "missing table.list th.more-cell width");
   assert.ok(Number(m[1]) <= 36);
   assert.ok(css.indexOf("table.list th.more-cell") > css.indexOf("table.list th:last-child"));
@@ -40,7 +40,7 @@ const lib = readFileSync(new URL("../web/views/library.js", import.meta.url), "u
 
 test("a narrow panel lets Title and Artist share the room (Title is not pinned wide)", () => {
   const q = block("@container (max-width: 560px)");
-  assert.match(q, /:not\(\.books\) th:nth-child\(2\)\s*\{\s*width:\s*auto/);
+  assert.match(q, /\.tracks th:nth-child\(2\)\s*\{\s*width:\s*auto/);
 });
 
 test("the Artists list counts albums (the backend sends their names) and says 1 album", () => {
@@ -53,4 +53,23 @@ test("the Artists list counts albums (the backend sends their names) and says 1 
 test("the artist name is not squeezed into the 36px number column", () => {
   assert.match(lib, /tbl\.className = "list artists"/);
   assert.match(css, /table\.list\.artists td:first-child\s*\{[^}]*width:\s*auto/);
+});
+
+test("the Books actions column keeps its own width (no 136px last-child rule left)", () => {
+  assert.doesNotMatch(css, /table\.list\.books th:last-child/, "the last column is the actions button now");
+  const m = css.match(/table\.list\.books th\.more-cell[^{]*\{[^}]*width:\s*(\d+)px/);
+  assert.ok(m && Number(m[1]) <= 36, "missing table.list.books th.more-cell width");
+});
+
+test("a narrow panel gives the Books title room: author and album give way", () => {
+  const q = block("@container (max-width: 560px)");
+  assert.match(q, /table\.list\.books th:nth-child\(3\)/);
+  assert.match(q, /table\.list\.books th:nth-child\(4\)/);
+});
+
+test("the narrow-panel rule only touches the music table, not a playlist's Duration column", () => {
+  assert.match(lib, /"list books" : "list tracks"/);
+  const q = block("@container (max-width: 560px)");
+  assert.doesNotMatch(q, /:not\(\.events\):not\(\.books\)/, "would also hide column 4 of a playlist");
+  assert.match(q, /table\.list\.tracks th:nth-child\(4\)/);
 });
