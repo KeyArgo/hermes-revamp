@@ -371,10 +371,16 @@ export async function render(root, api, kind = "music") {
     listEl.prepend(back);
   }
 
+  // The library sends an artist's albums as a list of names; show how many.
+  function countLabel(n, word) {
+    const count = Number(n) || 0;
+    return `${count} ${word}${count === 1 ? "" : "s"}`;
+  }
+
   function renderArtists() {
     listEl.innerHTML = "";
     if (!artists.length) return listElEmpty(listEl, "No artists yet — rescan after adding folders.", "🎤");
-    const tbl = document.createElement("table"); tbl.className = "list";
+    const tbl = document.createElement("table"); tbl.className = "list artists";
     const tb = document.createElement("tbody");
     for (const a of artists) {
       const tr = document.createElement("tr");
@@ -382,7 +388,7 @@ export async function render(root, api, kind = "music") {
       tr.tabIndex = 0;
       tr.innerHTML = `<td>${esc(a.name)}</td>`;
       const tdN = document.createElement("td"); tdN.className = "num";
-      tdN.textContent = `${a.tracks} tracks · ${a.albums} albums`;
+      tdN.textContent = `${countLabel(a.tracks, "track")} · ${countLabel(Array.isArray(a.albums) ? a.albums.length : a.albums, "album")}`;
       tr.appendChild(tdN);
       const open = () => {
         query = "";

@@ -197,7 +197,7 @@ a { color: var(--accent); }
 }
 .panel-head h1 { font-size: 16px; margin: 0; font-weight: 650; }
 .panel-head .spacer { flex: 1; }
-.panel-body { flex: 1; overflow: auto; padding: 4px 14px 14px; min-height: 0; }
+.panel-body { flex: 1; overflow: auto; padding: 4px 14px 14px; min-height: 0; container-type: inline-size; }
 
 /* search inputs */
 .searchbox {
@@ -227,9 +227,14 @@ table.list th:nth-child(2) { width: 42%; }
 table.list th:last-child { width: 64px; }
 table.list.books th:last-child { width: 136px; }
 table.list th.like-cell { width: 28px; }
+table.list th.more-cell { width: 34px; } /* the actions button; beats the last-child width above */
 table.list th.time { width: 64px; }
 table.list.books th.time { width: 136px; }
 table.list td { max-width: none; }
+/* Artists: name, counts, menu. The name is not the 36px number column. */
+table.list.artists td:first-child { width: auto; }
+table.list.artists td.num { width: 45%; }
+table.list.artists td.more-cell { width: 34px; }
 table.list th {
   text-align: left; font-weight: 500; color: var(--txt-dim);
   font-size: 11.5px; letter-spacing: 0.4px; text-transform: uppercase;
@@ -752,6 +757,12 @@ html.revamp-classic #webamp .selected .playlist-top-title { background-image: ur
    shrink to a few pixels. Keep title + time there, like the Books table above. */
 @media (max-width: 520px) {
   table.list:not(.events):not(.books) th:nth-child(3), table.list:not(.events):not(.books) td:nth-child(3),
+  table.list:not(.events):not(.books) th:nth-child(4), table.list:not(.events):not(.books) td:nth-child(4) { display: none; }
+  table.list:not(.events):not(.books) th:nth-child(2) { width: auto; }
+}
+/* The panel is ~440px even on a wide window, so the window-width query above never fires
+   there. In a narrow panel the music table drops Album and gives Artist real room. */
+@container (max-width: 560px) {
   table.list:not(.events):not(.books) th:nth-child(4), table.list:not(.events):not(.books) td:nth-child(4) { display: none; }
   table.list:not(.events):not(.books) th:nth-child(2) { width: auto; }
 }
