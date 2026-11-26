@@ -32,7 +32,6 @@ INTERVAL = 60.0  # seconds between health samples
 WINDOW = 600.0  # the RSS-growth window (10 minutes)
 RSS_JUMP_MB = 100.0
 THREAD_LIMIT = 200
-FD_LIMIT = 1000
 
 _T0 = time.monotonic()  # process uptime baseline (module loads with the server)
 _lock = threading.Lock()
@@ -114,18 +113,7 @@ def setup() -> logging.Logger:
 # Health sampling
 
 def _rss_mb() -> Tuple[Optional[float], Optional[float]]:
-    """(rss, peak) in MB. /proc/self/status on Linux; getrusage elsewhere."""
-    try:
-        if sys.platform.startswith("linux"):
-            vals: Dict[str, float] = {}
-            for line in Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
-                if line.startswith(("VmRSS:", "VmHWM:")):
-                    key, raw = line.split(":", 1)
-                    vals[key] = float(raw.split()[0]) / 1024.0  # kB -> MB
-            if "VmRSS" in vals:
-                return vals["VmRSS"], vals.get("VmHWM")
-    except (OSError, ValueError, IndexError):
-        pass
+    """(rss, peak) in MB from getrusage. Its peak only grows, so a leak still shows as growth."""
     try:
         import resource
         peak_kb_or_b = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -143,14 +131,9 @@ def set_client_counter(count: Callable[[], int]) -> None:
 
 
 def sample() -> Dict[str, Any]:
-    """One health sample. Every read is best-effort: a missing /proc (non-Linux)
-    leaves that field None instead of failing the whole sample."""
+    """One health sample. Every read is best-effort: one that fails leaves its field None
+    instead of failing the whole sample."""
     rss, peak = _rss_mb()
-    fds: Optional[int] = None
-    try:
-        fds = len(os.listdir("/proc/self/fd"))
-    except OSError:
-        pass
     sse: Optional[int] = None
     try:
         if _client_count is not None:
@@ -163,7 +146,6 @@ def sample() -> Dict[str, Any]:
         "rss_mb": round(rss, 1) if rss is not None else None,
         "peak_rss_mb": round(peak, 1) if peak is not None else None,
         "threads": threading.active_count(),
-        "open_fds": fds,
         "sse_clients": sse,
         "gc_counts": list(gc.get_count()),
     }
@@ -184,9 +166,6 @@ def _warnings_for(s: Dict[str, Any], history: List[Tuple[float, Optional[float]]
     threads = s.get("threads") or 0
     if threads > THREAD_LIMIT:
         out.append("revamp: %s threads open (limit %s)" % (threads, THREAD_LIMIT))
-    fds = s.get("open_fds")
-    if fds is not None and fds > FD_LIMIT:
-        out.append("revamp: %s open file descriptors (limit %s)" % (fds, FD_LIMIT))
     return out
 
 
@@ -212,9 +191,9 @@ def _tick() -> None:
     _last = s
     logger = logging.getLogger("revamp")
     logger.info(
-        "revamp: health rss_mb=%s peak_rss_mb=%s threads=%s open_fds=%s "
+        "revamp: health rss_mb=%s peak_rss_mb=%s threads=%s "
         "sse_clients=%s gc=%s uptime_s=%s",
-        s["rss_mb"], s["peak_rss_mb"], s["threads"], s["open_fds"],
+        s["rss_mb"], s["peak_rss_mb"], s["threads"],
         s["sse_clients"], s["gc_counts"], s["uptime_s"])
     for msg in warns:
         logger.warning("%s", msg)

@@ -108,21 +108,20 @@ def test_env_level(isolated_diaglog, monkeypatch):
 
 def test_sample_has_the_keys(isolated_diaglog):
     s = diaglog.sample()
-    for key in ("rss_mb", "peak_rss_mb", "threads", "open_fds",
+    for key in ("rss_mb", "peak_rss_mb", "threads",
                 "sse_clients", "gc_counts", "uptime_s"):
         assert key in s, key
     assert isinstance(s["threads"], int) and s["threads"] >= 1
     assert isinstance(s["gc_counts"], list) and len(s["gc_counts"]) == 3
     assert s["uptime_s"] >= 0
-    if os.path.exists("/proc/self/status"):  # Linux: RSS must be readable
+    if os.name == "posix":  # getrusage is there: RSS must be readable
         assert s["rss_mb"] is not None and s["rss_mb"] > 0
-        assert s["open_fds"] is not None and s["open_fds"] > 0
 
 
 def test_warning_on_faked_rss_jump():
     now = time.monotonic()
     history: list = [(now - 300, 100.0)]  # 100 MB five minutes ago
-    s = {"rss_mb": 250.0, "threads": 5, "open_fds": 10}
+    s = {"rss_mb": 250.0, "threads": 5}
     warns = diaglog._warnings_for(s, history, now=now)
     assert len(warns) == 1
     assert "RSS" in warns[0] and "150" in warns[0]
@@ -131,12 +130,11 @@ def test_warning_on_faked_rss_jump():
     assert diaglog._warnings_for(s, [], now=now) == []
 
 
-def test_warning_on_thread_and_fd_limits():
-    s = {"rss_mb": 10.0, "threads": 201, "open_fds": 1001}
+def test_warning_on_thread_limit():
+    s = {"rss_mb": 10.0, "threads": 201}
     warns = diaglog._warnings_for(s, [], now=time.monotonic())
     assert any("threads" in w for w in warns)
-    assert any("file descriptors" in w for w in warns)
-    quiet = {"rss_mb": 10.0, "threads": 200, "open_fds": 1000}
+    quiet = {"rss_mb": 10.0, "threads": 200}
     assert diaglog._warnings_for(quiet, [], now=time.monotonic()) == []
 
 
@@ -232,7 +230,7 @@ def test_diagnostics_route(server):
     code, _, body = server.client.get("/api/diagnostics")
     assert code == 200
     assert body["log_file"].endswith(os.path.join("logs", "revamp.log"))
-    for key in ("rss_mb", "peak_rss_mb", "threads", "open_fds",
+    for key in ("rss_mb", "peak_rss_mb", "threads",
                 "sse_clients", "gc_counts", "uptime_s"):
         assert key in body["sample"], key
     # Token-protected like every other /api route.
@@ -273,3 +271,22 @@ def test_standalone_server_samples_its_own_listeners(isolated_diaglog, monkeypat
         assert diaglog.sample()["sse_clients"] == 1
     finally:
         standalone.HUB.unregister(listener)
+
+
+def test_shipped_code_never_names_proc_self():
+    # Hermes's install scanner rates any /proc/self or /proc/<pid>/ reference as high risk
+    # and blocks a plain `hermes plugins install <repo url>`. The health sample must not need it.
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    rule = re.compile(r"/proc/self|/proc/\d+/")
+    hits = []
+    for p in root.rglob("*"):
+        if p.suffix not in (".py", ".js", ".mjs", ".md", ".yaml", ".json", ".sh") or not p.is_file():
+            continue
+        rel = p.relative_to(root).as_posix()
+        if rel.startswith(("tests/", ".git/", "node_modules/", ".lanes/")):
+            continue
+        if rule.search(p.read_text(encoding="utf-8", errors="ignore")):
+            hits.append(rel)
+    assert hits == []

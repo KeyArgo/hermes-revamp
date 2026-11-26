@@ -2,5 +2,9 @@
   "mirrors": [
     "claude-code/revamp/.claude-plugin/plugin.json"
   ],
-  "dev_base": 256
+  "dev_base": 256,
+  "private_ok": [
+    "tests/test_radio_ssrf.py:100.100.100.200",
+    "tests/test_radio_ssrf.py:100.64.0.1"
+  ]
 }

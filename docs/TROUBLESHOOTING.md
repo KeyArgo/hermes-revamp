@@ -59,15 +59,14 @@ Each line is `TIMESTAMP LEVEL LOGGER MESSAGE`, for example:
 Every 60 seconds the sampler writes one line:
 
 ```
-revamp: health rss_mb=123.4 peak_rss_mb=150.2 threads=12 open_fds=34 sse_clients=2 gc=[700, 10, 10] uptime_s=3600.0
+revamp: health rss_mb=123.4 peak_rss_mb=150.2 threads=12 sse_clients=2 gc=[700, 10, 10] uptime_s=3600.0
 ```
 
 | Field | Meaning |
 |---|---|
-| `rss_mb` | Current resident memory, in MB. On Linux this is `/proc/self/status` VmRSS; on other systems it is the peak (the best `getrusage` offers). |
-| `peak_rss_mb` | The highest RSS seen so far (Linux VmHWM). |
+| `rss_mb` | Resident memory, in MB, from `getrusage`: the peak so far, which only grows, so a leak still shows as growth. |
+| `peak_rss_mb` | The highest RSS seen so far (the same `getrusage` figure). |
 | `threads` | Active Python threads in the server process. |
-| `open_fds` | Open file descriptors (Linux `/proc/self/fd`). `None` where `/proc` is absent. |
 | `sse_clients` | Pages currently listening to the server-sent event stream (`/api/events`). |
 | `gc` | Python garbage-collector counts per generation `[gen0, gen1, gen2]`. |
 | `uptime_s` | Seconds since the server process started. |
@@ -75,7 +74,7 @@ revamp: health rss_mb=123.4 peak_rss_mb=150.2 threads=12 open_fds=34 sse_clients
 A field is `None` when the platform cannot provide it; the rest of the line still
 writes. The sampler is one daemon thread and costs almost nothing.
 
-## The three warnings
+## The two warnings
 
 The sampler warns when a sample crosses a threshold. These are the lines to look
 for when something feels wrong:
@@ -84,7 +83,6 @@ for when something feels wrong:
 |---|---|---|
 | `revamp: RSS grew N MB in S s (A -> B MB)` | More than **100 MB** of RSS growth within a **10-minute** sliding window. | A possible memory leak. Compare successive health lines. |
 | `revamp: N threads open (limit 200)` | More than **200** threads. | A thread leak (something spawning workers without joining them). |
-| `revamp: N open file descriptors (limit 1000)` | More than **1000** open fds. | A handle leak (files or sockets left open). |
 
 Set `REVAMP_TRACEMALLOC=1` before starting the server and a memory warning also
 lists the top 10 allocation sites:
@@ -120,7 +118,7 @@ Hermes starts; for a standalone server, before `python -m revamp_core.server`).
 log path, so a bug report can include them without finding the file by hand:
 
 ```json
-{"sample": {"rss_mb": 123.4, "peak_rss_mb": 150.2, "threads": 12, "open_fds": 34, "sse_clients": 2, "gc_counts": [700, 10, 10], "uptime_s": 3600.0}, "log_file": "/home/you/.hermes/revamp/logs/revamp.log"}
+{"sample": {"rss_mb": 123.4, "peak_rss_mb": 150.2, "threads": 12, "sse_clients": 2, "gc_counts": [700, 10, 10], "uptime_s": 3600.0}, "log_file": "/home/you/.hermes/revamp/logs/revamp.log"}
 ```
 
 Before the sampler's first tick it returns a fresh sample instead of `null`.
