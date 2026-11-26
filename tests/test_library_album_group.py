@@ -52,7 +52,9 @@ def test_artist_albums_are_an_exact_album_artist_match(tracks):
 
 def test_a_single_letter_artist_does_not_list_everybody(tracks):
     # Every artist name contains "a": an exact match keeps only that artist's albums.
-    assert [a["album"] for a in library.albums(artist="Adele")] == ["Gold"]
+    # (Adele's own "Gold" plus the compilation she has a track on.)
+    assert sorted((a["album"], a["artist"]) for a in library.albums(artist="Adele")) == [
+        ("Gold", "Adele"), ("Gold", "Various Artists")]
     assert [a["album"] for a in library.albums(artist="A")] == []
 
 

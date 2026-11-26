@@ -67,7 +67,7 @@ async function api(method, path, body) {
       try { msg = (await res.json()).error || msg; } catch { /* keep status */ }
       // Only the server refusing OUR key means it changed; a music source may answer 401 too.
       if (res.status === 401 && msg === KEY_REFUSED) keyRejected();
-      throw new Error(`API ${path}: ${msg}`);
+      throw Object.assign(new Error(`API ${path}: ${msg}`), { status: res.status });
     }
   return res.headers.get("content-type")?.includes("json") ? res.json() : res.text();
 }

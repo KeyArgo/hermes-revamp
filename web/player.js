@@ -60,8 +60,19 @@ export async function initPlayer(ctx) {
   const persist = debounce(persistNow, 1000);
   let persistState = {};
   function persistNow() {
-    apiPut("/api/state", persistState).catch(() => {});
+    const patch = persistState;
     persistState = {};
+    if (!Object.keys(patch).length) return; // the heartbeat flushes every 2 s; nothing new, no request
+    apiPut("/api/state", patch).catch((e) => requeuePatch(patch, e));
+  }
+  // A save that failed (server restarting) goes out again with the next one; a change made
+  // since then to the same key wins. A patch the server refused (4xx) is not sent again,
+  // or it would sink every later save with it.
+  function requeuePatch(patch, e) {
+    if (e?.status >= 400 && e.status < 500) return;
+    const settings = (patch.settings || persistState.settings) && { ...patch.settings, ...persistState.settings };
+    persistState = { ...patch, ...persistState };
+    if (settings) persistState.settings = settings;
   }
   const stagePersist = (patch) => { Object.assign(persistState, patch); persist(); };
 
@@ -624,7 +635,11 @@ export async function initPlayer(ctx) {
       // classic: base skin, simplest reliable path is a reload. Save first, or the
       // reload restores the old skin.
       const patch = persistState; persistState = {};
-      apiPut("/api/state", patch).catch(() => {}).finally(() => location.reload());
+      // A failed save keeps the old skin on screen instead of reloading back into it.
+      apiPut("/api/state", patch).then(() => location.reload(), (e) => {
+        requeuePatch(patch, e);
+        toast("Couldn't save the skin; REVamp will try again", { kind: "error" });
+      });
     },
     skinList: () => skins,
     toast,

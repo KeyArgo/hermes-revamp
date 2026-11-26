@@ -645,8 +645,8 @@ def artists(kind: str = "") -> List[Dict[str, Any]]:
     for t in _of_kind(kind):
         name = t.get("artist") or "Unknown Artist"
         a = agg.setdefault(name, {"name": name, "albums": set(), "tracks": 0})
-        if t.get("album"):
-            a["albums"].add(t["album"])
+        # The same name the album list gives the card ("Unknown Album" when untagged).
+        a["albums"].add(t.get("album") or "Unknown Album")
         a["tracks"] += 1
     out = [{"name": a["name"], "albums": sorted(a["albums"]), "tracks": a["tracks"]}
            for a in agg.values()]
@@ -664,8 +664,9 @@ def albums(artist: Optional[str] = None, kind: str = "") -> List[Dict[str, Any]]
             "album": name,
             "artist": t.get("album_artist") or t.get("artist") or "Unknown Artist",
             "year": t.get("year"), "tracks": 0, "duration": 0.0,
-            "_ids": [],
+            "_ids": [], "_artists": set(),
         })
+        a["_artists"].add(_artist_key(t.get("artist")))
         a["tracks"] += 1
         try:
             a["duration"] += float(t.get("duration") or 0)
@@ -679,8 +680,9 @@ def albums(artist: Optional[str] = None, kind: str = "") -> List[Dict[str, Any]]
     want = _artist_key(artist) if artist else ""
     for a in agg.values():
         # Exact, case-insensitive match on the album artist (the same rule the
-        # search uses): "Queen" must not also list "Queens of the Stone Age".
-        if want and want != _artist_key(a["artist"]):
+        # search uses): "Queen" must not also list "Queens of the Stone Age". A track
+        # artist counts too, so an artist seen only on a compilation finds that album.
+        if want and want != _artist_key(a["artist"]) and want not in a["_artists"]:
             continue
         out.append({
             "album": a["album"], "artist": a["artist"], "year": a["year"],

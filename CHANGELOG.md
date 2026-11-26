@@ -4,6 +4,9 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- Artists list: clicking an artist who only appears on a compilation shows that album instead of "No albums yet", and songs without an album tag count as an album, as the Albums view shows them.
+- An opened artist's albums stay that artist's while a library scan runs (they no longer switch to every album), and leaving for another tab clears the artist's name from the search box.
+- A setting, skin or equalizer change made while the REVamp server was briefly unreachable is saved once it is back, instead of being lost on the next start.
 - Music list in the side panel: Title and Artist are readable again (Album gives way in a narrow panel), and the actions button keeps its own small column.
 - Artists list: the full artist name shows, and the count reads "4 tracks · 1 album" instead of listing album names.
 - Cover art: an oversized embedded picture is skipped when the optional `mutagen` reads it too, as the built-in readers already did.

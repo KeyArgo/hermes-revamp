@@ -38,6 +38,7 @@ export async function render(root, api, kind = "music") {
   let artists = [], albums = [];
   let selected = new Set();
   let currentAlbum = null;
+  let albumsArtist = ""; // the artist whose albums the Albums tab shows ("" = every album)
   let loadMoreObserver = null;
   let loadMoreRetry = null; // set while a "Load more" marker is on screen: a failed load re-arms it
 
@@ -394,6 +395,7 @@ export async function render(root, api, kind = "music") {
         query = "";
         qInput.value = a.name;
         tab = "albums";
+        albumsArtist = a.name;
         setTabs();
         loadAlbums(a.name);
       };
@@ -926,6 +928,8 @@ export async function render(root, api, kind = "music") {
     b.addEventListener("click", () => {
       tab = b.dataset.t; setTabs(); selected.clear(); offset = 0;
       currentAlbum = null; // any tab leaves an open album
+      // ...and an opened artist: the box no longer shows a name the list is not filtered by.
+      if (albumsArtist) { albumsArtist = ""; qInput.value = query; }
       if (tab === "tracks") loadTracksAppend();
       if (tab === "artists") loadArtists();
       if (tab === "albums") loadAlbums();
@@ -935,6 +939,7 @@ export async function render(root, api, kind = "music") {
     clearTimeout(debounceT);
     debounceT = setTimeout(() => {
       query = qInput.value.trim(); offset = 0; selected.clear();
+      albumsArtist = "";
       currentAlbum = null; // a search is over the whole library
       if (tab !== "tracks") { tab = "tracks"; setTabs(); }
       loadTracksAppend();
@@ -962,7 +967,7 @@ export async function render(root, api, kind = "music") {
       lastSig = sig;
       if (changed && currentAlbum) { /* an open album stays as it is */ }
       else if (changed && tab === "tracks" && offset === 0) await loadTracksAppend();
-      else if (changed && tab !== "tracks") await (tab === "artists" ? loadArtists() : loadAlbums());
+      else if (changed && tab !== "tracks") await (tab === "artists" ? loadArtists() : loadAlbums(albumsArtist));
       if (st.scanning) {
         const p = st.progress || {};
         statusEl.innerHTML = `<span class="spinner"></span> scanning… ${p.total ? `${p.done.toLocaleString()} / ${p.total.toLocaleString()} files` : ""}`;
