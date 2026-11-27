@@ -28,9 +28,7 @@
 
 <p align="center"><i>Applies to REVamp 1.0.0 · revised 2026-11-19 · <a href="CHANGELOG.md">changelog</a></i></p>
 
-> **Status: 1.0 alpha.** REVamp works day to day, but rough edges remain. Please report bugs in Issues.
-
-The version chip under the name reads `v1.0.0-dev.N · short sha · date`, taken from the running server's build stamp. It also appears sideways in the narrow rail and under the nav icons in Hermes Desktop. Click it to copy the line for a bug report.
+The version chip under the name reads `v1.0.0 · sha · date` on the tagged release or `v1.0.0-dev.N · sha · date` on a development build. The server supplies the short commit hash and date. It also appears sideways in the narrow rail and under the nav icons in Hermes Desktop. Click it to copy the line for a bug report.
 
 ---
 
@@ -56,7 +54,7 @@ REVamp needs Hermes Agent 0.22.5 or newer.
 
 2. Open **Capabilities → Plugins** in Hermes Desktop and switch REVamp on in both places: the agent part under **General**, and the Desktop part under the **Desktop** filter. The Desktop part adds the sidebar entry, the player and the status-bar controls. You should see REVamp appear in the sidebar and the status bar.
 
-3. Open REVamp from the sidebar. You should see the player page: the classic player in the middle, your library on the right, and the version chip under the REVamp name. The default library scans `~/Music`; change or add folders in the library settings, the `library_dirs` Hermes setting, or `REVAMP_LIBRARY_DIRS`.
+3. Open REVamp from the sidebar. You should see the player page: the classic player in the middle, your library on the right, and the version chip under the REVamp name. The default library scans `~/Music`; change or add folders using **Folders** in **Music** or **Books**, the `library_dirs` Hermes setting, or `REVAMP_LIBRARY_DIRS`.
 
 4. Double-click a track, or press play. You should hear it, and see the position advance in every place the player is open.
 
@@ -179,7 +177,7 @@ Two sibling plugins that pair naturally with a music player. Neither is required
 
 ## Settings and shortcuts
 
-Player settings live under **Settings → REVamp** in Hermes Desktop. That page holds the MilkDrop visualizer switch, the approval chime and dip controls, recovery backup actions and the event log. The player menu holds the five places, the EQ, skins and the named Visualizer control.
+In Hermes Desktop, open **Settings → REVamp** for the MilkDrop switch and approval chime and dip controls. On the REVamp player page, open **Settings** for backups and the event log. To change library folders, open **Music** or **Books** and select **Folders**. The player menu holds the five places, the EQ, skins and the named Visualizer control.
 
 **Turn MilkDrop off** with the **Visualizer** button in the player, or press `Ctrl+Alt+Shift+V` (`Cmd+Option+Shift+V` on Mac). In the classic skin the Winamp menu also offers Visualizer (`Ctrl+Shift+M`). One saved choice covers every place the player can be, so closing MilkDrop in the Frame keeps it closed in the pop-out.
 
@@ -187,15 +185,19 @@ Click the **×** at the top of the Frame to hide it. Your music keeps playing. P
 
 ## Privacy and network
 
-When Hermes loads the plugin, REVamp starts a token-protected server that listens only on `127.0.0.1` and runs for as long as Hermes runs. Every API route except `/api/health` requires `X-Revamp-Token`. On Linux the server also refuses connections from other local accounts: only the account that runs Hermes can reach it. macOS and Windows have no equivalent check, so any other local account on the same machine can reach the loopback server and load the token-bearing page, though the token still guards every API route except `/api/health`. REVamp reads Hermes configuration to resolve its settings. It scans `~/Music` by default; use the library settings, the `library_dirs` Hermes setting or `REVAMP_LIBRARY_DIRS` to change that folder or add others.
+When Hermes loads the plugin, REVamp starts a token-protected server that listens only on `127.0.0.1` and runs for as long as Hermes runs. Every API route except `/api/health` requires `X-Revamp-Token`. On macOS and Windows, another local account can load the player page and read the API token. Linux uses `/proc/net/tcp` to reject connections from other unprivileged local accounts. If the table is unreadable, REVamp logs a warning and accepts loopback connections without the account check, so other local accounts can read the token there too. REVamp reads Hermes configuration to resolve its settings. It scans `~/Music` by default; use **Folders** in **Music** or **Books**, the `library_dirs` Hermes setting or `REVAMP_LIBRARY_DIRS` to change that folder or add others.
 
-Radio Browser is contacted for station search and directory results. Playing radio contacts the station you choose and any redirects or playlist targets it uses. Browsing radio lists also fetches each listed station's logo from its own host, through REVamp, which only contacts public addresses. That covers built-in presets such as SomaFM, Radio Paradise, KEXP, BBC, NTS and WFMU, and any custom stream URL you add. Skin Museum browsing and downloads contact `api.webamp.org` and `r2.webampskins.org`; lyrics contact `lrclib.net`.
+Radio Browser is contacted for station search and directory results. Playing radio contacts the station you choose and any redirects or playlist targets it uses. Browsing radio lists also fetches each listed station's logo from its own host, through REVamp, which only contacts public addresses. That covers built-in stations such as Hermes Agent Radio (`hermesagentradio.com`), SomaFM, Radio Paradise, KEXP, BBC, NTS and WFMU, and any custom stream URL you add. Skin Museum browsing and downloads contact `api.webamp.org` and `r2.webampskins.org`; lyrics contact `lrclib.net`.
 
-REVamp reads tags and durations itself. `mutagen` is optional: when it is installed REVamp uses it for tags and cover art, and without it the same fields come from `ffprobe` and the built-in parsers. It may also run `ffprobe` for audiobook chapters and as another tag source when FFmpeg is installed. Those scans run at low priority with `nice` and `ionice` when available. The external pop-out window is optional and opens a local Chrome or Chromium family browser with a private REVamp profile; the floating mini player inside Hermes does not launch that browser. On Linux, opening the pop-out writes two small desktop entries, one for X11 and one for Wayland, and icon files under `~/.local/share`, so its window shows the REVamp icon.
+REVamp can read tags and durations in Python. Without the optional `mutagen` library, tags can come from the built-in parsers or `ffprobe`. For cover art, the built-in parsers can extract embedded MP3, FLAC and MP4 images, and REVamp also looks for cover images in the track's folder. Audiobook chapters use `ffprobe`. Probes run at low priority with `nice` and `ionice` when available.
+
+REVamp runs `git` to identify the version of a checkout. The optional pop-out opens a Chrome-family browser with a private REVamp profile. On startup, REVamp may run `ps` to identify a leftover pop-out process and stop it after verifying its profile. On Linux, opening the pop-out writes desktop entries for X11 and Wayland under `~/.local/share/applications` and puts their icons in the REVamp data folder's `icons/` directory.
+
+To offer finished Music Studio takes, REVamp reads Studio's `library.json` if present and checks the songs folder for `.wav` files. This check is read-only. REVamp writes port lease and lock files under `~/.local/state/revamp/run` by default (`%LOCALAPPDATA%\revamp\run` on Windows). On POSIX it honors `XDG_STATE_HOME`. Set `REVAMP_LEASE_DIR` to override the location on either platform.
 
 REVamp makes private automatic backups every 10 minutes under `$XDG_DATA_HOME/revamp/backups/` (`~/.local/share/revamp/backups/` when unset, `%LOCALAPPDATA%\revamp\backups\` on Windows, or `REVAMP_BACKUP_DIR`) and stores a short, credential-masked local record of agent activity for the player ticker. State lives in `$REVAMP_HOME`, otherwise the active Hermes profile home (Hermes's own resolver, falling back to `$HERMES_HOME`)/`revamp`, otherwise `~/.hermes/revamp`. It holds the library index, playlists, likes, settings, server token, lyric cache, installed skins and pop-out browser profile. There are no accounts, no telemetry, no usage analytics and no stored passwords.
 
-A private log at `~/.hermes/revamp/logs/revamp.log` records failures and one health line a minute. Browser-side errors are forwarded to it too (URL queries and tokens stripped, at most 20 a minute). See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+A private rotating log at `logs/revamp.log` in the data folder records failures and one health line a minute. Browser-side errors are forwarded to it too (URL queries and tokens stripped, at most 20 a minute). See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## Troubleshooting
 
@@ -205,8 +207,8 @@ A private log at `~/.hermes/revamp/logs/revamp.log` records failures and one hea
 | Player missing from the status bar | Hermes is in Simple mode, which hides the bar at each start. Switch to Advanced from the command palette. `Ctrl+Shift+S` (`Cmd+Shift+S` on Mac) shows it until the next restart. |
 | High CPU or GPU | Turn MilkDrop off (Settings → REVamp → MilkDrop visualizer → Off, or the "Turn off" pill). Terminal sessions now read `now.json` instead of polling a process, so they use no CPU while idle. |
 | "REVamp restarted with a new key" | The server behind the page was replaced. Click **Reconnect** once; the music keeps playing. |
-| Library empty | Check the scanned folder (default `~/Music`) in the library settings, `library_dirs` or `REVAMP_LIBRARY_DIRS`, then press **Rescan**. |
-| Radio not loading | Radio needs its public hosts reachable. Try another station; a persistent Radio Browser failure is remembered for a minute. |
+| Library empty | Check the scanned folder (default `~/Music`) under **Music → Folders** or **Books → Folders**, in `library_dirs` or `REVAMP_LIBRARY_DIRS`, then press **Rescan**. |
+| Radio not loading | Radio needs its public hosts reachable. Try another station; a persistent Radio Browser failure is remembered for 5 seconds. |
 | Mini player offline | Choose **Reconnect**. The server keeps the queue and position. |
 | Audiobook chapters missing | Install FFmpeg for `ffprobe`. Tags and durations do not need it. |
 | Pop-out will not open | Set `REVAMP_FLOAT_BROWSER` to a Chrome or Chromium executable. |
@@ -226,7 +228,6 @@ The in-player bug report button prefills a GitHub issue with the version and env
 
 | Area | Status |
 |---|---|
-| Release stage | 1.0 alpha. It works day to day, but rough edges remain. |
 | Access | The server binds to `127.0.0.1` only. There is no remote access mode. |
 | Media keys | Available only where the browser and OS expose them. |
 | Pop-out window | Needs a local Chrome or Chromium family browser. Set `REVAMP_FLOAT_BROWSER` if discovery fails. |

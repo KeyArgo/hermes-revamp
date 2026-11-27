@@ -1,14 +1,13 @@
 """Diagnostics for Revamp: a private rotating log and a cheap health sampler.
 
-The "revamp" logger writes to ``<data dir>/logs/revamp.log`` (1 MB x 3 files,
+The "revamp" logger writes to ``<data dir>/logs/revamp.log`` (1 MB with 3 backups,
 owner-only). Setup is idempotent, never raises, and never touches the root
 logger or the host's (Hermes's) handlers.
 
 The sampler is one daemon thread, started once by the server start path. Every
-60 s it logs ONE line (RSS, peak RSS, threads, open fds, SSE clients, gc counts,
-uptime) and warns on a >100 MB RSS jump within 10 minutes, >200 threads or
->1000 open fds. It costs ~nothing: no tracemalloc unless REVAMP_TRACEMALLOC=1,
-in which case a warning also lists the top 10 allocation sites.
+60 s it logs ONE line (RSS, peak RSS, threads, SSE clients, gc counts,
+uptime) and warns on a >100 MB RSS jump within 10 minutes or >200 threads.
+Set REVAMP_TRACEMALLOC=1 to include the top 10 allocation sites in a warning.
 """
 
 from __future__ import annotations
