@@ -48,7 +48,7 @@ RADIO_BROWSER_SERVERS = list(dict.fromkeys(RADIO_BROWSER_SERVERS))
 SEARCH_TIMEOUT = 8.0
 # All mirrors together get this long, so a dead network still answers (with presets)
 # inside the Hermes dashboard proxy's 10 s timeout; after a full failure, skip
-# Radio Browser for a minute instead of waiting on every request.
+# Radio Browser for 5 seconds instead of waiting on every request.
 RB_TOTAL_BUDGET = 7.0
 RB_DOWN_COOLDOWN = 5.0  # radio.js retries a failed page after 6 s: keep this below that
 # Per address: an IPv6 route that silently drops packets (common on Windows with

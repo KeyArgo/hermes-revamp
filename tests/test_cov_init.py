@@ -615,3 +615,15 @@ def test_simultaneous_tool_additions_keep_both_tracks(tmp_path, monkeypatch):
             {"action": "add", "name": "mix", "query": q})), ("1", "2"))
         assert all(result["ok"] for result in results)
     assert sorted(t["title"] for t in playlists.get_playlist("mix")["items"]) == ["Track 1", "Track 2"]
+
+
+def test_dj_skill_documents_every_tool_action():
+    skill = Path(__file__).resolve().parents[1] / "skills" / "dj" / "SKILL.md"
+    rows = skill.read_text(encoding="utf-8").splitlines()
+    missing = []
+    for name, schema, _ in _plugin().TOOLS:
+        row = next((line for line in rows if line.startswith(f"| `{name}` |")), "")
+        for action in schema["parameters"]["properties"]["action"]["enum"]:
+            if f"`{action}`" not in row:
+                missing.append(f"{name}.{action}")
+    assert not missing, missing

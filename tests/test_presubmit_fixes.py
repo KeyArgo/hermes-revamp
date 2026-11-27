@@ -324,9 +324,11 @@ ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
 
 
 def test_disclosure_states_the_per_platform_peer_check_and_optional_mutagen():
-    manifest = (ROOT / "plugin.yaml").read_text(encoding="utf-8")
-    assert "refuses connections from other local accounts" in manifest
-    assert "on macOS and Windows any" in manifest
-    assert "mutagen is optional" in manifest
+    manifest = " ".join((ROOT / "plugin.yaml").read_text(encoding="utf-8").split())
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "any other local account on the same machine can reach the loopback server" in readme
+    privacy = readme.split("## Privacy and network", 1)[1].split("\n## ", 1)[0]
+    for disclosure in (manifest, privacy):
+        assert "another local account can load the player page and read the API token" in disclosure
+        assert "macOS and Windows" in disclosure
+        assert "/proc/net/tcp" in disclosure
+        assert "optional mutagen" in disclosure.replace("`", "")

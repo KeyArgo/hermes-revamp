@@ -15,8 +15,8 @@ Applies to REVamp 1.0.0 · revised 2026-11-19.
 | The mini player says offline | The page lost its connection to the server (a restart, or a new key). | Choose **Reconnect**. The server keeps the queue and position. |
 | High CPU or GPU use | The MilkDrop visualizer is drawing. | Turn it off: **Settings → REVamp → MilkDrop visualizer → Off**, or the **Turn off** pill on the visualizer. Off really closes the renderer. Terminal sessions no longer poll a process each glance; they read `now.json` (see below). |
 | "REVamp restarted with a new key" | The server behind the page was replaced (an update or a restart), so the page's token is stale. | Click **Reconnect** once. The music keeps playing; the controls work again after the page reloads. This is shown once, not on every click. |
-| Library is empty | The scanned folder has no audio, or the scan has not finished, or the folder is wrong. | Check **Settings → REVamp → Library** (or the `library_dirs` Hermes setting, or `REVAMP_LIBRARY_DIRS`). The default folder is `~/Music`. Press **Rescan**. A failed scan leaves a warning in the log. |
-| Radio not loading | Radio Browser, the station, or its logo host is unreachable, or a stream URL is dead. | Radio needs the public hosts reachable (local playback does not). Try another station. A persistent Radio Browser failure is remembered for a minute; the log names the failing host. |
+| Library is empty | The scanned folder has no audio, or the scan has not finished, or the folder is wrong. | Open **Music** or **Books** and check **Folders** (or the `library_dirs` Hermes setting, or `REVAMP_LIBRARY_DIRS`). The default folder is `~/Music`. Press **Rescan**. A failed scan leaves a warning in the log. |
+| Radio not loading | Radio Browser, the station, or its logo host is unreachable, or a stream URL is dead. | Radio needs the public hosts reachable (local playback does not). Try another station. A persistent Radio Browser failure is remembered for 5 seconds; the log names the failing host. |
 | Audiobook chapters missing | `ffprobe` (FFmpeg) is not installed. | Install FFmpeg. Basic tags and durations are read without it; chapters need `ffprobe`. |
 | Pop-out window will not open | No Chrome/Chromium family browser was found. | Install one, or set `REVAMP_FLOAT_BROWSER` to its executable path. |
 | A file will not scan | The file is unreadable or its tags are corrupt. | Set `REVAMP_LOG_LEVEL=DEBUG` and rescan; each unreadable file leaves a debug line naming it. |
@@ -126,7 +126,7 @@ Before the sampler's first tick it returns a fresh sample instead of `null`.
 ## Send a useful bug report
 
 1. Click the **version chip** under the REVamp name to copy the build line
-   (`v1.0.0-dev.N · short sha · date`). Paste it into the report.
+   (`v1.0.0 · sha · date` on the tagged release, `v1.0.0-dev.N · sha · date` on development builds). Paste it into the report.
 2. Attach `~/.hermes/revamp/logs/revamp.log` (or `<REVAMP_HOME>/logs/revamp.log`).
    Remove library paths, tokens and personal media names first.
 3. Include the output of `GET /api/diagnostics` if you can reach it.

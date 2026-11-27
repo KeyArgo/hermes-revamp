@@ -4,6 +4,16 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 
 ## Unreleased
 
+- The install disclosure explains who can read the player’s API token on macOS and Windows.
+- The privacy notes list port files, rotating logs and the read-only Music Studio folder check.
+- The install disclosure covers checkout identification, pop-out cleanup and the Linux account check when the socket table is unavailable.
+- The cover art notes explain where REVamp looks for images without mutagen.
+- The README drops the obsolete 1.0 alpha label.
+- The settings guide points to the player’s backups, event log and library folder controls.
+- The privacy notes give the Linux pop-out icon directory.
+- The diagnostics notes list the current health fields and two warnings.
+- The radio guide gives the retry delay and Hermes Agent Radio host. The DJ skill covers player location, station lookup and choosing between local music and radio.
+- The version chip examples show the tagged release and development builds in display order.
 - Artists list: clicking an artist who only appears on a compilation shows that album instead of "No albums yet", and songs without an album tag count as an album, as the Albums view shows them.
 - An opened artist's albums stay that artist's while a library scan runs (they no longer switch to every album), and leaving for another tab clears the artist's name from the search box.
 - A setting, skin or equalizer change made while the REVamp server was briefly unreachable is saved once it is back, instead of being lost on the next start.
@@ -19,7 +29,6 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 - Creating a playlist reports unresolved tracks before saving it.
 - Simultaneous playlist additions keep tracks from both requests.
 - A retired port watcher now exits if its pending health check finishes after retirement.
-
 - Music list in the side panel: Title and Artist are readable again (Album gives way in a narrow panel), and the actions button keeps its own small column.
 - Artists list: the full artist name shows, and the count reads "4 tracks · 1 album" instead of listing album names.
 - Cover art: an oversized embedded picture is skipped when the optional `mutagen` reads it too, as the built-in readers already did.
@@ -57,7 +66,7 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 - MilkDrop is now easy to turn off: a labelled "MilkDrop visualizer" On/Off switch at the top of Settings → REVamp (with a note that off saves CPU/GPU), and a "Turn off" pill on the visualizer itself. Both use the one saved choice the player already keeps, and turning it off really closes the renderer — no hidden canvas keeps drawing.
 - REVamp no longer uses CPU in the terminal plugin while you aren't playing music. Each terminal session used to start a small Python program every 4 seconds to check what was playing; with a dozen sessions open that took about two thirds of a CPU core all the time. The REVamp server now keeps a tiny `now.json` file up to date while a player is open, and sessions just read it. Agent activity is sent only while a player is open, to feed the ticker.
 - The version chip now reads like every other InovinLabs plugin: `v1.0.0-dev.N · short sha · date`. It is always visible, under the REVamp name, sideways in the narrow rail and under the nav icons inside Hermes Desktop, where it used to be hidden. Click it to copy the line for a bug report.
-- REVamp keeps a private log at `~/.hermes/revamp/logs/revamp.log`, rotating at 1 MB with three backups. Once a minute it writes one line with memory, threads, open files, SSE clients and uptime. It warns when memory jumps by more than 100 MB in ten minutes, threads pass 200 or open files pass 1000, so a slow leak is visible in the log. The latest health line and the log path are also at the token-gated `/api/diagnostics`.
+- REVamp keeps a private log at `~/.hermes/revamp/logs/revamp.log`, rotating at 1 MB with three backups. Once a minute it writes one line with memory, threads, SSE clients and uptime. It warns when memory jumps by more than 100 MB in ten minutes or threads pass 200, so a slow leak is visible in the log. The latest health line and the log path are also at the token-gated `/api/diagnostics`.
 - Albums and artists now have the song menu. Right-click an album in the Albums view or an artist in the Artists view — or long-press, use the new ⋯ button, Shift+F10 or the context-menu key — for Play, Play next, Add to queue and Add to playlist ▸ (your saved playlists, or a new one). It acts on every track of the album or artist, in disc/track order, and confirms with a toast like the song menu does ("Added 12 tracks to “Road trip”"). The Hermes mini player's Music tab gained the same Albums and Artists views, with the same menu, and can create a playlist from it.
 - REVamp now mentions its two sibling plugins where they genuinely help, and nowhere else. Settings shows one quiet line about Aura — but only when you have turned the visualiser off — and the empty library, the empty playlist screen and the library's ⋯ menu can point at Music Studio, whose finished songs REVamp can add to your library with one click (only when that folder exists). Both suggestions hide for good on "Not now", and the only thing their buttons do is open that plugin's page in Capabilities → Plugins.
 - **If your REVamp server is older than this release:** sessions fall back to asking it once a minute until it is updated.
@@ -70,14 +79,14 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 - The player server and `revampctl` resolve the profile folder through Hermes's own resolver, so switching profiles is followed instead of reading the gateway's home.
 - Housekeeping: the docked-pane switch lost its "research spike" name, and the diagnostics report "unknown" for the Hermes version when the host does not provide one.
 - Browser-side failures now reach the private server log, not just Hermes. The page forwards `window.onerror` and unhandled promise rejections to a new token-gated `POST /api/client_log`: message bounded to 500 characters and stack to 2000, at most 20 reports a minute per server, logged at WARNING as `page error: …`, with URL queries and tokens stripped so a copied media link never carries its key into the log.
-- The README was rewritten to match the rest of the suite: one hero, a copy-paste "Try it in five minutes", a feature tour with current screenshots, a "Turning off MilkDrop" section, a symptom-to-fix troubleshooting table and a "Send a useful bug report" guide. New `docs/TROUBLESHOOTING.md` explains every log line, the once-a-minute health fields and the three warning thresholds; new `docs/ARCHITECTURE.md` maps the processes and where state lives. `EXTENDING.md`, `NOTES.md` and `CONTRIBUTING.md` were brought up to date (every test suite, the no-AI-names commit rule).
+- The README was rewritten to match the rest of the suite: one hero, a copy-paste "Try it in five minutes", a feature tour with current screenshots, a "Turning off MilkDrop" section, a symptom-to-fix troubleshooting table and a "Send a useful bug report" guide. New `docs/TROUBLESHOOTING.md` explains every log line, the once-a-minute health fields and the two warning thresholds; new `docs/ARCHITECTURE.md` maps the processes and where state lives. `EXTENDING.md`, `NOTES.md` and `CONTRIBUTING.md` were brought up to date (every test suite, the no-AI-names commit rule).
 - Three new screenshots (`album-menu.png`, `milkdrop-off.png`, `version-chip.png`) and all web screenshots regenerated against the current UI. The screenshot script now sets the canonical `milkdropOn` key so the visualizer state cannot leak between shots.
 
 ## 1.0.0 — next catalog version
 
 The first stable release, following 1.0.0-alpha.6 in the Hermes plugin catalog. It is released when
 the catalog accepts its pin. The version chip in the header now reads the running build from the
-server's own stamp — `v1.0.0-dev.N · date · short sha`, amber while the tree it came from is
+server's own stamp — `v1.0.0 · sha · date` on the tag or `v1.0.0-dev.N · sha · date` on development builds, amber while the tree it came from is
 dirty — and clicking it copies that line for a bug report. A number is no longer typed into the
 page, so the chip cannot announce an old version.
 
