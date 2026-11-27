@@ -5,6 +5,8 @@
   "dev_base": 256,
   "private_ok": [
     "tests/test_radio_ssrf.py:100.100.100.200",
-    "tests/test_radio_ssrf.py:100.64.0.1"
+    "tests/test_radio_ssrf.py:100.64.0.1",
+    ".release-check.json:100.100.100.200",
+    ".release-check.json:100.64.0.1"
   ]
 }
