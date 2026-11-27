@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from . import redact
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -308,6 +309,52 @@ def run_locked(fn):
             _STATE = None  # also after a failed restore: the disk may have changed
 
 
+# now.json: a few bytes next to the token that harness plugins (the terminal now-playing band) glance at
+# instead of starting a process to ask the server. Written only while a player reports: on a
+# change, else at most every NOW_FILE_REFRESH seconds so its age says "still connected". With no
+# player nothing writes it, and readers treat a file older than NOW_FILE_STALE as disconnected.
+NOW_FILE_REFRESH = 5.0
+NOW_FILE_STALE = 15.0  # readers' rule, kept here so the two numbers live together
+_now_written: tuple = (None, 0.0)  # (content written, when)
+_now_write_warned = False  # a failing now.json write is logged once, not per beat
+logger = logging.getLogger("revamp.store")
+
+
+def _now_path() -> Path:
+    return data_dir() / "now.json"
+
+
+def _publish_now(live: Dict[str, Any], remote: bool = False) -> None:
+    global _now_written, _now_write_warned
+    np = live.get("now_playing") or {}
+    pb = live.get("playback") or {}
+    # A remote backend's report wins over the last page heartbeat, which may be another track.
+    first, then = (pb, np) if remote else (np, pb)
+    content = {"connected": bool(live.get("player_connected")),
+               "title": first.get("title") or then.get("title"),
+               "artist": first.get("artist") or then.get("artist"),
+               "status": str(first.get("status") or then.get("status") or "stopped").lower()}
+    now = time.time()
+    if content == _now_written[0] and now - _now_written[1] < NOW_FILE_REFRESH:
+        return
+    _now_written = (content, now)
+    try:
+        path = _now_path()
+        tmp = path.with_name(f".now.{os.getpid()}.tmp")
+        # Owner-only, like the token beside it: what you listen to is nobody else's business.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(dict(content, updated=now)))
+        os.replace(tmp, path)
+    except OSError:
+        # Cosmetic: readers fall back to asking the server. Say so once (a full
+        # disk would otherwise stay invisible), never once per heartbeat.
+        if not _now_write_warned:
+            _now_write_warned = True
+            logger.warning("revamp: could not write now.json; readers fall back to the server",
+                           exc_info=True)
+
+
 def heartbeat(now_playing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Record a player heartbeat (live now_playing + connected flag)."""
     global _STATE
@@ -320,6 +367,7 @@ def heartbeat(now_playing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         live["playback"] = _playback_from(live["now_playing"])
         st["live"] = live
         _STATE = st
+        _publish_now(live)
         return get_state()
 
 
@@ -334,6 +382,7 @@ def report_playback(playback: Dict[str, Any]) -> None:
         live["playback"] = dict(playback, updated=time.time())
         st["live"] = live
         _STATE = st
+        _publish_now(live, remote=True)
 
 
 # ---------------------------------------------------------------------------

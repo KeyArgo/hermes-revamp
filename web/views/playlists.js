@@ -1,6 +1,7 @@
 // playlists.js — list, open (items), play/append, rename/delete, save current queue,
 // import m3u/pls (file input), export links.
 import { confirmDialog, textPrompt, toast } from "./modal.js";
+import { mountHint, STUDIO_LINE } from "./siblings.js";
 
 const LIKED = "__liked__"; // the editor's id for the Liked list (never a real playlist id)
 
@@ -32,17 +33,32 @@ export async function render(root, api) {
   root.appendChild(detail);
 
   refreshLive = { el: listEl, fn: () => refresh() };
+  // A write refreshes here and the server's "playlists" event refreshes again: only the
+  // newest run may fill the list, or both append a full set.
+  let refreshSeq = 0;
   async function refresh() {
+    const mine = ++refreshSeq;
     listEl.innerHTML = `<div style="padding:16px"><span class="spinner"></span></div>`;
     let pls = [];
-    try { pls = await api("/api/playlists"); } catch (e) { return errBox(listEl, e); }
+    try { pls = await api("/api/playlists"); } catch (e) { return mine === refreshSeq && errBox(listEl, e); }
+    if (mine !== refreshSeq) return;
+    const liked = await likedRow();
+    if (mine !== refreshSeq) return;
     listEl.innerHTML = "";
-    listEl.appendChild(await likedRow());
+    listEl.appendChild(liked);
     if (!pls.length) {
       const d = document.createElement("div");
       d.className = "empty";
       d.innerHTML = `<span class="big">≡</span>No playlists yet. Save the current queue or import an .m3u/.pls file.`;
       listEl.appendChild(d);
+      // Nothing to play yet is where a song-maker belongs. One card, once.
+      try {
+        listEl.__sib = null; // the refresh above wiped any previous card
+        mountHint({
+          holder: listEl, key: "hermes-music-studio", name: "Music Studio",
+          line: STUDIO_LINE, pApi: window.revampPlayerApi,
+        });
+      } catch { /* a failed hint must never break the list */ }
       return;
     }
     for (const pl of pls) {

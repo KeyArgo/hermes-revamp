@@ -2,6 +2,7 @@
 // folders, rescan. Exposes requestLibraryPick(cb) for the webamp file-picker integration.
 import { mountFolders } from "./folders.js";
 import { openModal, textPrompt, toast } from "./modal.js";
+import { mountHint, STUDIO_LINE, studioFolderButton } from "./siblings.js";
 
 let pickMode = false;
 let pickCb = null;
@@ -37,9 +38,9 @@ export async function render(root, api, kind = "music") {
   let artists = [], albums = [];
   let selected = new Set();
   let currentAlbum = null;
-  let trackMenu = null;
-  let trackMenuCleanup = null;
+  let albumsArtist = ""; // the artist whose albums the Albums tab shows ("" = every album)
   let loadMoreObserver = null;
+  let loadMoreRetry = null; // set while a "Load more" marker is on screen: a failed load re-arms it
 
   root.innerHTML = "";
 
@@ -103,6 +104,38 @@ export async function render(root, api, kind = "music") {
   }
   foldersBtn.addEventListener("click", () => showFolders(foldersBtn.getAttribute("aria-expanded") !== "true"));
 
+  // Music Studio, where someone looking at an empty library can use it: one
+  // card, passively on the empty state, on demand from the ⋯ menu. Dismissed
+  // is remembered; the menu item always answers when asked directly.
+  const sibEl = document.createElement("div");
+  sibEl.className = "lib-sib";
+  root.appendChild(sibEl);
+  let sibBusy = false; // one attempt at a time; the empty state retries on the next poll
+  let sibTried = false;
+  async function showStudioHint(force) {
+    if (sibBusy || sibEl.children.length) return;
+    if (!force && sibTried) return;
+    sibBusy = true;
+    sibTried = true;
+    let extra = null;
+    try { extra = await studioFolderButton(api, () => { lastSig = "folders changed"; offset = 0; loadTracksAppend(); }); } catch { /* no folder offer then */ }
+    mountHint({
+      holder: sibEl, key: "hermes-music-studio", name: "Music Studio",
+      line: STUDIO_LINE, pApi: window.revampPlayerApi, extra, force,
+    });
+    sibBusy = false;
+  }
+  if (!books) {
+    const moreMenu = actions.querySelector(".lib-more-menu");
+    const studioBtn = document.createElement("button");
+    studioBtn.className = "btn sm";
+    studioBtn.id = "lib-studio";
+    studioBtn.textContent = "♪ Make your own songs…";
+    studioBtn.setAttribute("aria-label", "Make your own songs with Music Studio");
+    studioBtn.addEventListener("click", () => showStudioHint(true));
+    moreMenu.appendChild(studioBtn);
+  }
+
   const listEl = document.createElement("div");
   listEl.id = "lib-list";
   root.appendChild(listEl);
@@ -117,14 +150,24 @@ export async function render(root, api, kind = "music") {
     const generation = ++tracksGeneration;
     const params = new URLSearchParams({ limit: "200", offset: String(requestOffset), kind: apiKind });
     if (requestQuery) params.set("q", requestQuery);
+    // An open album pages through its own tracks, not the whole library.
+    if (currentAlbum) {
+      params.set("album", currentAlbum.album || "");
+      params.set("artist", currentAlbum.artist || "");
+      params.set("album_artist", currentAlbum.artist || "Unknown Artist");
+    }
     statusEl.innerHTML = `<span class="spinner"></span>`;
     try {
       const res = await api(`/api/library/tracks?${params}`);
       if (generation !== tracksGeneration) return;
       if (requestQuery !== query || requestOffset !== offset) return;
       if (requestOffset === 0) {
+        // A reload of the same list (the scan poll) keeps the chosen songs chosen; a new
+        // search or tab has already cleared the selection.
+        const keep = new Set([...selected].map((i) => tracks[i]?.id).filter((id) => id != null));
         tracks = res.tracks || [];
         selected.clear();
+        tracks.forEach((t, i) => { if (keep.has(t.id)) selected.add(i); });
       } else {
         tracks.push(...(res.tracks || []));
       }
@@ -132,11 +175,18 @@ export async function render(root, api, kind = "music") {
     } catch (e) {
       if (generation !== tracksGeneration) return;
       if (requestOffset > 0) {
-        // A failed "load more" keeps the rows already shown; the button can try again.
+        // A failed "load more" keeps the rows already shown; the button (and the
+        // observer) can try again instead of staying switched off for good.
         statusEl.textContent = `${tracks.length} / ${total} (couldn't load more)`;
+        loadMoreRetry?.();
         return;
       }
+      // The error stays on screen: no "No music yet" over it, and no older list (a
+      // previous search) left behind to play from.
+      tracks = []; selected.clear(); total = 0;
+      statusEl.textContent = "";
       listElEmpty(listEl, e.message);
+      return;
     }
     if (generation !== tracksGeneration) return;
     statusEl.textContent = `${tracks.length} / ${total}`;
@@ -150,7 +200,8 @@ export async function render(root, api, kind = "music") {
     let rows = [];
     try { rows = await api(`/api/library/artists?kind=${apiKind}`); } catch (e) {
       if (generation !== tracksGeneration) return;
-      listElEmpty(listEl, e.message);
+      statusEl.textContent = "";
+      return listElEmpty(listEl, e.message); // not "No artists yet" over the error
     }
     if (generation !== tracksGeneration) return;
     artists = rows;
@@ -167,7 +218,8 @@ export async function render(root, api, kind = "music") {
       rows = await api(`/api/library/albums?${q}`);
     } catch (e) {
       if (generation !== tracksGeneration) return;
-      listElEmpty(listEl, e.message);
+      statusEl.textContent = "";
+      return listElEmpty(listEl, e.message); // not "No albums yet" over the error
     }
     if (generation !== tracksGeneration) return;
     albums = rows;
@@ -204,6 +256,7 @@ export async function render(root, api, kind = "music") {
   function renderTracks() {
     loadMoreObserver?.disconnect();
     loadMoreObserver = null;
+    loadMoreRetry = null;
     listEl.innerHTML = "";
     if (!tracks.length) {
       listElEmpty(listEl,
@@ -211,11 +264,13 @@ export async function render(root, api, kind = "music") {
         books ? "No audiobooks yet. Click 📁 Folders to choose the folder that holds them."
           : "No music yet. Click 📁 Folders to choose where your music is.",
         "📂");
+      if (!query && !books) showStudioHint(false); // an empty library is where a song-maker fits
+      paintAlbumBack();
       return;
     }
     const tbl = document.createElement("table");
-    tbl.className = books ? "list books" : "list"; // books: a wider Time column for "left off / length"
-    tbl.innerHTML = `<thead><tr><th class="num">#</th><th>Title</th><th>Artist</th><th>Album</th><th class="num time">Time</th><th class="like-cell"><span class="sr-only">Liked</span></th></tr></thead>`;
+    tbl.className = books ? "list books" : "list tracks"; // books: a wider Time column for "left off / length"
+    tbl.innerHTML = `<thead><tr><th class="num">#</th><th>Title</th><th>Artist</th><th>Album</th><th class="num time">Time</th><th class="like-cell"><span class="sr-only">Liked</span></th><th class="more-cell"><span class="sr-only">Actions</span></th></tr></thead>`;
     const tb = document.createElement("tbody");
     const playingIdx = safePlayingIndex();
     tracks.forEach((t, i) => {
@@ -239,7 +294,11 @@ export async function render(root, api, kind = "music") {
             td.title = `Left off at ${fmtClock(t.resume)}`;
           }
           return td;
-        })(), likeCell(t));
+        })(), likeCell(t), moreCell(`Actions for ${t.title || "this song"}`, (point) => {
+          // The menu acts on the row the button belongs to, like the right-click path.
+          if (!selected.has(i)) selectRow(i);
+          openTrackMenu(i, point);
+        }));
       const activate = (mode) => activateRow(i, mode);
       tr.addEventListener("dblclick", () => activate("play"));
       tr.addEventListener("keydown", (e) => {
@@ -251,7 +310,12 @@ export async function render(root, api, kind = "music") {
           openTrackMenu(i, { x: rect.left, y: rect.bottom });
         }
       });
-      tr.addEventListener("click", (e) => selectRow(i, e));
+      // A touch screen has no right-click: long-press opens the same menu.
+      const consumed = bindLongPress(tr, (point) => {
+        if (!selected.has(i)) selectRow(i);
+        openTrackMenu(i, point);
+      });
+      tr.addEventListener("click", (e) => { if (consumed()) return; selectRow(i, e); });
       tr.addEventListener("contextmenu", (e) => {
         if (pickMode) return;
         e.preventDefault();
@@ -272,7 +336,6 @@ export async function render(root, api, kind = "music") {
       const loadNext = () => {
         if (requested) return;
         requested = true;
-        loadMoreObserver?.disconnect();
         offset = tracks.length;
         loadTracksAppend();
       };
@@ -287,13 +350,38 @@ export async function render(root, api, kind = "music") {
         }, { root: listEl.closest(".panel-body"), rootMargin: "0px 0px 240px" });
         loadMoreObserver.observe(more);
       }
+      // A request that failed must not leave the button switched off: the next
+      // click, and the observer, get another try.
+      loadMoreRetry = () => {
+        requested = false;
+        loadMoreObserver?.observe(more);
+      };
     }
+    paintAlbumBack();
+  }
+
+  // The way back out of an opened album. Every redraw of that album (selecting a
+  // row, "Load more") has to show it again: the list is replaced each time.
+  function paintAlbumBack() {
+    if (!currentAlbum) return;
+    const back = document.createElement("button");
+    back.className = "btn btn-ghost sm";
+    back.textContent = "← All albums";
+    back.style.margin = "6px 0";
+    back.addEventListener("click", () => { currentAlbum = null; tab = "albums"; renderList(); });
+    listEl.prepend(back);
+  }
+
+  // The library sends an artist's albums as a list of names; show how many.
+  function countLabel(n, word) {
+    const count = Number(n) || 0;
+    return `${count} ${word}${count === 1 ? "" : "s"}`;
   }
 
   function renderArtists() {
     listEl.innerHTML = "";
     if (!artists.length) return listElEmpty(listEl, "No artists yet — rescan after adding folders.", "🎤");
-    const tbl = document.createElement("table"); tbl.className = "list";
+    const tbl = document.createElement("table"); tbl.className = "list artists";
     const tb = document.createElement("tbody");
     for (const a of artists) {
       const tr = document.createElement("tr");
@@ -301,22 +389,35 @@ export async function render(root, api, kind = "music") {
       tr.tabIndex = 0;
       tr.innerHTML = `<td>${esc(a.name)}</td>`;
       const tdN = document.createElement("td"); tdN.className = "num";
-      tdN.textContent = `${a.tracks} tracks · ${a.albums} albums`;
+      tdN.textContent = `${countLabel(a.tracks, "track")} · ${countLabel(Array.isArray(a.albums) ? a.albums.length : a.albums, "album")}`;
       tr.appendChild(tdN);
       const open = () => {
         query = "";
         qInput.value = a.name;
         tab = "albums";
+        albumsArtist = a.name;
         setTabs();
         loadAlbums(a.name);
       };
-      tr.addEventListener("click", open);
+      const openMenu = (point) => openArtistMenu(a.name, point, tr);
+      const consumed = bindLongPress(tr, (point) => openMenu(point));
+      tr.addEventListener("click", () => { if (consumed()) return; open(); });
       tr.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           open();
+        } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = tr.getBoundingClientRect();
+          openMenu({ x: rect.left, y: rect.bottom });
         }
       });
+      tr.addEventListener("contextmenu", (e) => {
+        if (pickMode) return;
+        e.preventDefault();
+        openMenu({ x: e.clientX, y: e.clientY });
+      });
+      tr.appendChild(moreCell(`Actions for ${a.name}`, (point) => openMenu(point)));
       tb.appendChild(tr);
     }
     tbl.appendChild(tb); listEl.appendChild(tbl);
@@ -340,8 +441,23 @@ export async function render(root, api, kind = "music") {
       ar.textContent = [al.artist, al.year].filter(Boolean).join(" · ") + ` · ${al.tracks} tracks`;
       card.append(img, nm, ar);
       const open = () => { currentAlbum = al; renderAlbums(); };
-      card.addEventListener("click", open);
-      card.addEventListener("keydown", (e) => e.key === "Enter" && open());
+      const openMenu = (point) => openAlbumMenu(al, point, card);
+      const consumed = bindLongPress(card, (point) => openMenu(point));
+      card.addEventListener("click", () => { if (consumed()) return; open(); });
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") open();
+        else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = card.getBoundingClientRect();
+          openMenu({ x: rect.left, y: rect.bottom });
+        }
+      });
+      card.addEventListener("contextmenu", (e) => {
+        if (pickMode) return;
+        e.preventDefault();
+        openMenu({ x: e.clientX, y: e.clientY });
+      });
+      card.appendChild(moreButton(`Actions for ${al.album || "Untitled"}`, (point) => openMenu(point)));
       grid.appendChild(card);
     }
     listEl.appendChild(grid);
@@ -351,18 +467,20 @@ export async function render(root, api, kind = "music") {
     const generation = ++tracksGeneration;
     listEl.innerHTML = `<div style="padding:20px;text-align:center"><span class="spinner"></span></div>`;
     try {
-      const res = await api(`/api/library/tracks?${new URLSearchParams({ album: currentAlbum.album, artist: currentAlbum.artist || "", kind: apiKind, limit: "200", offset: "0" })}`);
+      // Exactly this card's group: the album title and its album artist (a blank
+      // artist is the "Unknown Artist" card), never a track that merely shares one.
+      const res = await api(`/api/library/tracks?${new URLSearchParams({ album: currentAlbum.album, artist: currentAlbum.artist || "", album_artist: currentAlbum.artist || "Unknown Artist", kind: apiKind, limit: "200", offset: "0" })}`);
       if (generation !== tracksGeneration) return;
       tracks = res.tracks || [];
       selected.clear();
       total = res.total ?? tracks.length;
       offset = 0;
       tab = "tracks"; renderTracks();
-      const back = document.createElement("button");
-      back.className = "btn btn-ghost sm"; back.textContent = "← All albums"; back.style.margin = "6px 0";
-      back.addEventListener("click", () => { currentAlbum = null; tab = "albums"; renderList(); });
-      listEl.prepend(back);
-    } catch (e) { if (generation === tracksGeneration) listElEmpty(listEl, e.message); }
+    } catch (e) {
+      if (generation !== tracksGeneration) return;
+      listElEmpty(listEl, e.message);
+      paintAlbumBack(); // the album stays open: keep the way back on screen
+    }
   }
 
   // ---- likes: a heart per track; the player owns the set (shared with the Hermes mini player)
@@ -427,53 +545,228 @@ export async function render(root, api, kind = "music") {
     const startIdx = order.indexOf(tracks[i]);
     // One call that loads, then plays the chosen row (like Playlists): from the Hermes library
     // these were two server commands that could land in either order, so a book's continue
-    // was dropped, or undone by the late "play row" (Grok a10r14).
+    // was dropped, or undone by the late "play row" (review a10r14).
     const p = window.revampPlayerApi;
     if (p.playItemsAt) return p.playItemsAt(Math.max(0, startIdx), items);
     p.loadTracks(items, { mode: "replace", play: false }).then(() => p.playIndex(Math.max(0, startIdx)));
   }
 
-  function closeTrackMenu(returnFocus = false) {
-    if (!trackMenu) return;
-    const { rowIndex, element } = trackMenu;
-    trackMenu = null;
-    trackMenuCleanup?.();
-    trackMenuCleanup = null;
+  // ---- one context menu for every row: track rows, album cards and artist rows.
+  // Right-click, long-press, the ⋯ button, Shift+F10 and the context-menu key all open it.
+  let itemMenu = null;
+  let itemMenuCleanup = null;
+  // A menu opens only if its own open request is still the newest (a slow album fetch must not
+  // paint over a menu the user opened later).
+  let itemMenuSeq = 0;
+
+  function closeItemMenu(returnFocus = false) {
+    if (!itemMenu) return;
+    const { element, focusEl } = itemMenu;
+    itemMenu = null;
+    itemMenuCleanup?.();
+    itemMenuCleanup = null;
     element.remove();
-    if (returnFocus) listEl.querySelector(`tr[data-i="${rowIndex}"]`)?.focus();
+    if (returnFocus) focusEl?.focus();
+  }
+
+  // A small ⋯ button on cards and rows: opens the same menu where the button sits.
+  function moreButton(label, onOpen) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "album-more";
+    button.textContent = "⋯";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rect = button.getBoundingClientRect();
+      onOpen({ x: rect.left, y: rect.bottom });
+    });
+    return button;
+  }
+  function moreCell(label, onOpen) {
+    const td = document.createElement("td");
+    td.className = "more-cell";
+    td.appendChild(moreButton(label, onOpen));
+    return td;
+  }
+
+  // Long-press on a touch screen opens the menu; the click that follows is swallowed so the
+  // card does not also open. Returns a function that tells the click handler to ignore it.
+  function bindLongPress(el, onLong) {
+    let timer = null;
+    let fired = false;
+    let sx = 0, sy = 0;
+    const cancel = () => { clearTimeout(timer); timer = null; };
+    el.addEventListener("touchstart", (e) => {
+      if (pickMode || !e.touches || e.touches.length !== 1) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; fired = false;
+      cancel();
+      timer = setTimeout(() => { fired = true; onLong({ x: sx, y: sy }); }, 500);
+    }, { passive: true });
+    el.addEventListener("touchmove", (e) => {
+      const t = e.touches?.[0];
+      if (!t) return;
+      if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) cancel();
+    }, { passive: true });
+    el.addEventListener("touchend", (e) => { cancel(); if (fired) e.preventDefault(); }, { passive: false });
+    el.addEventListener("touchcancel", cancel, { passive: true });
+    return () => { const was = fired; fired = false; return was; };
+  }
+
+  // Every page of a filtered list, in the server's order (album: disc then track number).
+  async function fetchAllTracks(params) {
+    const out = [];
+    for (;;) {
+      const q = new URLSearchParams({ ...params, limit: "500", offset: String(out.length) });
+      const res = await api(`/api/library/tracks?${q}`);
+      const rows = res.tracks || [];
+      out.push(...rows);
+      if (!rows.length || out.length >= (res.total ?? out.length) || out.length > 50000) break;
+    }
+    return out;
+  }
+
+  async function openAlbumMenu(al, point, focusEl) {
+    const seq = ++itemMenuSeq;
+    let tracks;
+    try {
+      tracks = await fetchAllTracks({ album: al.album || "", artist: al.artist || "", album_artist: al.artist || "Unknown Artist", kind: apiKind, sort: "album" });
+    } catch (e) {
+      return toast(e.message, { kind: "error" });
+    }
+    if (seq !== itemMenuSeq) return; // a newer menu was opened while this one loaded
+    const items = tracks.map(trackToItem);
+    if (!items.length) return toast("That album has no tracks yet", { kind: "error" });
+    openItemMenu({
+      items, point, focusEl, withLike: false,
+      label: "Album actions",
+      headerText: `${al.album || "Untitled"} · ${items.length} ${items.length === 1 ? "track" : "tracks"}`,
+    });
+  }
+
+  async function openArtistMenu(name, point, focusEl) {
+    const seq = ++itemMenuSeq;
+    let tracks;
+    try {
+      tracks = await fetchAllTracks({ artist: name || "", kind: apiKind, sort: "album" });
+    } catch (e) {
+      return toast(e.message, { kind: "error" });
+    }
+    if (seq !== itemMenuSeq) return; // a newer menu was opened while this one loaded
+    const items = tracks.map(trackToItem);
+    if (!items.length) return toast(`No tracks by ${name || "this artist"}`, { kind: "error" });
+    openItemMenu({
+      items, point, focusEl, withLike: false,
+      label: "Artist actions",
+      headerText: `${name || "Unknown Artist"} · ${items.length} ${items.length === 1 ? "track" : "tracks"}`,
+    });
   }
 
   function openTrackMenu(rowIndex, point) {
-    closeTrackMenu();
+    itemMenuSeq += 1; // cancels an album/artist menu still loading
+    const items = chosenTracks().map(trackToItem);
+    openItemMenu({
+      items, point, withLike: true,
+      focusEl: listEl.querySelector(`tr[data-i="${rowIndex}"]`),
+      label: "Track actions",
+      headerText: `${items.length} ${items.length === 1 ? "song" : "songs"}`,
+    });
+  }
+
+  // One menu implementation for tracks, albums and artists: Play, Play next, Add to queue,
+  // Add to playlist ▸ (saved playlists + New playlist…), plus Like for single tracks.
+  function openItemMenu({ items, point, focusEl, label, headerText, withLike }) {
+    itemMenuSeq += 1;
+    closeItemMenu();
     const menu = document.createElement("div");
     menu.className = "track-menu";
     menu.setAttribute("role", "menu");
-    menu.setAttribute("aria-label", "Track actions");
+    menu.setAttribute("aria-label", label || "Actions");
     const header = document.createElement("div");
     header.className = "track-menu-header";
-    const count = chosenTracks().length;
-    header.textContent = `${count} ${count === 1 ? "song" : "songs"}`;
+    header.textContent = headerText || `${items.length} tracks`;
     menu.appendChild(header);
-    const addItem = (label, action) => {
+    const addItem = (text, action, opts = {}) => {
       const button = document.createElement("button");
       button.type = "button";
       button.setAttribute("role", "menuitem");
-      button.textContent = label;
-      button.addEventListener("click", () => {
-        closeTrackMenu();
-        action();
+      if (opts.haspopup) {
+        button.setAttribute("aria-haspopup", "menu");
+        button.setAttribute("aria-expanded", "false");
+      }
+      button.textContent = text;
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        action(button);
       });
       menu.appendChild(button);
+      return button;
     };
-    addItem("Play", playChosenTracks);
-    addItem("Add to queue", enqueueChosenTracks);
-    const items = chosenTracks();
-    const allLiked = items.every((track) => {
-      const player = window.revampPlayerApi;
-      return player?.isLiked ? player.isLiked(track.id) : !!track.liked;
-    });
-    addItem(allLiked ? "Unlike" : "Like", () => setChosenLiked(!allLiked));
-    addItem("Add to playlist…", addChosenTracksToPlaylist);
+    const run = (fn) => () => { closeItemMenu(); fn(); };
+    addItem("Play", run(() => playItemsNow(items)));
+    addItem("Play next", run(() => queueItems(items, "next")));
+    addItem("Add to queue", run(() => queueItems(items, "append")));
+    if (withLike) {
+      // The songs as chosen when the menu opened: a reload meanwhile must not widen it.
+      const likeTracks = chosenTracks();
+      const allLiked = likeTracks.every((track) => {
+        const player = window.revampPlayerApi;
+        return player?.isLiked ? player.isLiked(track.id) : !!track.liked;
+      });
+      addItem(allLiked ? "Unlike" : "Like", run(() => setChosenLiked(!allLiked, likeTracks)));
+    }
+
+    // Add to playlist ▸: saved playlists plus a new one. The list is fetched when the
+    // submenu first opens, so the menu itself never waits on the server.
+    const plButton = addItem("Add to playlist ▸", () => openSub(true), { haspopup: true });
+    const sub = document.createElement("div");
+    sub.className = "track-menu-sub";
+    sub.setAttribute("role", "group");
+    sub.setAttribute("aria-label", "Playlists");
+    sub.hidden = true;
+    menu.appendChild(sub);
+    let subLoaded = false;
+    let subLoading = null;
+    const addSubItem = (text, action) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "menuitem");
+      button.textContent = text;
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        action();
+      });
+      sub.appendChild(button);
+      return button;
+    };
+    const fillSub = async () => {
+      let pls = [];
+      try {
+        pls = await api("/api/playlists");
+      } catch (e) {
+        toast(e.message, { kind: "error" });
+        subLoaded = false;
+        subLoading = null; // a failed fetch can be tried again on the next open
+        return;
+      }
+      sub.replaceChildren();
+      for (const p of pls || []) addSubItem(p.name || "Untitled", () => saveItemsToPlaylist(items, p.id));
+      addSubItem("＋ New playlist…", () => newPlaylistWith(items));
+      subLoaded = true;
+    };
+    const openSub = async (focusFirst = false) => {
+      sub.hidden = false;
+      plButton.setAttribute("aria-expanded", "true");
+      if (!subLoaded) subLoading = subLoading || fillSub();
+      await subLoading;
+      if (focusFirst) sub.querySelector('[role="menuitem"]')?.focus();
+    };
+    const closeSub = () => {
+      sub.hidden = true;
+      plButton.setAttribute("aria-expanded", "false");
+    };
+
     root.appendChild(menu);
 
     const rect = menu.getBoundingClientRect();
@@ -481,35 +774,46 @@ export async function render(root, api, kind = "music") {
     const y = Math.max(8, Math.min(point.y, window.innerHeight - rect.height - 8));
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
-    trackMenu = { element: menu, rowIndex };
+    itemMenu = { element: menu, focusEl };
 
+    // Only visible items are reachable with the arrow keys: a closed submenu's rows are not.
+    const menuItems = () => [...menu.querySelectorAll('[role="menuitem"]')]
+      .filter((button) => button.parentNode !== sub || !sub.hidden);
     const onKeydown = (e) => {
-      const buttons = [...menu.querySelectorAll('[role="menuitem"]')];
+      const buttons = menuItems();
       const current = buttons.indexOf(document.activeElement);
       if (e.key === "Escape") {
         e.preventDefault();
-        closeTrackMenu(true);
+        closeItemMenu(true);
       } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
+        if (!buttons.length) return;
         const direction = e.key === "ArrowDown" ? 1 : -1;
         buttons[(current + direction + buttons.length) % buttons.length].focus();
+      } else if (e.key === "ArrowRight" && document.activeElement === plButton) {
+        e.preventDefault();
+        openSub(true);
+      } else if (e.key === "ArrowLeft" && sub.contains(document.activeElement)) {
+        e.preventDefault();
+        closeSub();
+        plButton.focus();
       } else if (e.key === "Enter" && current >= 0) {
         e.preventDefault();
         buttons[current].click();
       }
     };
     const onOutsideClick = (e) => {
-      if (!menu.contains(e.target)) closeTrackMenu();
+      if (!menu.contains(e.target)) closeItemMenu();
     };
     let opening = true;
     const onScroll = () => {
-      if (!opening) closeTrackMenu();
+      if (!opening) closeItemMenu();
     };
     menu.querySelector('[role="menuitem"]')?.focus();
     document.addEventListener("keydown", onKeydown);
     document.addEventListener("click", onOutsideClick);
     document.addEventListener("scroll", onScroll, true);
-    trackMenuCleanup = () => {
+    itemMenuCleanup = () => {
       document.removeEventListener("keydown", onKeydown);
       document.removeEventListener("click", onOutsideClick);
       document.removeEventListener("scroll", onScroll, true);
@@ -519,20 +823,58 @@ export async function render(root, api, kind = "music") {
     }, 200);
   }
 
-  function playChosenTracks() {
-    const items = chosenTracks().map(trackToItem);
+  function playItemsNow(items) {
     if (!items.length) return;
-    window.revampPlayerApi.loadTracks(items, { mode: "replace", play: true });
+    const p = window.revampPlayerApi;
+    if (p.playItemsAt) return p.playItemsAt(0, items);
+    p.loadTracks(items, { mode: "replace", play: true });
+  }
+
+  function queueItems(items, mode) {
+    if (!items.length) return;
+    const n = items.length;
+    const what = `${n} ${n === 1 ? "track" : "tracks"}`;
+    window.revampPlayerApi.loadTracks(items, { mode });
+    toast(mode === "next" ? `${what} will play next` : `Added ${what} to the queue`, { kind: "ok" });
+  }
+
+  async function saveItemsToPlaylist(items, id) {
+    closeItemMenu();
+    try {
+      const cur = await api(`/api/playlists/${encodeURIComponent(id)}`);
+      await api(`/api/playlists/${encodeURIComponent(id)}`, "PUT", { items: [...(cur.items || []), ...items] });
+      const n = items.length;
+      toast(`Added ${n} ${n === 1 ? "track" : "tracks"} to “${cur.name}”`, { kind: "ok" });
+      window.dispatchEvent(new Event("revamp:playlists-changed"));
+    } catch (e) {
+      toast(`Could not save playlist: ${e.message}`, { kind: "error" });
+    }
+  }
+
+  async function newPlaylistWith(items) {
+    closeItemMenu();
+    const name = await textPrompt("New playlist", { placeholder: "My playlist" });
+    if (!name) return;
+    try {
+      await api("/api/playlists", "POST", { name, items });
+      const n = items.length;
+      toast(`Created “${name}” with ${n} ${n === 1 ? "track" : "tracks"}`, { kind: "ok" });
+      window.dispatchEvent(new Event("revamp:playlists-changed"));
+    } catch (e) {
+      toast(`Could not save playlist: ${e.message}`, { kind: "error" });
+    }
+  }
+
+  function playChosenTracks() {
+    playItemsNow(chosenTracks().map(trackToItem));
   }
 
   function enqueueChosenTracks() {
-    const items = chosenTracks().map(trackToItem);
-    if (!items.length) return;
-    window.revampPlayerApi.loadTracks(items, { mode: "append" });
+    queueItems(chosenTracks().map(trackToItem), "append");
   }
 
-  function setChosenLiked(liked) {
-    chosenTracks().forEach((track) => window.revampPlayerApi?.setLiked?.(track.id, liked));
+  function setChosenLiked(liked, list = chosenTracks()) {
+    list.forEach((track) => window.revampPlayerApi?.setLiked?.(track.id, liked));
   }
 
   async function addChosenTracksToPlaylist() {
@@ -560,21 +902,8 @@ export async function render(root, api, kind = "music") {
       ],
     });
     if (!pick) return;
-    try {
-      if (pick === "__new__") {
-        const name = await textPrompt("New playlist", { placeholder: "My playlist" });
-        if (!name) return;
-        await api("/api/playlists", "POST", { name, items });
-        toast(`Created “${name}” with ${items.length} song(s)`, { kind: "ok" });
-      } else {
-        const cur = await api(`/api/playlists/${pick}`);
-        await api(`/api/playlists/${pick}`, "PUT", { items: [...(cur.items || []), ...items] });
-        toast(`Added ${items.length} song(s) to “${cur.name}”`, { kind: "ok" });
-      }
-      window.dispatchEvent(new Event("revamp:playlists-changed"));
-    } catch (e) {
-      toast(`Could not save playlist: ${e.message}`, { kind: "error" });
-    }
+    if (pick === "__new__") return newPlaylistWith(items);
+    return saveItemsToPlaylist(items, pick);
   }
 
   // action buttons
@@ -599,6 +928,8 @@ export async function render(root, api, kind = "music") {
     b.addEventListener("click", () => {
       tab = b.dataset.t; setTabs(); selected.clear(); offset = 0;
       currentAlbum = null; // any tab leaves an open album
+      // ...and an opened artist: the box no longer shows a name the list is not filtered by.
+      if (albumsArtist) { albumsArtist = ""; qInput.value = query; }
       if (tab === "tracks") loadTracksAppend();
       if (tab === "artists") loadArtists();
       if (tab === "albums") loadAlbums();
@@ -608,6 +939,7 @@ export async function render(root, api, kind = "music") {
     clearTimeout(debounceT);
     debounceT = setTimeout(() => {
       query = qInput.value.trim(); offset = 0; selected.clear();
+      albumsArtist = "";
       currentAlbum = null; // a search is over the whole library
       if (tab !== "tracks") { tab = "tracks"; setTabs(); }
       loadTracksAppend();
@@ -635,7 +967,7 @@ export async function render(root, api, kind = "music") {
       lastSig = sig;
       if (changed && currentAlbum) { /* an open album stays as it is */ }
       else if (changed && tab === "tracks" && offset === 0) await loadTracksAppend();
-      else if (changed && tab !== "tracks") await (tab === "artists" ? loadArtists() : loadAlbums());
+      else if (changed && tab !== "tracks") await (tab === "artists" ? loadArtists() : loadAlbums(albumsArtist));
       if (st.scanning) {
         const p = st.progress || {};
         statusEl.innerHTML = `<span class="spinner"></span> scanning… ${p.total ? `${p.done.toLocaleString()} / ${p.total.toLocaleString()} files` : ""}`;

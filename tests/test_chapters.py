@@ -114,7 +114,7 @@ def test_proxy_route_exists():
     assert '"/library/chapters"' in src and "/api/library/chapters" in src
 
 
-# ---- from the Codex review round 1 (each one a concrete failure it found)
+# ---- from the review round 1 (each one a concrete failure it found)
 
 def _fake_run(stdout, returncode=0):
     class R:

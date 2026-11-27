@@ -177,6 +177,8 @@ def _send_server_frame(conn, text):
 def test_resize_uses_devtools_and_keeps_the_window_position(monkeypatch, tmp_path):
     fake = _FakeDevtools()
     fake.start()
+    # The DevTools path is what is under test; Windows turns it off by default.
+    monkeypatch.setattr(window, "USE_DEVTOOLS", True)
     monkeypatch.setattr(window, "data_dir", lambda: tmp_path)
     monkeypatch.setattr(window, "_proc", type("P", (), {"poll": lambda self: None})())
     profile = tmp_path / "float-browser"

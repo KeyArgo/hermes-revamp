@@ -2,8 +2,10 @@
 import { buildBugReportUrl, collectWebBugEnv, formatBugReportBody } from "../bug-report.js";
 import { getHostPlayerPlace } from "../host-place.js";
 import { getThemeSnapshot } from "../theme.js";
+import { openExternal } from "../open-external.js";
 import { toast } from "./modal.js";
 import { mountBackups } from "./backups.js";
+import { AURA_LINE, mountHint } from "./siblings.js";
 
 const KIND_ORDER = ["approval_request", "tool_start", "tool_end", "session_start", "session_end", "approval_response"];
 const kindIcon = (k, ok) =>
@@ -40,15 +42,16 @@ export async function render(root, api) {
     return { row, input };
   };
 
-  const mkSlider = (label, value, min, max, step, onInput) => {
+  // format: how the value reads next to the slider (a share as a percentage by default).
+  const mkSlider = (label, value, min, max, step, onInput, format = (v) => `${Math.round(v * 100)}%`) => {
     const row = document.createElement("div");
     row.className = "setting-row";
     const lab = document.createElement("label"); lab.textContent = label;
-    const val = document.createElement("span"); val.className = "muted"; val.textContent = `${Math.round(value * 100)}%`;
+    const val = document.createElement("span"); val.className = "muted"; val.textContent = format(Number(value));
     const rng = document.createElement("input");
     rng.type = "range"; rng.min = min; rng.max = max; rng.step = step; rng.value = value;
     rng.setAttribute("aria-label", label);
-    rng.addEventListener("input", () => { val.textContent = `${Math.round(rng.value * 100)}%`; onInput(Number(rng.value)); });
+    rng.addEventListener("input", () => { val.textContent = format(Number(rng.value)); onInput(Number(rng.value)); });
     row.append(lab, rng, val);
     return row;
   };
@@ -62,7 +65,7 @@ export async function render(root, api) {
     (v) => persist({ duck_on_approval: v })).row);
   box.appendChild(mkToggle("Chime", "Play a short two-tone chime with the dip.", settings.duck_chime !== false,
     (v) => persist({ duck_chime: v })).row);
-  box.appendChild(mkSlider("Dip length", settings.duck_dip_seconds ?? 2, 1, 5, 1, (v) => persist({ duck_dip_seconds: v })));
+  box.appendChild(mkSlider("Dip length", settings.duck_dip_seconds ?? 2, 1, 5, 1, (v) => persist({ duck_dip_seconds: v }), (v) => `${v} s`));
   box.appendChild(mkSlider("Duck level", settings.duck_level ?? 0.25, 0.05, 1, 0.05, (v) => persist({ duck_level: v })));
   root.appendChild(box);
 
@@ -74,6 +77,18 @@ export async function render(root, api) {
   const tickerRow = tickerToggle.row;
   tickerRow.style.borderBottom = "none";
   box.appendChild(tickerRow);
+
+  // Aura, only where it means something: MilkDrop was switched off on purpose
+  // (settings.milkdropOn === false — the state the visualizer toggle saves), so
+  // a calmer backdrop is a fair thing to mention. Once. Dismissal persists.
+  if (settings.milkdropOn === false) {
+    const auraHolder = document.createElement("div");
+    auraHolder.className = "sib-holder";
+    box.appendChild(auraHolder);
+    mountHint({
+      holder: auraHolder, key: "aura", name: "Aura", line: AURA_LINE, pApi,
+    });
+  }
 
   const bugBox = document.createElement("div");
   bugBox.className = "setting-row";
@@ -109,7 +124,7 @@ export async function render(root, api) {
     });
   openBug.addEventListener("click", async () => {
     const env = await envForBug();
-    window.open(buildBugReportUrl(env), "_blank", "noopener,noreferrer");
+    openExternal(buildBugReportUrl(env));
   });
   copyBug.addEventListener("click", async () => {
     const env = await envForBug();

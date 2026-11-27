@@ -12,8 +12,9 @@ CHROME = next((p for p in (os.environ.get("CHROME_BIN") and shutil.which(os.envi
                            "/opt/google/chrome/chrome", shutil.which("google-chrome") or "",
                            shutil.which("chromium") or "") if p and os.path.exists(p)), None)
 ROOT = Path(__file__).resolve().parents[1]
-# Same sandbox flags as desktop/plugin.js uses for both player iframes.
-SANDBOX = "allow-scripts allow-forms allow-downloads"
+# Same sandbox flags as desktop/plugin.js uses for both player iframes: scripts and
+# downloads (backup zip / playlist export), no forms.
+SANDBOX = "allow-scripts allow-downloads"
 
 
 def _free_port():

@@ -18,8 +18,6 @@ import os
 import socket
 import stat
 import sys
-import shutil
-import tempfile
 import threading
 import time
 import urllib.parse
@@ -30,12 +28,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import re
 
 from . import proof
-from . import backup, chapters, items, library, lyrics, museum, playback, playlists, radio, sources, store, window
+from . import backup, chapters, diaglog, items, library, lyrics, museum, playback, playlists, radio, sources, store, window
 import base64
-from .config import (data_dir, library_dirs, library_dirs_custom, library_folders,
-                     set_library_folders, setting)
+from .config import (current_hermes_home, data_dir, library_dirs, library_dirs_custom,
+                     library_folders, set_library_folders, setting)
 
 logger = logging.getLogger("revamp.server")
+log = logging.getLogger("revamp")
 
 # One source for the running build: BUILD_INFO.json (installed) -> live git (checkout) ->
 # plugin.yaml (release target). A number typed into this file would drift from the manifest.
@@ -58,6 +57,17 @@ def _stamp_dict() -> Dict[str, Any]:
             logger.warning("revamp: version stamp unreadable", exc_info=True)
     return {"version": "1.0.0", "commit": "", "commit_short": "", "commit_date": "",
             "built_at": "", "dirty": False, "channel": "release", "source": "manifest"}
+
+
+def _version_line() -> str:
+    """The one-line build description for log lines (never a guess, never raises)."""
+    if _stamp is not None:
+        try:
+            return _stamp.describe()
+        except Exception:
+            log.debug("could not describe version", exc_info=True)
+            pass
+    return "v" + VERSION
 
 
 # VERSION is the release this code declares (plugin.yaml), never the "-dev.N" display string:
@@ -92,6 +102,57 @@ _TOKEN_IN_URL = re.compile(r"([?&]t=)[^&#\s\"]*")
 def redact_url(text: str) -> str:
     """Hide a ?t=<token> query value (media, art and event URLs carry it) before logging."""
     return _TOKEN_IN_URL.sub(r"\1[redacted]", text)
+
+
+# ---------------------------------------------------------------------------
+# Browser-side error reports (POST /api/client_log)
+# ---------------------------------------------------------------------------
+# The page forwards window.onerror / unhandledrejection here so a failure in a
+# plain browser tab or the pop-out (which never reaches Hermes' own diagnostic
+# storage) still lands in the private log. Bounded, rate-limited per server
+# process, and stripped of URL queries so a copied media/SSE link cannot carry
+# its token into the log.
+CLIENT_LOG_MAX_MESSAGE = 500
+CLIENT_LOG_MAX_STACK = 2000
+CLIENT_LOG_RATE = 20            # reports logged per minute, per server process
+CLIENT_LOG_WINDOW = 60.0
+_client_log_lock = threading.Lock()
+_client_log_times: List[float] = []
+
+_CLIENT_URL = re.compile(r"https?://[^\s\"'<>\\]+")
+_CLIENT_TOKEN_QS = re.compile(r"([?&](?:t|access_token|token|key)=)[^&#\s\"']*", re.IGNORECASE)
+_CLIENT_CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _strip_url_queries(text: str) -> str:
+    """Drop the query string and fragment from every URL, then redact any
+    token-like query value left anywhere. The path stays (it names the script
+    that failed); the part that carries a key never does."""
+    text = _CLIENT_URL.sub(lambda m: re.split(r"[?#]", m.group(0), maxsplit=1)[0], text)
+    return _CLIENT_TOKEN_QS.sub(r"\1[redacted]", text)
+
+
+def clean_client_text(value: Any, limit: int) -> str:
+    """One safe log line from a browser-supplied field: strip URL queries and
+    tokens, fold whitespace so a report cannot forge a second log entry, drop
+    other control characters, then bound the length."""
+    text = "" if value is None else str(value)
+    text = _strip_url_queries(text)
+    text = re.sub(r"[\r\n\t]+", " ", text)
+    text = _CLIENT_CTRL.sub("", text)
+    return text[:limit].strip()
+
+
+def _client_log_allow() -> bool:
+    """True when fewer than CLIENT_LOG_RATE reports were logged in the last
+    CLIENT_LOG_WINDOW seconds. A sliding window, pruned on each call."""
+    now = time.monotonic()
+    with _client_log_lock:
+        _client_log_times[:] = [t for t in _client_log_times if now - t <= CLIENT_LOG_WINDOW]
+        if len(_client_log_times) >= CLIENT_LOG_RATE:
+            return False
+        _client_log_times.append(now)
+        return True
 
 
 def bridge_key(token: str) -> str:
@@ -468,6 +529,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self._err(500, "internal error")
             except Exception:
+                log.warning("could not send error response", exc_info=True)
                 pass
 
     def _route_dispatch(self, method: str) -> None:
@@ -525,8 +587,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_get(self, path: str, qs: Dict[str, List[str]]) -> None:
         if path in ("/api/version", "/api/about"):
-            # The chip's only source: version · commit date · short commit, plus dirty/channel.
-            return self._send_json(_stamp_dict())
+            # The chip's only source: the stamp plus the one line every plugin shows.
+            info = _stamp_dict()
+            if _stamp is not None:
+                try:
+                    info["line"] = _stamp.chip_line(info)
+                except Exception:
+                    logger.warning("revamp: version chip line unreadable", exc_info=True)
+            info.setdefault("line", "v" + str(info.get("version") or "unknown"))
+            return self._send_json(info)
         if path == "/api/events":
             return self._sse()
         if path == "/api/sources" or path.startswith("/api/sources/"):
@@ -548,10 +617,13 @@ class Handler(BaseHTTPRequestHandler):
                 q=(qs.get("q") or [""])[0],
                 artist=(qs.get("artist") or [""])[0],
                 album=(qs.get("album") or [""])[0],
+                album_artist=(qs.get("album_artist") or [""])[0],
                 kind=(qs.get("kind") or [""])[0],
                 limit=limit, offset=offset, sort=sort))
         if path == "/api/library/folders":
             return self._send_json(_library_folders_payload())
+        if path == "/api/siblings":
+            return self._send_json({"studio_songs_dir": _studio_songs_dir()})
         if path == "/api/fs/dirs":
             return self._fs_dirs((qs.get("path") or [""])[0])
         if path == "/api/library/artists":
@@ -613,6 +685,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(radio.presets())
         if path == "/api/radio/hermes":
             return self._send_json(radio.hermes_lineup())
+        if path == "/api/radio/agent-radio":
+            return self._send_json(radio.agent_radio())
         if path == "/api/radio/popular":
             return self._send_json(radio.popular(
                 limit=_int_qs(qs, "limit", radio.POPULAR_LIMIT, 1, 200),
@@ -696,10 +770,18 @@ class Handler(BaseHTTPRequestHandler):
                                     "backups": listed,
                                     "data_empty": backup.is_empty(data_dir())})
         if path == "/api/backups/export":
-            blob = backup.export_zip(data_dir())
+            try:
+                blob = backup.export_zip(data_dir())
+            except OSError as exc:  # an incomplete backup must not download as if it were whole
+                return self._err(500, str(exc))
             return self._send(
                 200, blob, "application/zip",
                 extra={"Content-Disposition": 'attachment; filename="revamp-backup.zip"'})
+        if path == "/api/diagnostics":
+            # Token-gated by the /api/ boundary above. The latest health sample
+            # (a fresh one before the sampler's first tick) and where the log lives.
+            return self._send_json({"sample": diaglog.latest() or diaglog.sample(),
+                                    "log_file": str(diaglog.log_path())})
         return self._err(404, "unknown route")
 
     # -- API POST / PUT / DELETE -------------------------------------------------
@@ -731,7 +813,7 @@ class Handler(BaseHTTPRequestHandler):
             if pos is None and isinstance(raw, (int, float)) and not isinstance(raw, bool) \
                     and _keeps_finished_mark(key, 0):
                 # A page floors its place, so 0.4 s in a replay of a finished part is a plain 0
-                # (grok a10r16). It means "still in the opening second", not "forget this book".
+                # (review a10r16). It means "still in the opening second", not "forget this book".
                 return self._send_json({"ok": True, "kept": "finished"})
             try:
                 sources.set_progress(key, pos)
@@ -777,9 +859,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, f"name is longer than {MAX_PLAYLIST_NAME} characters")
             if not isinstance(body.get("items", []), list):
                 return self._err(400, "items must be a list")
-            pl = playlists.create_playlist(name, body.get("items") or [])
+            try:
+                pl = playlists.create_playlist(name, body.get("items") or [])
+            except ValueError as exc:
+                return self._err(400, str(exc))
             HUB.broadcast("playlists", {"action": "created", "id": pl["id"]})
             return self._send_json(pl, 201)
+        if path.startswith("/api/playlists/") and path.endswith("/append"):
+            if not isinstance(body.get("items"), list):
+                return self._err(400, "items must be a list")
+            pid = path[len("/api/playlists/"):-len("/append")]
+            try:
+                pl = playlists.update_playlist(pid, items=body["items"], append=True)
+            except ValueError as exc:
+                return self._err(400, str(exc))
+            if pl is None:
+                return self._err(404, "no such playlist")
+            HUB.broadcast("playlists", {"action": "updated", "id": pl["id"]})
+            return self._send_json(pl)
         if path == "/api/playlists/import":
             name = str(body.get("name") or "").strip()
             if len(name) > MAX_PLAYLIST_NAME:
@@ -849,6 +946,22 @@ class Handler(BaseHTTPRequestHandler):
             ev = store.add_agent_event(ev)
             HUB.broadcast("agent", ev)
             return self._send_json({"ok": True})
+        if path == "/api/client_log":
+            # A browser-side failure (window.onerror / unhandledrejection). Token-gated
+            # by the /api/ boundary above. Bounded, stripped of URL queries/tokens, and
+            # rate-limited per server process so a per-frame error cannot flood the log.
+            message = clean_client_text(body.get("message"), CLIENT_LOG_MAX_MESSAGE)
+            stack = clean_client_text(body.get("stack"), CLIENT_LOG_MAX_STACK)
+            if not message and not stack:
+                return self._err(400, "message or stack required")
+            if not _client_log_allow():
+                return self._send_json({"ok": True, "logged": False})  # over the rate: dropped, not an error
+            placement = clean_client_text(body.get("placement"), 32)
+            log.warning("page error: %s%s%s",
+                        message or "(no message)",
+                        f" [{placement}]" if placement else "",
+                        f" | stack: {stack}" if stack else "")
+            return self._send_json({"ok": True, "logged": True})
         if path == "/api/heartbeat":
             return self._send_json(store.heartbeat(body.get("now_playing")))
         if path == "/api/backups/snapshot":
@@ -858,7 +971,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(bid, str) or not bid:
                 return self._err(400, "id required")
             try:
-                restored = store.run_locked(lambda: backup.restore(bid, data_dir()))
+                restored = _restore_library(lambda: backup.restore(bid, data_dir()))
             except KeyError:
                 return self._err(404, "no such backup")
             except ValueError as exc:  # a damaged backup: nothing was written
@@ -871,7 +984,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, "zip_b64 required")
             try:
                 raw = base64.b64decode(blob, validate=True)
-                restored = store.run_locked(lambda: backup.import_zip(raw, data_dir()))
+                restored = _restore_library(lambda: backup.import_zip(raw, data_dir()))
             except (ValueError, TypeError) as exc:
                 return self._err(400, str(exc))
             HUB.broadcast("restored", {"restored": restored})
@@ -934,8 +1047,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, "name must be a string")
             if isinstance(body.get("name"), str) and len(body["name"].strip()) > MAX_PLAYLIST_NAME:
                 return self._err(400, f"name is longer than {MAX_PLAYLIST_NAME} characters")
-            out = playlists.update_playlist(path[len("/api/playlists/"):],
-                                            body.get("name"), body.get("items"))
+            try:
+                out = playlists.update_playlist(path[len("/api/playlists/"):],
+                                                body.get("name"), body.get("items"))
+            except ValueError as exc:
+                return self._err(400, str(exc))
             if out is None:
                 return self._err(404, "no such playlist")
             HUB.broadcast("playlists", {"action": "updated", "id": out["id"]})
@@ -1176,6 +1292,7 @@ class Handler(BaseHTTPRequestHandler):
             code = exc.code if exc.code in (401, 403, 404, 416) else 502
             return self._err(code, f"upstream said {exc.code}")
         except Exception as exc:
+            log.warning("upstream request failed", exc_info=True)
             return self._err(502, f"upstream unreachable: {exc}")
         try:
             self.send_response(upstream.status)
@@ -1203,6 +1320,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 upstream.close()
             except Exception:
+                log.debug("could not close upstream response", exc_info=True)
                 pass
 
     # -- GET helpers -----------------------------------------------------------
@@ -1238,6 +1356,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             upstream = radio.open_stream(url, icy=False)
         except Exception as exc:
+            log.warning("stream proxy failed", exc_info=True)
             return self._err(502, f"stream unreachable: {exc}")
         ctype = upstream.headers.get("Content-Type") or "audio/mpeg"
         try:
@@ -1271,6 +1390,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 upstream.close()
             except Exception:
+                log.debug("could not close upstream stream", exc_info=True)
                 pass
 
     def _sse(self) -> None:
@@ -1284,7 +1404,6 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             # Pings go out every 15 s; a reader that takes none for a minute is gone.
             self.connection.settimeout(self.STREAM_WRITE_TIMEOUT)
-            hello = _jsonify({"hello": True})
             self.wfile.write(b"retry: 3000\n\n")
             self.wfile.write(b": ping\n\n")
             self.wfile.flush()
@@ -1553,6 +1672,17 @@ def _clean_library_folders(raw: List[Any]) -> Optional[List[Dict[str, str]]]:
     return out
 
 
+def _restore_library(operation):
+    def restore():
+        previous = library_folders()
+        restored = operation()
+        if library_folders() != previous:
+            library.scan_async(library_dirs())
+        return restored
+
+    return store.run_locked(restore)
+
+
 def _library_folders_payload() -> Dict[str, Any]:
     configured = library_folders()
     paths = [os.path.normpath(os.path.expanduser(str(f.get("path") or ""))) for f in configured]
@@ -1566,6 +1696,39 @@ def _library_folders_payload() -> Dict[str, Any]:
         folders.append({"path": p, "kind": f.get("kind") or "music",
                         "exists": os.path.isdir(p), "tracks": counts.get(p, 0)})
     return {"custom": library_dirs_custom(), "folders": folders}
+
+
+# -- sibling plugins ---------------------------------------------------------
+# Music Studio saves finished takes (.wav) in its plugin data dir, or wherever
+# its library.json pointer aims. When that folder exists, the UI may offer to
+# add it with the ordinary library-folder setting; when it does not, there is
+# nothing to offer and /api/siblings simply omits the path. No plugin is
+# detected here — only the folder a button would need.
+
+def _studio_songs_dir(home: Optional[str] = None) -> Optional[str]:
+    studio_env = os.environ.get("HEWN_STUDIO_DATA_DIR")  # Music Studio's own escape hatch
+    root = Path(studio_env).expanduser() if studio_env else None
+    if root is None:
+        home = home or current_hermes_home()
+        if not home:
+            return None
+        root = Path(home).expanduser() / "plugin-data" / "hermes-music-studio"
+    try:
+        pointer = root / "library.json"  # the library this Studio profile points at instead
+        if pointer.is_file():
+            data = json.loads(pointer.read_text(encoding="utf-8"))
+            p = data.get("path") if isinstance(data, dict) else None
+            if isinstance(p, str) and p.strip():
+                alt = Path(p).expanduser()
+                if alt.is_dir():
+                    root = alt
+        if not root.is_dir():
+            return None
+        if not any(root.glob("*.wav")):  # no finished takes, nothing to add
+            return None
+        return str(root)
+    except (OSError, ValueError):
+        return None
 
 
 def _fs_dirs_handler(request: "Handler", raw_path: str) -> None:
@@ -1608,7 +1771,7 @@ def _keeps_finished_mark(key: str, pos: Any) -> bool:
     """A part listened to the end keeps that mark when it is played again from the start: the
     first seconds of a replay must not make continue forget that this part was finished.
 
-    ``pos`` 0 is "still in the opening second", not a clear (grok a10r16: a replay saved
+    ``pos`` 0 is "still in the opening second", not a clear (review a10r16: a replay saved
     ``0`` and erased the finished mark of the part)."""
     if not (isinstance(key, str) and key.startswith("local:track:")) or pos is None or pos > BOOK_PLACE_MIN:
         return False
@@ -1618,7 +1781,7 @@ def _keeps_finished_mark(key: str, pos: Any) -> bool:
         return False
     # A report that is itself the end of the file is a fresh finish: store it (with a new time),
     # or a short part replayed and finished again never becomes the newest mark and continue goes
-    # back to an older part (codex a10r18).
+    # back to an older part (review a10r18).
     return not _finished_place(t, pos)
 
 
@@ -1628,8 +1791,8 @@ def _finished_place(track: Any, pos: Any) -> bool:
     The margin must be the same 30 s the page refuses to seek into (player.js: ``pos >= dur - 30``
     starts the file from the top), or the two disagree: a place the server calls real but the page
     calls "the end" is dropped the moment the person replays that part. Only a file shorter than
-    30 s gets a smaller window, so a place 10 s into a 20 s part is not "finished" (codex a10r16,
-    grok a10r17)."""
+    30 s gets a smaller window, so a place 10 s into a 20 s part is not "finished" (review a10r16,
+    review a10r17)."""
     dur = float((track or {}).get("duration") or 0)
     margin = BOOK_PLACE_MIN if dur > BOOK_PLACE_MIN else max(2.0, dur * 0.1)
     return library.near_end(pos, dur, margin)
@@ -1654,11 +1817,11 @@ def _book_continue(track_id: str, came_from: str = "") -> dict:
         # side ("Dune.m4b", "Foundation.m4b"; "1984", "Fahrenheit 451") never are.
         # Distinct track numbers on every file prove the order on their own -- but only when the
         # album is a real tag: when it is just the folder's name, the scanner also invented the
-        # numbers, so "01 Dune" / "02 Foundation" would look like one book (grok a10r18/a10r19).
+        # numbers, so "01 Dune" / "02 Foundation" would look like one book (review a10r18/a10r19).
         nos = [x.get("track_no") for x in same]
         # A missing marker means an index older than alpha.10 (cached entries are not re-read when
         # size+mtime match), so treat it as the folder-name fallback too: an upgraded library must
-        # not start merging separate books again (claude a10r20).
+        # not start merging separate books again (review a10r20).
         tagged_album = all(x.get("album_from_folder") is False for x in same)
         numbered = tagged_album and all(isinstance(n, int) and not isinstance(n, bool) and n > 0
                                         for n in nos) and len(set(nos)) == len(nos)
@@ -1721,6 +1884,7 @@ def _probe_health(port: int, timeout: float = 2.0) -> Optional[dict]:
             payload = json.loads(resp.read(4096).decode("utf-8-sig"))
             return payload if isinstance(payload, dict) and payload.get("app") == "revamp" else None
     except Exception:
+        log.debug("health probe failed", exc_info=True)
         return None
 
 
@@ -1743,6 +1907,7 @@ def build_server(port: Optional[int] = None, data: Optional[str] = None,
     srv.revamp_version = version or VERSION
     srv.revamp_build = build or web_build()
     srv.revamp_owner = "service" if owner == "service" else "plugin"
+    diaglog.set_client_counter(HUB.count)
     srv.revamp_started_at = time.time()
     import secrets as _secrets
     srv.revamp_instance = _secrets.token_hex(8)
@@ -1779,7 +1944,9 @@ def _lease_dir() -> Path:
     elif os.name == "nt":
         d = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "revamp" / "run"
     else:
-        d = Path.home() / ".local" / "state" / "revamp" / "run"
+        state = os.environ.get("XDG_STATE_HOME")
+        base = Path(state) if state else Path.home() / ".local" / "state"
+        d = base / "revamp" / "run"
     try:
         d.mkdir(parents=True, exist_ok=True)
         if os.name == "posix":
@@ -1825,7 +1992,7 @@ def _lock_fh(fh: Any) -> None:
     """Take an exclusive lock on *fh*; raises OSError when it could not (never silently unlocked).
 
     ``msvcrt.locking`` cannot lock a byte of an empty file (errno 13), which is what the lock
-    file used to be on Windows, so the port check ran unprotected (grok a10r16)."""
+    file used to be on Windows, so the port check ran unprotected (review a10r16)."""
     try:
         fh.seek(0, os.SEEK_END)
         if fh.tell() == 0:
@@ -1947,8 +2114,7 @@ def _watch_owner(port: int, owner: Optional[str] = None, ours: Optional[bool] = 
         if _watching:
             return
         _watching = True
-
-    gen = _watch_gen
+        gen = _watch_gen
 
     def run() -> None:
         global _watching, _started, _taking_over
@@ -2003,6 +2169,8 @@ def _watch_owner(port: int, owner: Optional[str] = None, ours: Optional[bool] = 
             if health is None and _foreign_holder(port):
                 continue  # someone else's app; ensure_server's warning covers it
             with _lock:
+                if gen != _watch_gen:
+                    return
                 _watching = False
                 _started = False
                 _taking_over = True  # main() keeps a service alive through this (probes take seconds)
@@ -2074,6 +2242,7 @@ def _request_upgrade_shutdown(port: int, token: str) -> bool:
         with proof.local_opener().open(req, timeout=2.0) as resp:
             return resp.status == 200
     except Exception:
+        log.debug("shutdown probe failed", exc_info=True)
         return False
 
 
@@ -2091,13 +2260,19 @@ def _shutdown_for_upgrade(srv: ThreadingHTTPServer) -> None:
 
     Giving the port away used to leave ``_started``/``_owned`` set and start no watcher, so if the
     new owner later stopped (systemd stop, a crash) nothing served the port again until Hermes
-    restarted (claude a10r19)."""
+    restarted (review a10r19)."""
     global _started, _owned
     owner = "service" if getattr(srv, "revamp_owner", "plugin") == "service" else "plugin"
     port = srv.server_address[1]
+    logger.info("revamp: server stop on port %s (upgrade hand-over)", port)
     time.sleep(0.05)
     srv.shutdown()
     srv.server_close()
+    # This process stays alive as the port watcher, but it no longer serves: its
+    # sampler and its rotator on revamp.log must go, or the new server's rotator
+    # renames a file this one still has open (upgrade hand-over). A later
+    # ensure_server() reattaches both.
+    diaglog.stop()
     with _lock:
         _started = False
         _owned = False
@@ -2113,6 +2288,7 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     holds it, log a loud warning (like pixel-office) and return None.
     """
     global _started, _owned
+    diaglog.setup()  # the private rotating log; idempotent and never raises
     port = int(port or setting("port"))
     token = get_token()  # ensure the token file exists before any client reads it
     version = version or VERSION
@@ -2220,9 +2396,9 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     if lost_bind is not None:
         # Two profiles passed the check together (a platform whose file lock failed, or a lease
         # written a moment after the bind): the loser used to give up and show the winner's
-        # library. Decide again by the usual ownership rules instead (grok a10r16) -- but only
+        # library. Decide again by the usual ownership rules instead (review a10r16) -- but only
         # after leaving the lock, since the retry takes it again and flock is not re-entrant
-        # (codex a10r17).
+        # (review a10r17).
         if _raced < 2 and (_probe_health(port) or {}).get("app") == "revamp":
             logger.info("revamp: lost the bind race for port %s (%s); deciding again", port, lost_bind)
             return ensure_server(port, owner=owner, version=version, build=build, _raced=_raced + 1)
@@ -2233,6 +2409,7 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     srv.daemon_threads = True
     t = threading.Thread(target=srv.serve_forever, name="revamp-http", daemon=True)
     t.start()
+    diaglog.start_sampler()  # one daemon health-sampler thread per process
     # A desktop window left by the previous server would play alongside Hermes.
     window.reap_orphan()
     # A fresh install (no library index yet) starts from the saved copy instead of
@@ -2252,7 +2429,7 @@ def ensure_server(port: Optional[int] = None, *, owner: str = "plugin",
     # Always reconcile the saved index with the filesystem. Files already read
     # come from the cache, so this is incremental after a normal restart.
     library.scan_async(library_dirs())
-    logger.info("revamp: serving at http://127.0.0.1:%s", port)
+    logger.info("revamp: server start, serving at http://127.0.0.1:%s (%s)", port, _version_line())
     return port
 
 
@@ -2287,6 +2464,7 @@ def _quiet_for_restart() -> bool:
         playing = _is_playing(store.get_state().get("live") or {},
                               heard_recently=store.heartbeat_age() < PLAYING_GRACE)
     except Exception:
+        log.debug("quiet check failed", exc_info=True)
         return False  # can't tell: count it as busy
     return not playing and not window.is_open()
 
@@ -2296,7 +2474,7 @@ def _reenter_install_dir(start_dir: str) -> None:
 
     Hermes updates a plugin by swapping the folder (old one renamed aside or deleted), so a
     process whose working folder follows the old inode sits in a folder that is gone, and
-    ``python -m`` finds no package there: the service dies on restart (claude a10r16). The name
+    ``python -m`` finds no package there: the service dies on restart (review a10r16). The name
     now points at the new copy, so re-entering it is enough. No-op when it is the same folder."""
     if not start_dir:
         return
@@ -2376,7 +2554,7 @@ def main() -> None:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
-        pass
+        logger.info("revamp: server stop on port %s (interrupted)", port)
 
 
 if __name__ == "__main__":

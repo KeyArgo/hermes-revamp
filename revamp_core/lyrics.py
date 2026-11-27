@@ -19,9 +19,12 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import radio
 from .config import data_dir
 
 LRCLIB_URL = "https://lrclib.net/api/get"
+# LRCLIB's one host: the request may only go there (see radio.open_fixed_https).
+LRCLIB_HOSTS = frozenset({"lrclib.net"})
 LYRICS_MAX_BYTES = 1024 * 1024
 UA = "Revamp (Hermes plugin; https://github.com/KeyArgo/hermes-revamp)"
 TIMEOUT = 8
@@ -93,6 +96,12 @@ def parse_lrc(text: str) -> List[Dict[str, Any]]:
 # LRCLIB fetch
 # ---------------------------------------------------------------------------
 
+def _open(req: urllib.request.Request, timeout: float):
+    """GET on LRCLIB's fixed host: public addresses only, a pinned connection, no proxy,
+    and a redirect off the host is refused (radio.open_fixed_https). Tests replace this."""
+    return radio.open_fixed_https(req, LRCLIB_HOSTS, timeout)
+
+
 def _fetch(params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """GET LRCLIB ``/api/get``; returns the parsed JSON dict.
 
@@ -103,7 +112,7 @@ def _fetch(params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     url = LRCLIB_URL + "?" + urllib.parse.urlencode(clean)
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with _open(req, TIMEOUT) as resp:
             # Lyrics are a few KB: cap the answer so a hostile one can't fill memory.
             body = resp.read(LYRICS_MAX_BYTES + 1)
             if len(body) > LYRICS_MAX_BYTES:
@@ -132,6 +141,16 @@ def _key(artist: str, title: str, album: str, duration: Optional[float]) -> Tupl
             int(round(duration or 0)))
 
 
+def _norm_key(key: str) -> str:
+    """A file key in the form _cache_get looks up: another writer (JavaScript's
+    JSON.stringify) leaves out the spaces json.dumps puts after commas."""
+    try:
+        parsed = json.loads(key)
+    except ValueError:
+        return key
+    return json.dumps(parsed, ensure_ascii=False) if isinstance(parsed, list) else key
+
+
 def _load() -> None:
     global _loaded
     if _loaded:
@@ -140,7 +159,7 @@ def _load() -> None:
     try:
         raw = json.loads(_cache_path().read_text(encoding="utf-8"))
         if isinstance(raw, dict):
-            _CACHE.update({key: record for key, record in raw.items()
+            _CACHE.update({_norm_key(key): record for key, record in raw.items()
                            if isinstance(record, dict)})
     except (OSError, ValueError):
         pass

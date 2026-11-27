@@ -58,7 +58,7 @@ def test_single_files_music_and_unknown_ids_never_jump(book):
 
 
 def test_part_one_reached_from_inside_the_book_plays_as_asked(book):
-    # Claude a10r11: Previous, repeat-all or a pick of part 1 while in the book bounced back.
+    # review a10r11: Previous, repeat-all or a pick of part 1 while in the book bounced back.
     book("p9", 818, 2000)
     assert server._book_continue("p1", "p2") == {}, "Previous from part 2"
     assert server._book_continue("p1", "p9") == {}, "repeat-all, or part 1 picked after the jump"
@@ -67,7 +67,7 @@ def test_part_one_reached_from_inside_the_book_plays_as_asked(book):
 
 
 def test_stopping_at_the_end_of_a_part_goes_on_with_the_next(book):
-    # Grok a10r11: the last 30 s of a part erased its place, so continue went back to an older
+    # review a10r11: the last 30 s of a part erased its place, so continue went back to an older
     # part. The place is kept; continue goes on with the next part from its start.
     book("p3", 480, 2000)
     book("p8", 1490, 3000)  # 8 of 25 minutes left? no: 10 s before the end of part 8
@@ -118,7 +118,7 @@ def server_live(server, monkeypatch):
 
 
 def test_parts_follow_the_queue_order_not_the_file_names(monkeypatch, tmp_path):
-    # Claude a10r12: "Chapter 10" sorted before "Chapter 2" by path; next part skipped 8 chapters.
+    # review a10r12: "Chapter 10" sorted before "Chapter 2" by path; next part skipped 8 chapters.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
     monkeypatch.setattr(library, "_kinds_map", lambda: {})
@@ -148,7 +148,7 @@ def test_track_numbers_win_over_names(monkeypatch, tmp_path):
 
 
 def test_untagged_books_in_one_folder_are_separate_books(monkeypatch, tmp_path):
-    # Claude a10r12: two untagged books in /Audiobooks were one "book".
+    # review a10r12: two untagged books in /Audiobooks were one "book".
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
     monkeypatch.setattr(library, "_kinds_map", lambda: {})
@@ -160,7 +160,7 @@ def test_untagged_books_in_one_folder_are_separate_books(monkeypatch, tmp_path):
 
 
 def test_replaying_a_finished_part_keeps_its_finished_mark(book):
-    # Grok a10r12: the first seconds of a replay overwrote the finished mark, so continue later
+    # review a10r12: the first seconds of a replay overwrote the finished mark, so continue later
     # went back to an older chapter.
     book("p3", 480, 2000)
     book("p8", 1490, 3000)  # finished part 8
@@ -171,7 +171,7 @@ def test_replaying_a_finished_part_keeps_its_finished_mark(book):
 
 
 def test_numbered_untagged_parts_in_one_folder_are_one_book(monkeypatch, tmp_path):
-    # Grok a10r12: 001.mp3 ... with no album tag never continued.
+    # review a10r12: 001.mp3 ... with no album tag never continued.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
     monkeypatch.setattr(library, "_kinds_map", lambda: {})
@@ -182,7 +182,7 @@ def test_numbered_untagged_parts_in_one_folder_are_one_book(monkeypatch, tmp_pat
 
 
 def test_a_non_ascii_digit_in_a_file_name_does_not_break_continue():
-    # Grok a10r12: int("１２") raised, so the whole book never continued.
+    # review a10r12: int("１２") raised, so the whole book never continued.
     assert library.natural("第１２章.mp3") and library.natural("Chapter 2") < library.natural("Chapter 10")
 
 
@@ -197,7 +197,7 @@ def test_the_api_keeps_a_finished_mark(server_live):
 
 @pytest.mark.parametrize("layout", ["untagged chapters", "two discs"])
 def test_the_books_queue_and_continue_use_one_order(monkeypatch, tmp_path, layout):
-    # Codex a10r13: the Books view sorted by title without disc or numbers-as-numbers, so the queue
+    # review a10r13: the Books view sorted by title without disc or numbers-as-numbers, so the queue
     # ran 1, 10, 2 while continue said 2. Both now use library.album_order.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
@@ -219,7 +219,7 @@ def test_the_books_queue_and_continue_use_one_order(monkeypatch, tmp_path, layou
 
 
 def test_a_place_past_a_too_short_stored_length_is_not_finished(book, monkeypatch):
-    # Grok a10r13: a VBR guess said 8 min; the person stopped 15 min into a 30 min part.
+    # review a10r13: a VBR guess said 8 min; the person stopped 15 min into a 30 min part.
     library._INDEX["p8"] = dict(library._INDEX["p8"], duration=480)
     book("p3", 300, 2000)
     book("p8", 900, 3000)
@@ -229,7 +229,7 @@ def test_a_place_past_a_too_short_stored_length_is_not_finished(book, monkeypatc
 
 
 def test_album_case_does_not_split_a_book(monkeypatch, tmp_path):
-    # Grok a10r13: "Dune" and "dune" were one album in Books but two books here.
+    # review a10r13: "Dune" and "dune" were one album in Books but two books here.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
     monkeypatch.setattr(library, "_kinds_map", lambda: {})
@@ -241,7 +241,7 @@ def test_album_case_does_not_split_a_book(monkeypatch, tmp_path):
 
 
 def test_the_real_scanner_keeps_separate_books_in_one_folder_apart(monkeypatch, tmp_path):
-    # Grok a10r15: the scanner fills a missing album with the folder's name, so Dune.m4b and
+    # review a10r15: the scanner fills a missing album with the folder's name, so Dune.m4b and
     # Foundation.m4b in Audiobooks/ were "parts 1 and 2" of one book.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
@@ -258,7 +258,7 @@ def test_the_real_scanner_keeps_separate_books_in_one_folder_apart(monkeypatch, 
     library.scan_sync([str(shelf), str(saga)])
     by_name = {os.path.basename(t["path"]): t for t in library.all_tracks()}
     assert by_name["Dune.m4b"].get("album") == "Audiobooks", "the scanner's folder-name fallback"
-    assert by_name["Dune.m4b"].get("album_from_folder") is True, "and it says so (grok a10r19)"
+    assert by_name["Dune.m4b"].get("album_from_folder") is True, "and it says so (review a10r19)"
     store.set_resume(items.local_id(by_name["Foundation.m4b"]["id"]), 3600)
     store.set_resume(items.local_id(by_name["Fahrenheit 451.m4b"]["id"]), 3600)
     for first in ("1984.m4b", "Dune.m4b"):
@@ -268,7 +268,7 @@ def test_the_real_scanner_keeps_separate_books_in_one_folder_apart(monkeypatch, 
 
 
 def test_parts_follow_the_books_list_even_with_differing_artists(monkeypatch, tmp_path):
-    # Codex a10r15: chapter 1 by Zoe, chapter 2 by Amy: the Books list (artist first) plays
+    # review a10r15: chapter 1 by Zoe, chapter 2 by Amy: the Books list (artist first) plays
     # chapter 2 first, so continue must use that same order.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
@@ -301,7 +301,7 @@ def _short_book(monkeypatch, tmp_path, durations):
 
 
 def test_a_short_part_takes_you_on_to_the_part_after_it(monkeypatch, tmp_path):
-    # Codex a10r16: a 20 s part never reached the 30 s minimum, so its place was invisible and
+    # review a10r16: a 20 s part never reached the 30 s minimum, so its place was invisible and
     # continue replays the part before it.
     save = _short_book(monkeypatch, tmp_path, {1: 1500, 2: 20, 3: 1500})
     save("p1", 1490, 1000)  # finished part 1
@@ -326,7 +326,7 @@ def test_a_place_in_the_middle_of_a_short_part_is_not_finished(monkeypatch, tmp_
 
 
 def test_a_zero_place_from_the_page_keeps_the_finished_mark(server_live):
-    # Grok a10r16: the page floors 0.4 s to 0 and 0 meant "clear", so replaying a finished part
+    # review a10r16: the page floors 0.4 s to 0 and 0 meant "clear", so replaying a finished part
     # erased the finished mark.
     client, ids = server_live
     library._INDEX[ids[1]] = dict(library._INDEX[ids[1]], duration=600)
@@ -341,7 +341,7 @@ def test_a_zero_place_from_the_page_keeps_the_finished_mark(server_live):
 
 
 def test_a_place_the_page_calls_the_end_is_a_finished_mark(monkeypatch, tmp_path):
-    # Grok a10r17 (high): _finished_place shrank the margin to 10% of the file, but the page still
+    # review a10r17 (high): _finished_place shrank the margin to 10% of the file, but the page still
     # refuses to seek into the last 30 s. A place in that gap was "real" on the server and "the
     # end" on the page, so replaying the part overwrote it with 0:01 and the place was lost.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
@@ -361,7 +361,7 @@ def test_a_place_the_page_calls_the_end_is_a_finished_mark(monkeypatch, tmp_path
 
 
 def test_numbered_titles_in_a_same_named_folder_are_one_book(monkeypatch, tmp_path):
-    # Grok a10r17: album tag == folder name ("The Hobbit" in The Hobbit/), parts named
+    # review a10r17: album tag == folder name ("The Hobbit" in The Hobbit/), parts named
     # "01 - An Unexpected Party" / "02 - Roast Mutton": the identical-stem rule rejected them, so
     # continue never ran. Distinct track numbers prove the order by themselves.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
@@ -391,7 +391,7 @@ def test_two_numbered_books_in_one_folder_stay_apart(monkeypatch, tmp_path):
 
 
 def test_finishing_a_short_part_again_is_the_newest_mark(monkeypatch, tmp_path):
-    # Codex a10r18: _keeps_finished_mark kept the OLD mark for every report up to 30 s, so a short
+    # review a10r18: _keeps_finished_mark kept the OLD mark for every report up to 30 s, so a short
     # part listened through and finished a second time never got a new timestamp; continue then
     # went back to an older part instead of going on.
     save = _short_book(monkeypatch, tmp_path, {1: 1500, 2: 20, 3: 1500})
@@ -406,7 +406,7 @@ def test_finishing_a_short_part_again_is_the_newest_mark(monkeypatch, tmp_path):
 
 
 def test_two_numbered_titles_in_one_folder_stay_apart(monkeypatch, tmp_path):
-    # Grok a10r18 (high): the scanner fills a missing album with the folder name and takes a
+    # review a10r18 (high): the scanner fills a missing album with the folder name and takes a
     # leading number as track_no, so "01 Dune.m4b" (track 1) and "02 Foundation.m4b" (track 2)
     # looked like one book. A bare number + title is not a chapter name.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
@@ -414,7 +414,7 @@ def test_two_numbered_titles_in_one_folder_stay_apart(monkeypatch, tmp_path):
     monkeypatch.setattr(library, "_kinds_map", lambda: {})
     monkeypatch.setattr(library, "_INDEX", {
         # The scanner fills a missing album with the folder name and marks it: numbers it also
-        # invented prove nothing (grok a10r19).
+        # invented prove nothing (review a10r19).
         "dune": {"id": "dune", "path": "/Audiobooks/01 Dune.m4b", "album": "Audiobooks",
                  "genre": "Audiobook", "track_no": 1, "album_from_folder": True},
         "found": {"id": "found", "path": "/Audiobooks/02 Foundation.m4b", "album": "Audiobooks",
@@ -424,7 +424,7 @@ def test_two_numbered_titles_in_one_folder_stay_apart(monkeypatch, tmp_path):
 
 
 def test_dotted_numbered_titles_stay_apart(monkeypatch, tmp_path):
-    # Grok a10r19 (high): "01. Dune" / "02. Foundation" got through the chapter-name rule because
+    # review a10r19 (high): "01. Dune" / "02. Foundation" got through the chapter-name rule because
     # "." was in the separator class. With a folder-name album, invented numbers decide nothing.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
@@ -439,7 +439,7 @@ def test_dotted_numbered_titles_stay_apart(monkeypatch, tmp_path):
 
 
 def test_bare_numeric_titles_are_not_one_book(monkeypatch, tmp_path):
-    # Grok a10r19: "1984.m4b" and "2001.m4b" both collapse to "#", so a folder of numeric titles
+    # review a10r19: "1984.m4b" and "2001.m4b" both collapse to "#", so a folder of numeric titles
     # continued across books. A shared name must keep at least one letter.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)
@@ -454,7 +454,7 @@ def test_bare_numeric_titles_are_not_one_book(monkeypatch, tmp_path):
 
 
 def test_an_upgraded_index_without_the_marker_does_not_merge_books(monkeypatch, tmp_path):
-    # Claude a10r20: alpha.6-9 indexes have no album_from_folder key and are not re-read when
+    # review a10r20: alpha.6-9 indexes have no album_from_folder key and are not re-read when
     # size+mtime match, so the round-19 fix never applied to upgraded installs.
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(store, "_STATE", None)

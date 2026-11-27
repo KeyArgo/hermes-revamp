@@ -20,12 +20,15 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from . import radio
 from .config import data_dir
 
 GRAPHQL = "https://api.webamp.org/graphql"
 SKIN_URL = "https://r2.webampskins.org/skins/{md5}.wsz"
 SHOT_URL = "https://r2.webampskins.org/screenshots/{md5}.png"
 PAGE_URL = "https://skins.webamp.org/skin/{md5}"
+# The museum's own hosts: a request may only go there (see radio.open_fixed_https).
+MUSEUM_HOSTS = frozenset({"api.webamp.org", "r2.webampskins.org"})
 BASE_MD5 = "5e4f10275dcb1fb211d4a8b4f1bda236"  # base-2.91.wsz: our Classic skin
 MAX_BYTES = 10 * 1024 * 1024
 UA = "Mozilla/5.0 (compatible; Revamp Hermes plugin; +https://skins.webamp.org)"
@@ -62,6 +65,13 @@ def _read_capped(resp, limit: int) -> bytes:
         raise ValueError("museum answer too large")
     return body
 
+
+def _open(req: urllib.request.Request, timeout: float):
+    """Request on the museum's fixed hosts: public addresses only, a pinned connection, no
+    proxy, and a redirect off those hosts is refused (radio.open_fixed_https). Tests replace this."""
+    return radio.open_fixed_https(req, MUSEUM_HOSTS, timeout)
+
+
 def _graphql(query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
     payload = json.dumps({"query": query, "variables": variables}).encode("utf-8")
     req = urllib.request.Request(
@@ -69,7 +79,7 @@ def _graphql(query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
         headers={"Content-Type": "application/json",
                  "User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _open(req, 10) as resp:
             body = json.loads(_read_capped(resp, 4 * 1024 * 1024).decode("utf-8"))
     except Exception as exc:
         raise MuseumError(f"graphql failed: {exc}") from exc
@@ -85,7 +95,7 @@ def _download(md5: str) -> bytes:
     # The museum's file host refuses urllib's default User-Agent (403).
     req = urllib.request.Request(SKIN_URL.format(md5=md5), headers={"User-Agent": UA})
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _open(req, 30) as resp:
             data = resp.read(MAX_BYTES + 1)
     except Exception as exc:
         raise MuseumError(f"download failed: {exc}") from exc

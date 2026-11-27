@@ -98,3 +98,20 @@ def test_no_route_answers_500_to_junk(server, offline):
     # Still alive afterwards.
     assert _send(server, "GET", "/api/health") == 200
     assert not failures, f"{len(failures)} junk requests got a server error, e.g. {failures[:12]}"
+
+
+def test_infinite_queue_duration_round_trips_as_strict_json(tmp_path, monkeypatch):
+    from revamp_core import server, store
+
+    monkeypatch.setenv("REVAMP_HOME", str(tmp_path))
+    monkeypatch.setattr(store, "_STATE", None)
+    handler = object.__new__(server.Handler)
+    handler._body_json = lambda: {"playlist": [
+        {"kind": "stream", "id": "url:live", "duration": "Infinity",
+         "playback": {"url": "https://station.example/live"}}]}
+    handler._send_json = server._jsonify
+    response = handler._api_put("/api/state")
+    store.reload()
+    for payload in (response, (tmp_path / "state.json").read_bytes(), handler._api_get("/api/state", {})):
+        state = json.loads(payload, parse_constant=pytest.fail)
+        assert state["playlist"][0]["duration"] is None

@@ -451,7 +451,9 @@ def test_tls_and_reply_share_the_connect_budget(monkeypatch):
             return Sock()
 
     monkeypatch.setattr(radio, "_connect_first", slow_connect)
-    monkeypatch.setattr(radio.socket, "getaddrinfo", lambda *a, **k: [])
+    monkeypatch.setattr(radio.socket, "getaddrinfo",
+                        lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                                          ("1.1.1.1", 443))])  # a public answer: checked first
     conn = radio._FirstAddressHTTPSConnection("de1.api.radio-browser.info", 443, timeout=7.0, context=Ctx())
     conn.connect()
     assert timeouts == [2.0, 1.0]

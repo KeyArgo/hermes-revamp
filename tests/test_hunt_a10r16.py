@@ -33,7 +33,7 @@ class _FakeMsvcrt:
 
 
 def test_the_windows_lock_file_is_never_empty(monkeypatch, tmp_path):
-    # Grok a10r16 (high): the lock file was created empty and msvcrt cannot lock a byte of it, so
+    # review a10r16 (high): the lock file was created empty and msvcrt cannot lock a byte of it, so
     # two profiles passed the port check together and the loser showed the winner's library.
     fake = _FakeMsvcrt()
     monkeypatch.setitem(sys.modules, "msvcrt", fake)
@@ -61,7 +61,7 @@ def test_a_lock_that_cannot_be_taken_is_reported_not_passed_off_as_held(monkeypa
 
 
 def test_the_bind_loser_decides_again_instead_of_showing_the_winners_library(monkeypatch, caplog):
-    # Grok a10r16: the losing profile logged "cannot bind", returned None and its page then showed
+    # review a10r16: the losing profile logged "cannot bind", returned None and its page then showed
     # whatever the winner served (often an empty library).
     _reset_server_globals(monkeypatch)
     monkeypatch.setattr(server, "get_token", lambda: "t")
@@ -82,7 +82,7 @@ def test_the_bind_loser_decides_again_instead_of_showing_the_winners_library(mon
 
     monkeypatch.setattr(server, "build_server", build)
     # The retry takes the port lock again; entering it while still inside would deadlock
-    # (flock is not re-entrant), which is what codex a10r17 caught.
+    # (flock is not re-entrant), which is what review a10r17 caught.
     import contextlib
     depth = {"n": 0}
 
@@ -106,7 +106,7 @@ def test_the_bind_loser_decides_again_instead_of_showing_the_winners_library(mon
 
 @pytest.mark.skipif(os.name == "nt", reason="Windows can't rename or delete the working folder")
 def test_the_restart_re_enters_the_install_folder_by_name(tmp_path):
-    # Claude a10r16 (medium): Hermes swaps the plugin folder on update. A process whose working
+    # review a10r16 (medium): Hermes swaps the plugin folder on update. A process whose working
     # folder follows the old inode sits in a folder that is renamed away and then deleted, so
     # `python -m revamp_core.server` finds no package and the service dies on restart.
     root = tmp_path / "plugins" / "revamp"
@@ -160,7 +160,7 @@ def test_the_self_restart_remembers_the_folder_it_started_in(monkeypatch):
 
 
 def test_giving_the_port_away_leaves_a_watcher_behind(monkeypatch):
-    # Claude a10r19: _shutdown_for_upgrade closed the socket but left _started/_owned set and
+    # review a10r19: _shutdown_for_upgrade closed the socket but left _started/_owned set and
     # started no watcher, so when the new owner later stopped nothing served the port again.
     server._watch_gen += 1
     monkeypatch.setattr(server, "_started", True)

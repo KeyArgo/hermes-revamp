@@ -44,9 +44,10 @@ test("hiding Frame unregisters its pane so Hermes has no empty container", () =>
   const hidden = body.slice(body.indexOf("if (hidden)"), body.indexOf("} else {"));
   const dispose = hidden.indexOf("disposeDockedPlayerPane?.()");
   const clear = hidden.indexOf("disposeDockedPlayerPane = null");
-  const hide = hidden.indexOf("host.hidePane(paneId)");
-  assert.ok(dispose >= 0 && clear > dispose && hide > clear);
-  assert.match(body, /if \(!disposeDockedPlayerPane && PANE_SPIKE && ctxRef\) disposeDockedPlayerPane = ctxRef\.register/);
+  assert.ok(dispose >= 0 && clear > dispose);
+  // hidePane is not a Desktop SDK member: unregistering is the whole teardown.
+  assert.ok(!hidden.includes("hidePane"));
+  assert.match(body, /if \(!disposeDockedPlayerPane && DOCKED_PANE && ctxRef\) disposeDockedPlayerPane = ctxRef\.register/);
 });
 
 test("Frame uses Hermes's normal closable-tab chrome and can be restored", () => {
@@ -185,7 +186,7 @@ test("the same error shows once per 30 s, not once per click (11-02: 51 notifica
   assert.equal((src.match(/host\.notify\(\{ kind: 'error'/g) || []).length, 1, "every error goes through notifyError");
 });
 
-test("a server 401 through the bridge is a stale key: refresh, resend by the gateway, tell the host (Grok r2)", () => {
+test("a server 401 through the bridge is a stale key: refresh, resend by the gateway, tell the host (review r2)", () => {
   const rest = between("async function rest(path, opts = {})", "let keyRefreshAt");
   assert.match(rest, /if \(err\?\.bridgeKey \|\| \(err\?\.status === 401 && \/invalid or missing token\/\.test\(err\.message \|\| ''\)\)\) void refreshBridgeKey\(\)/, "only the server's own key refusal refreshes the key");
   const refresh = between("async function refreshBridgeKey()", "const lastErrors");
@@ -201,22 +202,22 @@ test("the library frame reloads at most once a minute after a refused key (no lo
   assert.match(onKey, /else if \(!controlRetry\) controlRetry = setTimeout\(reloadControl, wait\)/, "refused again: one deferred retry");
 });
 
-test("Recover player's own failure always shows; the dedupe map stays small (GLM r5)", () => {
+test("Recover player's own failure always shows; the dedupe map stays small (review r5)", () => {
   assert.match(src, /notifyError\(EN\.recoveryFailed, \{ always: true \}\)/);
   assert.match(src, /if \(lastErrors\.size > 50\)/);
 });
 
-test("a successful command (not a background read) clears the duplicate-notice filter (GLM r7)", () => {
+test("a successful command (not a background read) clears the duplicate-notice filter (review r7)", () => {
   const rest = between("async function rest(path, opts = {})", "let keyRefreshAt");
   assert.equal((rest.match(/if \(!read\) lastErrors\.clear\(\)/g) || []).length, 2);
   assert.doesNotMatch(rest, /^\s*lastErrors\.clear\(\)/m, "never cleared by a read");
 });
 
-test("Recover player cancels a pending automatic library-frame reload (GLM r9)", () => {
+test("Recover player cancels a pending automatic library-frame reload (review r9)", () => {
   assert.match(src, /reload\(\) \{ dropPending\(\); sawRevamp = false; clearTimeout\(controlRetry\); controlRetry = 0;/);
 });
 
-test("MilkDrop already closed while hidden stays closed when the placement changes (Codex a10r2)", () => {
+test("MilkDrop already closed while hidden stays closed when the placement changes (review a10r2)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   const start = player.indexOf("function suspendMilkdrop()");
   const body = player.slice(start, player.indexOf("function resumeMilkdrop()", start));
@@ -226,7 +227,7 @@ test("MilkDrop already closed while hidden stays closed when the placement chang
   assert.match(player, /if \(milkdropSuspended && want\) return;/, "placement changes cannot open it while hidden");
 });
 
-test("leaving full-screen MilkDrop forgets the fit skipped meanwhile (Claude a10r4)", () => {
+test("leaving full-screen MilkDrop forgets the fit skipped meanwhile (review a10r4)", () => {
   const app = readFileSync(new URL("../web/app.js", import.meta.url), "utf8");
   const start = app.indexOf("let wasFullscreen = false;");
   const body = app.slice(start, app.indexOf("}, 250);", start));
@@ -240,15 +241,15 @@ test("a tab picked while REVamp starts up stays picked (nav e2e flake, a10r7)", 
   assert.doesNotMatch(app, /\n\s*setView\("library"\);/, "no unconditional jump back to Library");
 });
 
-test("an open page compares its stamp with the files on disk, not the server's start (Grok a10r8)", () => {
+test("an open page compares its stamp with the files on disk, not the server's start (review a10r8)", () => {
   const app = readFileSync(new URL("../web/app.js", import.meta.url), "utf8");
   const start = app.indexOf("async function checkForUpdate()");
   const body = app.slice(start, app.indexOf("\n}\n", start));
-  assert.match(body, /build = h\.files \|\| "";/, "an older server (no files) is never compared (Grok a10r10)");
+  assert.match(body, /build = h\.files \|\| "";/, "an older server (no files) is never compared (review a10r10)");
   assert.doesNotMatch(body, /h\.build/);
 });
 
-test("hiding MilkDrop in Mini really closes it (toggleVisualizer refuses in Mini) (Grok a10r8)", () => {
+test("hiding MilkDrop in Mini really closes it (toggleVisualizer refuses in Mini) (review a10r8)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   const start = player.indexOf("function suspendMilkdrop()");
   const body = player.slice(start, player.indexOf("function resumeMilkdrop()", start));
@@ -257,7 +258,7 @@ test("hiding MilkDrop in Mini really closes it (toggleVisualizer refuses in Mini
   assert.ok(body.indexOf("milkdropSuspended = true") < body.indexOf("TOGGLE_WINDOW"), "suspended first, so the close is not saved");
 });
 
-test("shown again, MilkDrop follows the saved choice for where it is now (Codex a10r10)", () => {
+test("shown again, MilkDrop follows the saved choice for where it is now (review a10r10)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   const start = player.indexOf("function resumeMilkdrop()");
   const body = player.slice(start, player.indexOf("function syncMilkdropVisibility()", start));
@@ -272,12 +273,12 @@ test("starting a book in several files goes on in the file you were last in (use
   const body = player.slice(start, player.indexOf("// Once <audio> or Webamp knows the real length", start));
   assert.ok(body.indexOf("resumingId = rk") < body.indexOf("/api/resume/book"), "no 0:01 save while it looks");
   assert.match(body, /if \(!still \|\| gen !== handoffGen \|\| acted !== actSeq - transportSeq \|\| placeHere\(\)\s*\n\s*\|\| moved\(\)\) return;/,
-    "a handoff or the person's own move wins, and stops the whole pending resume (Codex a10r16/a10r17)");
+    "a handoff or the person's own move wins, and stops the whole pending resume (review a10r16/a10r17)");
   assert.match(body, /if \(book\?\.id && book\.id !== tid\) \{/);
   assert.match(body, /api\.playIndex\(idx\);\n\s*return;/);
 });
 
-test("part 1 reached from inside the same book plays as asked (Claude a10r11)", () => {
+test("part 1 reached from inside the same book plays as asked (review a10r11)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   assert.match(player, /prevTid = playedTid; seenTrack = curTrack; seenTid = localTid\(info\.item\);/);
   assert.match(player, /"\/api\/resume\/book\?id=" \+ encodeURIComponent\(tid\) \+ from/);
@@ -289,7 +290,7 @@ test("part 1 reached from inside the same book plays as asked (Claude a10r11)", 
     "music that really played counts too");
 });
 
-test("a book's place near the end of a part is kept, not erased (Grok a10r11)", () => {
+test("a book's place near the end of a part is kept, not erased (review a10r11)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   const start = player.indexOf("function saveBookPlace(");
   const body = player.slice(start, player.indexOf("\n  }\n", start));
@@ -297,13 +298,13 @@ test("a book's place near the end of a part is kept, not erased (Grok a10r11)", 
   assert.doesNotMatch(body, /position: finished \? null/);
 });
 
-test("back on part 1 after a continue, it resumes its own place (Grok a10r11)", () => {
+test("back on part 1 after a continue, it resumes its own place (review a10r11)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   assert.match(player, /seenTid = localTid\(info\.item\);\n\s*resumedKey = null;/);
   assert.match(player, /resumingId = "local:track:" \+ book\.id;\n[^\n]*bookStart = [^\n]*\n\s*api\.playIndex\(idx\);/);
 });
 
-test("a continued book starts the part it moves to exactly where asked (Codex a10r12)", () => {
+test("a continued book starts the part it moves to exactly where asked (review a10r12)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   const start = player.indexOf("async function maybeResume()");
   const body = player.slice(start, player.indexOf("// Once <audio> or Webamp knows the real length", start));
@@ -313,29 +314,29 @@ test("a continued book starts the part it moves to exactly where asked (Codex a1
   assert.match(body, /if \(book\?\.restart\) return;/, "a finished book starts part 1 from its start");
 });
 
-test("a continued part never seeks over the person's own seek or pause (Codex a10r13)", () => {
+test("a continued part never seeks over the person's own seek or pause (review a10r13)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   assert.match(player, /gen === handoffGen && acted === actSeq - transportSeq\n\s*&& !placeHere\(\) && currentInfo\(\)\.status === "PLAYING"\n\s*&& \(media\(\)\.timeElapsed \|\| 0\) < heldBase \+ 10\n\s*&& !moved\(\)\) \{\n\s*keepResuming = true;\n\s*applySeek\(startAt, rk, gen, acted\);/,
-    "Webamp's own seek bar (no actSeq) also wins (Codex a10r15/a10r16); a hold's clock widens the window (Grok a10r21)");
+    "Webamp's own seek bar (no actSeq) also wins (review a10r15/a10r16); a hold's clock widens the window (review a10r21)");
   assert.match(player, /if \(bookStart && bookStart\.tid !== seenTid\) bookStart = null;/, "a part that never started forgets it");
 });
 
 
-test("a queue restored at start-up, never played, doesn't block continuing a book (Claude a10r14)", () => {
+test("a queue restored at start-up, never played, doesn't block continuing a book (review a10r14)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   assert.match(player, /prevTid = playedTid;/, "before = the file that last really played");
   assert.match(player, /if \(mode === "replace"\) playedTid = null;/, "a book started from the list goes on");
   assert.ok(player.indexOf("let seenTrack = null") < player.indexOf("const api = {"), "declared before the api uses it");
 });
 
-test("Webamp's own buttons and seek bar stop a pending book jump (Codex a10r14/a10r16)", () => {
+test("Webamp's own buttons and seek bar stop a pending book jump (review a10r14/a10r16)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   assert.match(player, /const still = storeState\(\)\?\.playlist\?\.currentTrack === curTrack && currentInfo\(\)\.status === "PLAYING"\n\s*&& \(media\(\)\.timeElapsed \|\| 0\) < heldBase \+ 15;/);
   assert.match(player, /if \(!still \|\| gen !== handoffGen \|\| acted !== actSeq - transportSeq \|\| placeHere\(\)\s*\n\s*\|\| moved\(\)\) return;/,
     "not still: the whole pending resume stops (it used to fall through to the per-file place), and a native seek below 15 s counts");
 });
 
-test("a file that has not started is buffering, not a seek (Grok a10r18, Claude a10r19)", () => {
+test("a file that has not started is buffering, not a seek (review a10r18, review a10r19)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   // Nothing has played yet: 0:00 now is a slow disk, not the person moving.
   assert.match(player, /if \(now === 0\) return false;\s*\/\/ buffering/);
@@ -346,14 +347,14 @@ test("a file that has not started is buffering, not a seek (Grok a10r18, Claude 
   // The baseline is sampled from the start of maybeResume, not from the first check.
   // The sampler starts only after the early returns, or ordinary playback leaks timers.
   assert.ok(player.indexOf("const sampler = setInterval") > player.indexOf("if (placeHere()) {"),
-    "sampler starts after the early returns (Codex a10r20)");
+    "sampler starts after the early returns (review a10r20)");
   assert.match(player, /clearInterval\(sampler\);/);
   // Both seeks wait, and a start after the wait is still picked up.
   assert.match(player, /async function waitFirstAudio\(seconds = 15\)/);
   // The late path applies the same near-end and movement rules as the immediate one.
   assert.match(player, /if \(pos > 0 && !\(dur && pos >= dur - 30\) && !moved\(\)\) applySeek\(pos, rk, gen, acted\);/);
   assert.ok(player.includes("seekWhenStarted(rk, () => pos, gen, acted, moved);"),
-    "a file that starts after the wait is still resumed (Codex a10r19)");
+    "a file that starts after the wait is still resumed (review a10r19)");
   assert.ok(player.includes("seekWhenStarted(rk, () => startAt, gen, acted, moved);"));
   // A pause during the wait keeps waiting; only gone/taken-over/never-started lets go.
   assert.match(player, /if \(\(media\(\)\.timeElapsed \|\| 0\) <= 0 \|\| currentInfo\(\)\.status !== "PLAYING"\) return;/);
@@ -361,17 +362,17 @@ test("a file that has not started is buffering, not a seek (Grok a10r18, Claude 
 });
 
 
-test("a hidden pop-out is not resized (Claude a10r19)", () => {
+test("a hidden pop-out is not resized (review a10r19)", () => {
   const app = readFileSync(new URL("../web/app.js", import.meta.url), "utf8");
   const start = app.indexOf("function kickDesktopFit()");
   const body = app.slice(start, app.indexOf("\n}", start));
   assert.match(body, /if \(document\.hidden\) return;/, "a minimised/occluded window must not refit");
 });
 
-test("a seek that the element drops is retried, and the place is only released once it lands (Grok a10r19)", () => {
+test("a seek that the element drops is retried, and the place is only released once it lands (review a10r19)", () => {
   const player = readFileSync(new URL("../web/player.js", import.meta.url), "utf8");
   assert.match(player, /function applySeek\(pos, rk, gen, acted, tries = 3\)/,
-    "every retry carries the handoff and action guards (Codex a10r20)");
+    "every retry carries the handoff and action guards (review a10r20)");
   assert.match(player, /const gone = \(\) => resumeKeyOf\(currentInfo\(\)\.item\) !== rk \|\| gen !== handoffGen/);
   assert.match(player, /if \(Math\.abs\(now - pos\) <= 5\) \{/);
   assert.match(player, /if \(attempt < tries\) once\(\);/);

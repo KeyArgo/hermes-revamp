@@ -15,11 +15,14 @@ the capabilities are exposed so UIs can grey their buttons out.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import store
+
+log = logging.getLogger("revamp")
 
 #: Every action /api/command accepts.
 KNOWN_ACTIONS = (
@@ -137,6 +140,7 @@ def dispatch(body: Dict[str, Any], broadcast: Callable[[str, Dict[str, Any]], in
         try:
             extra = backend.command(cmd) or {}
         except Exception as exc:  # the remote service failed: say so
+            log.debug("remote playback command failed", exc_info=True)
             return 200, {"ok": False, "accepted": False, "backend": target,
                          "error": str(exc), "delivered": 0}
         return 200, {"ok": True, "accepted": True, "applied": bool(extra.pop("applied", True)),

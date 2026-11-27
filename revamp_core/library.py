@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import threading
@@ -23,11 +24,12 @@ from .config import data_dir, library_folders
 from . import store
 from . import tags as tags_mod
 
+log = logging.getLogger("revamp")
+
 INDEX_NAME = "library.json"
 
+# Hold the index lock through replacement so older snapshots cannot overwrite newer ones.
 _LOCK = threading.RLock()
-# Serialises index writes: without it an older payload could be written after a newer one.
-_SAVE_LOCK = threading.Lock()
 # Scans are numbered. Only the newest one may commit, so an older scan of
 # folders the user just removed can't finish last and overwrite the index.
 _GEN = 0          # number of the newest scan started
@@ -78,11 +80,10 @@ def save_index(complete: bool = True) -> None:
 
     global _COMPLETE
     path = _index_path()
-    with _SAVE_LOCK:
-        with _LOCK:
-            _COMPLETE = complete
-            payload = {"tracks": {k: dict(v) for k, v in _INDEX.items()},
-                       "last_scan": _LAST_SCAN, "complete": complete}
+    with _LOCK:
+        _COMPLETE = complete
+        payload = {"tracks": {k: dict(v) for k, v in _INDEX.items()},
+                   "last_scan": _LAST_SCAN, "complete": complete}
         try:
             fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".lib-", suffix=".tmp")
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -193,7 +194,7 @@ def _entry_for(path: str, cached: Optional[Dict[str, Any]]) -> Optional[Dict[str
         "artist": meta.get("artist"),
         "album": meta.get("album"),
         # True when the album is only the folder's name (tags.probe's fallback): the numbers
-        # beside it are guesses too, so _book_continue must not trust them (grok a10r19).
+        # beside it are guesses too, so _book_continue must not trust them (review a10r19).
         "album_from_folder": bool(meta.get("album_from_folder")),
         "album_artist": meta.get("album_artist"),
         "track_no": meta.get("track_no"),
@@ -285,6 +286,7 @@ def _scan(roots: Optional[List[str]], gen: int) -> int:
         try:
             entry = _entry_for(path, cached_all.get(track_id_for(path)))
         except Exception:  # one unreadable file must not sink the whole scan
+            log.debug("could not read one library file: %s", path, exc_info=True)
             return None
         if entry:
             entry = dict(entry, root=root)  # never mutate a cached entry in place
@@ -359,6 +361,7 @@ def scan_async(roots: Optional[List[str]] = None) -> None:
         try:
             scan_sync(roots, gen)
         except Exception:
+            log.warning("library scan failed", exc_info=True)
             pass
 
     try:
@@ -553,20 +556,42 @@ _SORTERS = {
 }
 
 
+_UNKNOWN_ARTIST = "unknown artist"
+
+
+def _artist_key(value: Any) -> str:
+    """The comparison key for an artist name.
+
+    A blank artist is the "Unknown Artist" the lists show, so asking for that
+    row finds the tracks whose tags carry no artist at all.
+    """
+    key = str(value or "").strip().casefold()
+    return key or _UNKNOWN_ARTIST
+
+
+def _album_artist_key(t: Dict[str, Any]) -> str:
+    """A track's album artist, by the same rule the album list groups cards by."""
+    return _artist_key(t.get("album_artist") or t.get("artist"))
+
+
 def search(q: str = "", artist: str = "", album: str = "", kind: str = "",
+           album_artist: str = "",
            limit: int = 200, offset: int = 0, sort: str = "artist") -> Dict[str, Any]:
     tracks = all_tracks()
     kinds = _kinds_map()
     if q:
         tracks = [t for t in tracks if _matches(t, q.split())]
     if artist:
-        a = artist.casefold()
+        a = _artist_key(artist)
         tracks = [t for t in tracks
-                  if a == (t.get("artist") or "").casefold()
-                  or a == (t.get("album_artist") or "").casefold()]
+                  if a == _artist_key(t.get("artist"))
+                  or str(t.get("album_artist") or "").strip().casefold() == a]
     if album:
         al = album.casefold()
-        tracks = [t for t in tracks if al == (t.get("album") or "").casefold()]
+        tracks = [t for t in tracks if al == (t.get("album") or "Unknown Album").casefold()]
+    if album_artist:
+        aa = _artist_key(album_artist)
+        tracks = [t for t in tracks if aa == _album_artist_key(t)]
     if kind:
         k = kind.lower()
         tracks = [t for t in tracks if kind_of(t, kinds) == k]
@@ -620,8 +645,8 @@ def artists(kind: str = "") -> List[Dict[str, Any]]:
     for t in _of_kind(kind):
         name = t.get("artist") or "Unknown Artist"
         a = agg.setdefault(name, {"name": name, "albums": set(), "tracks": 0})
-        if t.get("album"):
-            a["albums"].add(t["album"])
+        # The same name the album list gives the card ("Unknown Album" when untagged).
+        a["albums"].add(t.get("album") or "Unknown Album")
         a["tracks"] += 1
     out = [{"name": a["name"], "albums": sorted(a["albums"]), "tracks": a["tracks"]}
            for a in agg.values()]
@@ -639,8 +664,9 @@ def albums(artist: Optional[str] = None, kind: str = "") -> List[Dict[str, Any]]
             "album": name,
             "artist": t.get("album_artist") or t.get("artist") or "Unknown Artist",
             "year": t.get("year"), "tracks": 0, "duration": 0.0,
-            "_ids": [],
+            "_ids": [], "_artists": set(),
         })
+        a["_artists"].add(_artist_key(t.get("artist")))
         a["tracks"] += 1
         try:
             a["duration"] += float(t.get("duration") or 0)
@@ -651,8 +677,12 @@ def albums(artist: Optional[str] = None, kind: str = "") -> List[Dict[str, Any]]
         if t.get("has_art"):
             a["art_track_id"] = t["id"]
     out = []
+    want = _artist_key(artist) if artist else ""
     for a in agg.values():
-        if artist and artist.lower() not in (a["artist"] or "").lower():
+        # Exact, case-insensitive match on the album artist (the same rule the
+        # search uses): "Queen" must not also list "Queens of the Stone Age". A track
+        # artist counts too, so an artist seen only on a compilation finds that album.
+        if want and want != _artist_key(a["artist"]) and want not in a["_artists"]:
             continue
         out.append({
             "album": a["album"], "artist": a["artist"], "year": a["year"],

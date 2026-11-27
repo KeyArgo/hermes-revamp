@@ -174,6 +174,7 @@ def test_mini_shuffle_replaces_queue_with_only_the_visible_rows():
     helper = src[start:end]
     assert "const shuffled = [...rows]" in helper
     assert "await playItems(shuffled.map(toItem))" in helper
+    # The shuffle light is held only once the player took the command.
     assert "command('shuffle', { on: true })" in helper
     radio = src[src.index("function RadioList("):src.index("function LibraryList(")]
     library = src[src.index("function LibraryList("):src.index("const BooksList")]
@@ -202,7 +203,7 @@ shuffleVisible(shown, row => ({ id: row.id })).then(() => {
   Math.random = oldRandom;
   const want = JSON.stringify([{id:'two'}, {id:'three'}, {id:'one'}]);
   if (JSON.stringify(calls[0][1]) !== want) throw new Error(JSON.stringify(calls));
-  if (JSON.stringify(calls.at(-1)) !== JSON.stringify(['command', 'shuffle', {on:true}])) throw new Error(JSON.stringify(calls));
+  if (JSON.stringify(calls.slice(1)) !== JSON.stringify([['command', 'shuffle', {on:true}], ['hold', 'shuffle', true]])) throw new Error(JSON.stringify(calls));
 }).catch(err => { console.error(err); process.exit(1); });
 """
     result = subprocess.run([node, "-e", script, str(PLUGIN)], capture_output=True, text=True, timeout=30)

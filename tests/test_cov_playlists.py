@@ -182,8 +182,8 @@ def test_exact_id_wins_over_another_playlists_name(home):
     # "Chill" gets id chill; a second playlist named "chill" gets id chill-2. Looking up
     # "chill" used to return whichever came first in the directory, so edits and
     # deletes could hit the wrong playlist.
-    a = pl.create_playlist("Chill", [{"kind": "file", "path": "/a.mp3", "title": "A"}])
-    b = pl.create_playlist("chill", [{"kind": "file", "path": "/b.mp3", "title": "B"}])
+    a = pl.create_playlist("Chill", [])
+    b = pl.create_playlist("chill", [])
     assert (a["id"], b["id"]) == ("chill", "chill-2")
     assert pl.get_playlist("chill")["id"] == "chill"
     assert pl.get_playlist("chill-2")["id"] == "chill-2"
@@ -203,8 +203,57 @@ def test_lookup_keeps_the_real_id_on_case_insensitive_disks(home, monkeypatch):
             return any(c.name.lower() == self.name.lower() for c in self.parent.glob("*")) if self.parent.is_dir() else False
         return check
 
-    pl.create_playlist("Chill", [{"kind": "file", "path": "/a.mp3", "title": "A"}])
+    pl.create_playlist("Chill", [])
     monkeypatch.setattr(pathlib.Path, "is_file", folded(real_is_file))
     monkeypatch.setattr(pathlib.Path, "exists", folded(real_exists))
     assert pl.get_playlist("Chill")["id"] == "chill"
     assert pl.get_playlist("CHILL")["id"] == "chill"
+
+
+def test_unresolved_replacement_preserves_playlist(home):
+    from revamp_core.server import Handler
+
+    track = {"url": "https://station.example/live"}
+    playlist = pl.create_playlist("Saved", [track])
+    path = pl.playlists_dir() / "saved.m3u8"
+    original = path.read_bytes()
+    body = {"items": [track, {"id": "missing:track/1"}]}
+    handler = object.__new__(Handler)
+    handler._body_json = lambda: body
+    handler._err = lambda status, message: status
+    handler._send_json = lambda result: 200
+    route = "/api/playlists/" + playlist["id"]
+    assert handler._api_put(route) == 400
+    assert path.read_bytes() == original
+    body["items"] = []
+    assert handler._api_put(route) == 200
+    assert pl.get_playlist("saved")["items"] == []
+
+
+def test_name_only_update_preserves_unreadable_playlist(home, monkeypatch):
+    pid = pl.create_playlist("original", [{"url": "https://example.org/music"}])["id"]
+    path = pl.playlists_dir() / f"{pid}.m3u8"
+    before = path.read_bytes()
+    read = pathlib.Path.read_text
+
+    def read_text(file, *args, **kwargs):
+        if file == path:
+            raise PermissionError("locked")
+        return read(file, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", read_text)
+    with pytest.raises(PermissionError):
+        pl.update_playlist(pid, name="new")
+    assert path.read_bytes() == before
+
+
+def test_create_rejects_partial_playlist(home):
+    from revamp_core import server
+    from unittest.mock import Mock
+
+    handler = Mock()
+    handler._body_json.return_value = {"name": "mix", "items": [
+        {"kind": "stream", "url": "https://example.org/music"}, {"id": "missing:track/1"}]}
+    server.Handler._api_post(handler, "/api/playlists")
+    handler._err.assert_called_once_with(400, "playlist contains an invalid or unresolved item")
+    assert pl.list_playlists() == []

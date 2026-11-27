@@ -53,7 +53,7 @@ def fake_net(monkeypatch, tmp_path):
                 return _Resp(json.dumps(val).encode())
         raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b"{}"))
 
-    monkeypatch.setattr(lyrics.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(lyrics, "_open", urlopen)
     for name in ("_CACHE", "_MEM"):
         if isinstance(getattr(lyrics, name, None), dict):
             getattr(lyrics, name).clear()
@@ -223,7 +223,7 @@ def test_proxy_forwards_a_url_encoded_id(monkeypatch):
     assert seen == [("GET", "/api/library/lyrics?id=track+%2F+%26+%3F")]
 
 
-# ---- from the Codex review round 1
+# ---- from the review round 1
 
 def test_cache_hit_keeps_source(fake_net):
     calls, answers = fake_net
@@ -248,7 +248,7 @@ def test_offset_applies_to_lines_before_it():
     assert lyrics.parse_lrc("[00:02.00]line\n[offset:+500]\n") == [{"t": 1.5, "line": "line"}]
 
 
-# ---- from the Codex review round 2
+# ---- from the review round 2
 
 def test_cached_miss_expires_from_memory_too(fake_net, monkeypatch):
     calls, answers = fake_net
@@ -266,3 +266,16 @@ def test_non_object_json_is_not_a_crash(fake_net):
     answers["track_name=Weird"] = []
     out = lyrics.lyrics_for("X", "Weird")
     assert out["found"] is False
+
+
+def test_a_cache_file_written_with_compact_keys_is_still_found(fake_net, tmp_path):
+    # tools/screenshots.mjs (and any other writer using JavaScript's JSON.stringify) writes
+    # '["a","b","c",8]'; Python's json.dumps writes '["a", "b", "c", 8]'. Both are the same key.
+    calls, _answers = fake_net
+    data = {"synced": [{"t": 0, "line": "A small song begins"}], "plain": "", "instrumental": False}
+    key = json.dumps(["revamp studio", "late checkout", "night drive", 8], separators=(",", ":"))
+    (tmp_path / lyrics.CACHE_NAME).write_text(
+        json.dumps({key: {"hit": True, "ts": time.time(), "data": data}}), encoding="utf-8")
+    out = lyrics.lyrics_for("REVamp Studio", "Late Checkout", "Night Drive", 8.0)
+    assert out["found"] is True and out["synced"] == data["synced"]
+    assert calls == [], "served from the cache, no network"

@@ -6,10 +6,14 @@
  * as Hermes is open, and moves that same player between three places without
  * reloading it (Element.moveBefore keeps an iframe's state):
  *
- *   dock    — off-screen; music keeps playing, status-bar controls work
+ *   dock    — parked in a hidden holder inside the status bar; music keeps
+ *             playing, status-bar controls work
  *   page    — the full Revamp UI on the /revamp page (sidebar → Revamp)
- *   winamp  — "pop out": just the classic Winamp windows, floating over
- *             Hermes, draggable, everything else stays clickable
+ *   winamp  — "pop out": just the classic Winamp windows in a Hermes
+ *             floating pane, draggable, everything else stays clickable
+ *
+ * Everything the plugin draws lives in nodes Hermes gives it (panes, slots,
+ * routes): nothing is ever appended to the host page's document.body.
  *
  * The status bar is the everyday surface, laid out like the bundled Radio
  * plugin so Revamp can replace it: an audio-reactive braille waveform, a
@@ -66,13 +70,22 @@ const ROUTE = '/revamp'
 // winamp overlay shows only the part that holds the classic windows.
 const DOCK_W = 900
 const DOCK_H = 1000
-// Research spike only: prove a keep-alive Hermes pane can be the classic
-// player's home. Leave this true for the manual test; remove the registration
-// (or set false) before shipping a different pane design.
-const PANE_SPIKE = true
+// Whether the docked player gets its own keep-alive Hermes pane: the pane is
+// registered when the docked location is chosen and unregistered when the
+// player is elsewhere. Off keeps it in the status bar's hidden dock instead
+// of taking a pane column.
+const DOCKED_PANE = true
 // The bundled Radio plugin's cross-window channel: it stops itself when any
 // other sender announces {type: 'play'}, and announces its own plays there.
+// Published by Hermes's own bundled Radio plugin, apps/desktop/src/plugins/radio/plugin.js
+// (the `new BroadcastChannel('hermes:radio:playback')` there, which also listens for the
+// same message), so this name is a channel the app itself keeps, not another plugin's.
 const RADIO_BUS = 'hermes:radio:playback'
+
+// Sibling plugins the player page may point at. The id is allowlisted here and
+// the host route is built here, once: the web UI can only ask, never act on the
+// host itself. The route is the public one (Capabilities -> Plugins, preselected).
+const SIBLING_PLUGIN_IDS = ['aura', 'hermes-music-studio']
 
 const EN = {
   title: 'REVamp',
@@ -157,6 +170,15 @@ const EN = {
   addToQueue: 'Add to queue',
   addedToQueue: 'Added to queue',
   addedNext: 'Will play next',
+  addedNextMany: '{n} tracks will play next',
+  addedToQueueMany: '{n} tracks added to the queue',
+  addToPlaylist: 'Add to playlist',
+  newPlaylist: 'New playlist…',
+  addedToPlaylist: 'Added {n} track(s) to “{name}”',
+  createdPlaylist: 'Created “{name}” with {n} track(s)',
+  tracksView: 'Tracks',
+  albums: 'Albums',
+  artists: 'Artists',
   live: 'Live',
   paused: 'Paused',
   stopped: 'Stopped',
@@ -202,6 +224,12 @@ const EN = {
   crispScaleHint: 'Snap the Frame to whole pixels (1×–4×). Off fills the frame.',
   on: 'On',
   off: 'Off',
+  barControls: 'Status bar',
+  barControlsHelp: 'Menu only keeps just the REVamp pill in the status bar. Play, pause, skip and the rest stay inside its menu.',
+  barControlsFull: 'Full controls',
+  barControlsMenu: 'Menu only',
+  milkdropTitle: 'MilkDrop visualizer',
+  milkdropHelp: 'The animated picture beside the player. Turning it off saves CPU/GPU.',
   showDocked: 'Show the docked player',
   hideDocked: 'Hide the docked player (mini only)',
   showFrame: 'Show Frame',
@@ -264,13 +292,27 @@ const CSS = `
    track name, transport labels or the braille waveform. Text fields stay selectable. */
 [class^="revamp-"],[class*=" revamp-"]{-webkit-user-select:none;user-select:none}
 [class^="revamp-"] input,[class*=" revamp-"] input,[class^="revamp-"] textarea,[class*=" revamp-"] textarea{-webkit-user-select:text;user-select:text}
-.revamp-bar{display:flex;align-items:center;gap:2px;height:100%;color:var(--ui-text-tertiary)}
+.revamp-bar{display:flex;align-items:center;gap:4px;height:100%;color:var(--ui-text-tertiary)}
 .revamp-bar .revamp-name{max-width:150px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .revamp-bar[data-playing=true] .revamp-name{color:var(--ui-text-secondary)}
 .revamp-action{width:16px;height:16px;padding:0;flex-shrink:0}
 .revamp-action-icon{display:flex;align-items:center;justify-content:center;width:12px;height:12px;flex-shrink:0;overflow:hidden}
 .revamp-skip{display:flex;align-items:center;width:12px;height:12px}
 .revamp-skip[data-dir=prev]{transform:scaleX(-1)}
+/* Aura-style pills: the geometry of Aura's .ap-pill/.aura-pill (full radius, 1px
+   border, 4px gaps, 2px accent focus ring) on Hermes theme tokens, so the bar
+   reads the same in light and dark. Fixed height: state changes never shift it.
+   Declared after .revamp-action so a pill wins over the old 16px square. */
+.revamp-pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;box-sizing:border-box;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:11px;line-height:1;cursor:pointer;flex-shrink:0;transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.revamp-pill:hover{background:var(--chrome-action-hover);color:var(--ui-text-primary)}
+.revamp-pill:focus-visible{outline:2px solid var(--ui-accent);outline-offset:1px}
+.revamp-pill[aria-pressed=true]{border-color:var(--ui-accent);color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 12%,transparent)}
+.revamp-pill-icon{width:22px;padding:0;justify-content:center}
+.revamp-np-pill{max-width:172px;min-width:0}
+.revamp-np-pill .revamp-name{flex:0 1 auto;max-width:132px}
+.revamp-np-state{display:inline-flex;align-items:center;justify-content:center;width:10px;height:10px;flex-shrink:0;color:var(--ui-text-tertiary)}
+.revamp-bar[data-playing=true] .revamp-np-pill{border-color:var(--ui-accent)}
+.revamp-bar[data-playing=true] .revamp-np-state{color:var(--ui-accent)}
 .revamp-wave{position:relative;height:24px;width:100%;font-family:var(--font-mono,monospace);font-size:12px;line-height:12px;color:var(--ui-text-tertiary);opacity:.45;overflow:hidden;flex-shrink:0}
 .revamp-wave-layer{position:absolute;inset:0;display:grid;grid-template-columns:repeat(var(--revamp-cols),minmax(0,1fr));grid-auto-rows:12px}
 .revamp-wave-layer>span{text-align:center;min-width:0}
@@ -304,6 +346,9 @@ const CSS = `
 .revamp-menu-pop{padding:0;width:auto;min-width:0}.revamp-row{position:relative}.revamp-menu{display:flex;flex-direction:column;min-width:150px;padding:4px;border:1px solid var(--ui-stroke-secondary);border-radius:6px;background:var(--ui-bg-elevated,var(--ui-surface-primary,#1c1c1c));box-shadow:0 6px 20px rgba(0,0,0,.35)}
 .revamp-menu-item{display:block;width:100%;text-align:left;font-size:12px;line-height:24px;padding:0 8px;border:0;border-radius:4px;color:var(--ui-text-primary);background:none;cursor:pointer}
 .revamp-menu-item:hover,.revamp-menu-item:focus-visible{background:var(--chrome-action-hover);outline:none}
+.revamp-menu-sub{display:flex;flex-direction:column;margin-top:3px;padding-top:3px;border-top:1px solid var(--ui-stroke-secondary);max-height:180px;overflow-y:auto}
+.revamp-menu-sub .revamp-menu-item{padding-left:18px}
+.revamp-subtabs{position:sticky;top:0;z-index:1;padding:0 4px 4px;background:var(--ui-surface-primary,#1c1c1c)}
 .revamp-load-more{height:1px}
 .revamp-signal{height:48px;padding:5px 6px 0;min-width:0}
 .revamp-track{display:flex;align-items:center;gap:5px;height:19px;min-width:0;font-size:11px;line-height:16px;color:var(--ui-text-secondary)}
@@ -318,8 +363,13 @@ const CSS = `
 .revamp-focus-row>span{width:42px;flex-shrink:0}
 .revamp-focus-row input{flex:1;min-width:0;height:3px;accent-color:var(--ui-accent);cursor:pointer}
 .revamp-chips{display:flex;flex-wrap:wrap;gap:4px;padding:2px 6px 6px}
-.revamp-chip{font-size:11px;line-height:18px;padding:0 8px;border-radius:9px;border:1px solid var(--ui-stroke-secondary);color:var(--ui-text-secondary);cursor:pointer;background:none}
+.revamp-chip{display:inline-flex;align-items:center;height:22px;font-size:11px;line-height:1;padding:0 10px;border-radius:999px;border:1px solid var(--ui-stroke-secondary);color:var(--ui-text-secondary);cursor:pointer;background:none;transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.revamp-chip:hover{background:var(--chrome-action-hover)}
 .revamp-chip:hover,.revamp-chip[aria-pressed=true]{color:var(--ui-accent);border-color:var(--ui-accent)}
+.revamp-chip[aria-pressed=true]{background:color-mix(in srgb,var(--ui-accent) 12%,transparent)}
+.revamp-chip:focus-visible{outline:2px solid var(--ui-accent);outline-offset:1px}
+.revamp-menu-pills{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:2px 8px}
+.revamp-menu-pill{white-space:nowrap}
 .revamp-folders-head{display:flex;align-items:center;gap:4px;height:32px;padding:0 4px 4px 8px;font-size:12px;color:var(--ui-text-primary)}
 .revamp-folders-head .revamp-space{flex:1}
 .revamp-path{font-size:10px;line-height:14px;color:var(--ui-text-tertiary);padding:0 8px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
@@ -452,8 +502,16 @@ function notifyError(message, { always = false } = {}) {
 }
 
 function command(action, extra = {}) {
-  return rest('/command', { method: 'POST', body: { action, ...extra }, timeoutMs: 5000 }).catch(err => {
+  if (action === 'settings') {
+    return rest('/state', { method: 'PUT', body: { settings: extra } })
+      .then(() => refreshLive()).catch(err => notifyError(`REVamp: ${err?.message || 'settings update failed'}`))
+  }
+  return rest('/command', { method: 'POST', body: { action, ...extra }, timeoutMs: 5000 }).then(res => {
+    if (res?.ok === false || res?.accepted === false || res?.delivered === 0) throw new Error(res.error || 'No player received the command.')
+    return true
+  }).catch(err => {
     notifyError(`REVamp: ${err?.message || 'command failed'}`)
+    return false
   })
 }
 
@@ -529,14 +587,15 @@ async function collectPluginBugEnv() {
   let revampVersion = 'unknown'
   let revampBuild = 'unknown'
   try {
-    const h = bridge?.ready ? await bridge.request('/api/health', { timeoutMs: 4000 }) : null
+    const h = bridge?.ready ? await bridge.request('/health', { timeoutMs: 4000 }) : null
     if (h?.version) revampVersion = String(h.version)
     if (h?.build) revampBuild = String(h.build)
   } catch { /* player not ready */ }
-  if (revampVersion === 'unknown') {
+  if (revampVersion === 'unknown' || revampBuild === 'unknown') {
     try {
       const info = await rest('/info', { timeoutMs: 3000 })
       if (info?.version) revampVersion = String(info.version)
+      if (info?.build) revampBuild = String(info.build)
     } catch { /* gateway down */ }
   }
   const live = $live.get()
@@ -545,10 +604,17 @@ async function collectPluginBugEnv() {
     (storedTheme && typeof storedTheme === 'object' && (storedTheme.look || storedTheme.theme))
       ? String(storedTheme.look || storedTheme.theme)
       : 'unknown'
-  const hermesVersion =
-    typeof host?.appVersion === 'string' ? host.appVersion
-      : typeof globalThis.__HERMES_APP_VERSION__ === 'string' ? globalThis.__HERMES_APP_VERSION__
-        : undefined
+  // The SDK's status snapshot carries the Hermes version; a slow or missing one never
+  // holds the report up.
+  let hermesVersion = 'unknown'
+  try {
+    let timer = 0
+    const st = await Promise.race([
+      Promise.resolve(host?.status?.()),
+      new Promise(resolve => { timer = setTimeout(resolve, 1500, null) })
+    ]).finally(() => clearTimeout(timer))
+    if (typeof st?.version === 'string' && st.version) hermesVersion = st.version
+  } catch { /* status unavailable */ }
   return {
     revampVersion,
     revampBuild,
@@ -565,7 +631,13 @@ async function collectPluginBugEnv() {
 async function recoverPlayer() {
   engine?.reload()
   wakeEngineRetry?.()
-  const ready = await engine?.whenReady?.(7000)
+  const deadline = Date.now() + 7000
+  if (!engine) await new Promise(resolve => {
+    const finish = () => { clearTimeout(timer); off(); resolve() }
+    const timer = setTimeout(finish, 7000)
+    const off = $engineVersion.listen(() => { if (engine) finish() })
+  })
+  const ready = await engine?.whenReady(Math.max(0, deadline - Date.now()))
   if (ready) {
     void refreshLive()
     host.notify({ kind: 'success', message: EN.recoveryStarted })
@@ -575,12 +647,23 @@ async function recoverPlayer() {
 async function openBugReport(copyOnly = false) {
   if (!ctxRef) return
   const env = await collectPluginBugEnv()
-  if (copyOnly) {
-    await ctxRef.os.writeClipboard(formatBugReportBody(env))
-    host.notify({ kind: 'success', message: EN.bugCopied })
-  } else {
-    await ctxRef.os.openExternal(buildBugReportUrl(env))
+  if (copyOnly) return copyReportText(formatBugReportBody(env), EN.bugCopied)
+  if (typeof ctxRef.os?.openExternal !== 'function') {
+    return notifyError('Opening a link is not available in this host.')
   }
+  try {
+    if (await ctxRef.os.openExternal(buildBugReportUrl(env)) === false) notifyError('Hermes could not open the bug report.')
+  } catch (err) { notifyError(err?.message || 'Hermes could not open the bug report.') }
+}
+
+async function copyReportText(text, message) {
+  if (!ctxRef || typeof ctxRef.os?.writeClipboard !== 'function') {
+    return notifyError('Copying to the clipboard is not available in this host.')
+  }
+  try {
+    if (await ctxRef.os.writeClipboard(text) === false) return notifyError('Hermes could not copy to the clipboard.')
+    host.notify({ kind: 'success', message })
+  } catch (err) { notifyError(err?.message || 'Hermes could not copy to the clipboard.') }
 }
 
 function readPlaceMenuTipSeen() {
@@ -607,6 +690,9 @@ const scopedPaneId = side => `${ID}:${PANE_IDS[side]}`
 const $dockedPlayerSide = atom('right')
 // Off by default: fractional scale fills the frame. Whole numbers are an explicit choice.
 const $crispScale = atom(false)
+// Status bar: 'full' (now-playing pill, waveform, transport, queue, Frame) or 'menu'
+// (only the REVamp menu pill; everything else lives inside the menu). Saved in ui.barControls.
+const $barControls = atom('full')
 let refitPane = () => {}
 
 // fit is the limiting side's ratio (pane room / classic window). Crisp snaps to a
@@ -627,12 +713,32 @@ function writeUiSettings(patch) {
   ctxRef?.storage.set('ui', next)
   return next
 }
+function setBarControls(mode) {
+  const next = mode === 'menu' ? 'menu' : 'full'
+  writeUiSettings({ barControls: next })
+  $barControls.set(next)
+}
 function setCrispScale(on) {
   writeUiSettings({ crispScale: !!on })
   $crispScale.set(!!on)
   refitPane()
 }
 let disposeDockedPlayerPane = null
+// The pop-out is a Hermes floating pane (placement: 'floating'): the host
+// draws the card, drags it by its header and remembers where it was put.
+// REVamp only fills the body. One id, so a size change re-registers in place
+// (the registry replaces the same id with one notification) and the card
+// follows the classic windows without remounting the player.
+const FLOAT_PANE_ID = 'classic-float'
+let disposeFloatingPlayerPane = null
+let floatPaneSize = { w: 275, h: 348 }
+let floatResizeTimer = 0
+let floatResizeWant = null
+// The status bar's zero-size holder (set by RevampBar): the hidden dock's
+// home. The bar is always mounted in Hermes, so the dock never needs the
+// host page's body. Null until the bar mounts; the iframes stay detached
+// until then and moveInto reattaches them when it appears.
+let barDockHolder = null
 // Hiding Frame unregisters its UI pane, but it does not change the selected
 // player location: that would silently move the live player into the mini bar.
 function placementLocation() {
@@ -654,9 +760,6 @@ function setPlayerLocation(loc, fromBus = false) {
     $playerLocation.set(loc)
     $winampOpen.set(loc === 'floating') // legacy view, kept in sync for existing UI
   }
-  // Other windows follow the pick (they have no engine: engine?.place() is a no-op there).
-  // The sender echoes too: its own atoms are already set, the echo is a cheap no-op.
-  try { locBus?.postMessage({ loc, from: locSender }) } catch { /* channel closed */ }
   if (loc === 'docked') {
     if ($frameHidden.get()) setFrameHidden(false)
     // Even when already docked the pane may be hidden: showing it again is the point.
@@ -679,13 +782,12 @@ function setFrameHidden(hidden) {
   $frameHidden.set(hidden)
   const paneId = scopedPaneId($dockedPlayerSide.get())
   if (hidden) {
-    // Hiding must unregister as well as hide: hosts that retain an empty pane
-    // after hidePane otherwise leave a blank Frame in their layout.
+    // Hiding unregisters the pane: a host that kept it would leave a blank Frame
+    // in its layout.
     disposeDockedPlayerPane?.()
     disposeDockedPlayerPane = null
-    if (typeof host.hidePane === 'function') host.hidePane(paneId)
   } else {
-    if (!disposeDockedPlayerPane && PANE_SPIKE && ctxRef) disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane($dockedPlayerSide.get()))
+    if (!disposeDockedPlayerPane && DOCKED_PANE && ctxRef) disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane($dockedPlayerSide.get()))
     try { host.revealPane?.(paneId) } catch { /* older hosts */ }
   }
   engine?.place()
@@ -722,7 +824,7 @@ function applyDockedPlayerSide(side) {
     ctxRef.storage.set('dockedPlayerSide', side)
     $dockedPlayerSide.set(side)
   }
-  if (!changed || !PANE_SPIKE) return
+  if (!changed || !DOCKED_PANE) return
   disposeDockedPlayerPane?.()
   if ($frameHidden.get()) disposeDockedPlayerPane = null
   else disposeDockedPlayerPane = ctxRef.register(dockedPlayerPane(side))
@@ -732,6 +834,60 @@ function applyDockedPlayerSide(side) {
     try { host.revealPane?.(scopedPaneId(side)) } catch { /* older hosts: no revealPane */ }
     engine?.place()
   }
+}
+
+// The pop-out's pane contribution. The host's floating card spawns in the
+// bottom-right corner (the old overlay's default home), drags by its header
+// and persists its position per pane id. lifecycleKeepAlive keeps the body —
+// and the live iframe inside it — mounted while the card is collapsed.
+// render is one stable function: re-registering for a size change must
+// reconcile the same body component, never remount it around the iframe.
+function renderFloatPane() {
+  return jsx(FloatPane, {})
+}
+function floatingPlayerPane() {
+  return {
+    id: FLOAT_PANE_ID,
+    area: PANES_AREA,
+    title: 'REVamp',
+    data: {
+      placement: 'floating',
+      anchor: 'bottom-right',
+      // The grip bar plus a hair of slack so the clip box never scrolls.
+      width: `${floatPaneSize.w + 2}px`,
+      height: `${floatPaneSize.h + 18}px`,
+      lifecycleKeepAlive: true
+    },
+    render: renderFloatPane
+  }
+}
+// The floating pane exists only while this window runs the player and the
+// chosen home is 'floating' — the same windows that showed the old overlay.
+function syncFloatingPane() {
+  const want = Boolean(ctxRef) && Boolean(engine) && $playerLocation.get() === 'floating'
+  if (want && !disposeFloatingPlayerPane) {
+    disposeFloatingPlayerPane = ctxRef.register(floatingPlayerPane())
+  } else if (!want && disposeFloatingPlayerPane) {
+    disposeFloatingPlayerPane()
+    disposeFloatingPlayerPane = null
+  }
+}
+// The classic windows changed size (a skin, MilkDrop opening): let the card
+// follow once the new size has held for a beat, the same patience fitPane
+// gives a scale. Re-registering the same id replaces the contribution in
+// place, so the body — and the iframe — are never remounted.
+function resizeFloatPane(w, h) {
+  if (!disposeFloatingPlayerPane) return
+  floatResizeWant = { w, h }
+  if (floatResizeTimer) return
+  floatResizeTimer = setTimeout(() => {
+    floatResizeTimer = 0
+    const want = floatResizeWant
+    if (!want || !disposeFloatingPlayerPane || !ctxRef) return
+    if (want.w === floatPaneSize.w && want.h === floatPaneSize.h) return
+    floatPaneSize = want
+    disposeFloatingPlayerPane = ctxRef.register(floatingPlayerPane())
+  }, 400)
 }
 
 // A status the user just clicked, held until the server agrees or 4 s pass,
@@ -908,9 +1064,10 @@ async function bringBackFromDesktop() {
 // stream arrive in order, so play_index lands after the new queue.
 async function playItems(items, index = 0) {
   if (!items.length) return
-  await command('load', { items, mode: 'replace', play: index === 0 })
+  if (!(await command('load', { items, mode: 'replace', play: index === 0 }))) return false
   if (index > 0) await command('play_index', { index })
   setTimeout(refreshLive, 600)
+  return true
 }
 
 // Shuffle only the rows the person can see in the mini picker.  Replacing the
@@ -922,9 +1079,8 @@ async function shuffleVisible(rows, toItem) {
     const j = Math.floor(Math.random() * (i + 1))
     ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
-  await playItems(shuffled.map(toItem))
-  holdNp('shuffle', true)
-  command('shuffle', { on: true })
+  if (!(await playItems(shuffled.map(toItem)))) return
+  if (await command('shuffle', { on: true })) holdNp('shuffle', true)
 }
 
 function stationItem(s) {
@@ -966,8 +1122,11 @@ function createEngine(ctx, url, bridgeKey = '') {
   const frame = document.createElement('iframe')
   frame.title = 'REVamp player'
   frame.src = `${url}/?embed=1`
-  // Same posture as the SDK's SandboxedFrame: opaque origin, no popups, no top navigation.
-  frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-downloads')
+  // Same posture as the SDK's SandboxedFrame: opaque origin, scripts only, no popups, no
+  // top navigation. allow-downloads stays because the page saves files itself: the backup
+  // zip (web/views/backups.js) and a playlist export (web/views/playlists.js) click a
+  // temporary <a download>. allow-forms is not granted: web/ has no <form> at all.
+  frame.setAttribute('sandbox', 'allow-scripts allow-downloads')
   frame.setAttribute('referrerpolicy', 'no-referrer')
   frame.setAttribute('allow', 'autoplay; fullscreen')
   frame.setAttribute('allowfullscreen', '')
@@ -979,22 +1138,40 @@ function createEngine(ctx, url, bridgeKey = '') {
   const controlFrame = document.createElement('iframe')
   controlFrame.title = 'REVamp library controls'
   controlFrame.src = `${url}/?embed=1&control=1`
-  controlFrame.setAttribute('sandbox', 'allow-scripts allow-forms allow-downloads')
+  controlFrame.setAttribute('sandbox', 'allow-scripts allow-downloads')
   controlFrame.setAttribute('referrerpolicy', 'no-referrer')
   controlFrame.setAttribute('allow', 'autoplay; fullscreen')
   controlFrame.style.cssText = 'border:0;display:none;width:100%;height:100%;background:transparent'
 
+  // The hidden dock: parked inside the status bar's zero-size holder (a node
+  // REVamp owns, always mounted in Hermes), never on the host page's body.
+  // Off-screen inside the holder's clip, so the iframe keeps drawing exactly
+  // as it did before. Until the bar mounts, the dock stays detached.
   const dock = document.createElement('div')
   dock.setAttribute('aria-hidden', 'true')
-  dock.style.cssText = `position:fixed;left:-${DOCK_W + 4000}px;top:0;width:${DOCK_W}px;height:${DOCK_H}px;overflow:hidden;pointer-events:none`
+  dock.style.cssText = `position:absolute;left:-${DOCK_W + 4000}px;top:0;width:${DOCK_W}px;height:${DOCK_H}px;overflow:hidden;pointer-events:none`
   dock.append(frame, controlFrame)
-  document.body.append(dock)
+  function mountDock() {
+    if (barDockHolder && barDockHolder.isConnected) moveInto(barDockHolder, dock)
+    else dock.remove()
+  }
+  mountDock()
 
   const overlay = buildOverlay(ctx)
   let pageHost = null
+  // The docked pane: `paneArea` is REVamp's own holder inside the pane body (it fills the
+  // space the host gave it); `paneHost` is the clip box REVamp creates inside that holder
+  // and sizes to the classic windows. Nothing outside REVamp's own nodes is measured.
+  let paneArea = null
   let paneHost = null
+  let paneClip = null
+  let floatHost = null
   let box = { x: 0, y: 0, w: 275, h: 348 }
 
+  // The frame is sandboxed without allow-same-origin, so its origin is opaque ("null") and
+  // no concrete target origin can match it: '*' is the only value that works here. Nothing
+  // secret is in the messages we post, and the page answers bridge requests only when they
+  // carry the bridge key (web/app.js), so '*' leaks nothing to a page that ends up there.
   const send = msg => frame.contentWindow?.postMessage(msg, '*')
 
   // ---- the bridge to the player page (see rest()). Requests are matched by id; a page
@@ -1033,11 +1210,14 @@ function createEngine(ctx, url, bridgeKey = '') {
     frame.style.width = `${Math.min(DOCK_W, box.x + box.w + POP_SLACK)}px`
     frame.style.height = `${Math.min(DOCK_H, box.y + box.h + POP_SLACK)}px`
     frame.style.transform = `translate(${-box.x}px, ${-box.y}px)`
+    resizeFloatPane(box.w, box.h) // the Hermes card follows the classic windows
   }
   // The docked pane's clip box hugs the classic windows exactly (any skin/size).
   // Fractional scale fills the frame on the limiting side. Whole numbers are opt-in.
   function paneScale() {
-    const area = paneHost?.parentElement
+    // Measured on REVamp's own holder, which fills the space the pane gave it: no host
+    // container is queried.
+    const area = paneArea
     // Scale from the player windows only (bw/bh), so an open menu or a one-off wide window
     // never changes the zoom; the clip box still grows to hold the menu.
     const bw = box.bw || box.w, bh = box.bh || box.h
@@ -1125,7 +1305,7 @@ function createEngine(ctx, url, bridgeKey = '') {
       overlay.root.style.display = 'none'
       send({ type: 'revamp:mode', mode: 'winamp', placement: 'docked' })
       $where.set('pane')
-    } else if (loc === 'floating') {
+    } else if (loc === 'floating' && floatHost) {
       frame.style.transformOrigin = ''
       frame.style.width = `${DOCK_W}px`
       frame.style.height = `${DOCK_H}px`
@@ -1176,7 +1356,7 @@ function createEngine(ctx, url, bridgeKey = '') {
   }
 
   ctx.addEventListener(window, 'message', e => {
-    if (!e.data || typeof e.data !== 'object') return
+    if (!e.source || !e.data || typeof e.data !== 'object') return
     const fromPage = e.source === frame.contentWindow || e.source === controlFrame.contentWindow
     if (fromPage && typeof e.data.type === 'string' && e.data.type.startsWith('revamp:theme-')) {
       const others = [frame.contentWindow, controlFrame.contentWindow].filter(w => w && w !== e.source)
@@ -1188,6 +1368,24 @@ function createEngine(ctx, url, bridgeKey = '') {
         themeBg = cleanBg(e.data.bg)
         ctx.storage.set('themeBg', themeBg)
         for (const w of others) themeTo(w)
+      }
+      return
+    }
+    if (fromPage && e.data.type === 'revamp:diagnostic') {
+      saveDiagnostic(e.data.record)
+      return
+    }
+    // A page's "open in browser" links: the iframe has no allow-popups, so
+    // window.open does nothing there. Only REVamp's own frames may ask, and
+    // only http(s) URLs leave the machine.
+    if (fromPage && e.data.type === 'revamp:open-external') {
+      const u = e.data.url
+      if (typeof u === 'string' && /^https?:\/\//i.test(u)) {
+        // ctx.os.openExternal resolves false instead of throwing, so a refused open is said out loud.
+        if (typeof ctxRef?.os?.openExternal !== 'function') notifyError('REVamp: opening a link is not available in this host.', { always: true })
+        else Promise.resolve(ctxRef.os.openExternal(u)).then(ok => {
+          if (ok === false) notifyError(`REVamp: Hermes could not open ${u}`, { always: true })
+        }, err => notifyError(`REVamp: Hermes could not open ${u}: ${err?.message || err}`, { always: true }))
       }
       return
     }
@@ -1212,6 +1410,10 @@ function createEngine(ctx, url, bridgeKey = '') {
         $pageBorrow.set(true)
         if (parked) void bringBackFromDesktop()
         place()
+      } else if (e.data.type === 'revamp:open-plugin' && SIBLING_PLUGIN_IDS.includes(e.data.plugin)) {
+        // The library page is the control frame, so its "Find … in Plugins" buttons
+        // arrive here; the host's public route is the only way out.
+        try { host.navigate(`/capabilities?tab=plugins&plugin=${encodeURIComponent(e.data.plugin)}`) } catch { /* no router, no move */ }
       }
       return
     }
@@ -1253,7 +1455,13 @@ function createEngine(ctx, url, bridgeKey = '') {
     if (e.data.type === 'revamp:location' && PLAYER_LOCATIONS.includes(e.data.location)) {
       setPlayerLocation(e.data.location)
     }
-    if (e.data.type === 'revamp:diagnostic') saveDiagnostic(e.data.record)
+    // "Find <name> in Plugins" in the web UI: one hop, then the host's public
+    // route. Only REVamp's own frames may ask, and a host without a router
+    // leaves the click harmless — nothing outside our iframes is touched.
+    if (e.data.type === 'revamp:open-plugin' && SIBLING_PLUGIN_IDS.includes(e.data.plugin) &&
+        (e.source === frame?.contentWindow || e.source === controlFrame?.contentWindow)) {
+      try { host.navigate(`/capabilities?tab=plugins&plugin=${encodeURIComponent(e.data.plugin)}`) } catch { /* no router, no move */ }
+    }
     // Duck/unduck notices while docked to mini: the iframe's own toasts are invisible
     // there (docked off-screen), so surface them through the host instead.
     if (e.data.type === 'revamp:toast' && typeof e.data.text === 'string' && e.data.text) {
@@ -1269,25 +1477,23 @@ function createEngine(ctx, url, bridgeKey = '') {
     }
   })
 
-  // Narrow windows squeeze the chat: docked placement collapses to mini until it widens again
-  // (the saved choice stays 'docked', so this is placement only).
-  let wasNarrow = null
-  ctx.addEventListener(window, 'resize', () => {
-    const narrow = innerWidth < DOCKED_MIN_WIDTH
-    if (narrow === wasNarrow) return
-    wasNarrow = narrow
-    place()
-  })
-
   function remove() {
     dropPending()
     if (bridge === bridgeApi) bridge = null
     paneWatch?.disconnect()
     paneWatch = null
+    paneArea = null
+    paneHost = null
+    paneClip?.remove()
+    paneClip = null
     if (scaleTimer) { clearTimeout(scaleTimer); scaleTimer = 0 }
+    // A control-frame reload armed by a refused key must not fire after dispose.
+    if (controlRetry) { clearTimeout(controlRetry); controlRetry = 0 }
     refitPane = () => {}
+    floatHost = null
     dock.remove()
     overlay.root.remove()
+    syncFloatingPane()
   }
   ctx.onDispose(remove)
 
@@ -1306,16 +1512,46 @@ function createEngine(ctx, url, bridgeKey = '') {
     hidePage(el) { if (pageHost === el) { pageHost = null; $pageBorrow.set(true); place() } },
     borrowPage() { $pageBorrow.set(true); place() },
     showPane(el) {
-      paneHost = el
+      paneArea = el
       scaleSeen = false
       paneWatch?.disconnect()
-      if (typeof ResizeObserver !== 'undefined' && el.parentElement) {
+      // The clip box is REVamp's own child of the holder: created once, moved with it.
+      if (!paneClip) {
+        paneClip = document.createElement('div')
+        paneClip.setAttribute('aria-hidden', 'true')
+        paneClip.style.cssText = 'position:relative;overflow:hidden;flex:none;margin:6px auto 0'
+      }
+      el.append(paneClip)
+      paneHost = paneClip
+      if (typeof ResizeObserver !== 'undefined') {
         paneWatch = new ResizeObserver(() => { if ($where.get() === 'pane') fitPane() })
-        paneWatch.observe(el.parentElement)
+        paneWatch.observe(el)
       }
       place()
     },
-    hidePane(el) { if (paneHost === el) { paneWatch?.disconnect(); paneWatch = null; paneHost = null; place() } },
+    hidePane(el) {
+      if (paneArea !== el) return
+      paneWatch?.disconnect()
+      paneWatch = null
+      paneArea = null
+      paneHost = null
+      place()
+      paneClip?.remove()
+    },
+    // The floating pane's body adopts the overlay (plain DOM, not React, so
+    // the iframe survives every re-render). hideFloat runs as a layout-effect
+    // cleanup, while the pane is still connected: place() moves the iframe
+    // out with moveBefore before React takes the mount point away.
+    showFloat(el) {
+      floatHost = el
+      moveInto(el, overlay.root)
+      place()
+    },
+    hideFloat(el) { if (floatHost === el) { floatHost = null; place() } },
+    // The status bar's holder mounted / went away: park the dock in it, or
+    // keep the dock detached. Never the host page's body.
+    dockMounted() { mountDock() },
+    dockGone() { dock.remove() },
     // Thin wrapper over the locations: the floating overlay or no player at all.
     // $winampOpen stays in sync as a derived value (see setPlayerLocation listeners).
     setWinamp(open) { setPlayerLocation(open ? 'floating' : 'mini') },
@@ -1347,30 +1583,26 @@ function createEngine(ctx, url, bridgeKey = '') {
   }
 }
 
-// The floating Winamp window: a thin grip bar (drag, full player, close) over
+// The floating Winamp window: a thin strip (full player, dock, close) over
 // a clip box sized to the classic windows. Plain DOM: it lives outside the
-// React tree so it survives every navigation. Colors are theme tokens.
+// React tree so it survives every navigation. It is mounted INSIDE a Hermes
+// floating pane (FloatPane adopts it) — never on the host page's body. The
+// card belongs to Hermes: the host's own pane header drags it and remembers
+// where it was put, so the strip is a plain label row with no drag handling
+// of its own. Colors are theme tokens.
 function buildOverlay(ctx) {
   const root = document.createElement('div')
   root.setAttribute('role', 'dialog')
   root.setAttribute('aria-label', 'REVamp classic player')
-  const pos = ctx.storage.get('winampPos', { right: 24, bottom: 48 })
   root.style.cssText =
     // No soft drop shadow: under software graphics (Hermes on many NVIDIA hosts) a 32px blur
     // around a box whose player redraws all the time was recomputed on every frame.
-    'position:fixed;z-index:60;display:none;border-radius:4px;overflow:hidden;' +
+    'position:relative;width:100%;height:100%;display:none;border-radius:4px;overflow:hidden;' +
     'border:1px solid var(--ui-stroke-secondary)'
-  const placeAt = p => {
-    root.style.left = p.left != null ? `${p.left}px` : ''
-    root.style.top = p.top != null ? `${p.top}px` : ''
-    root.style.right = p.left == null ? `${p.right ?? 24}px` : ''
-    root.style.bottom = p.top == null ? `${p.bottom ?? 48}px` : ''
-  }
-  placeAt(pos)
 
   const grip = document.createElement('div')
   grip.style.cssText =
-    'height:16px;display:flex;align-items:center;gap:4px;padding:0 4px;cursor:grab;user-select:none;' +
+    'height:16px;display:flex;align-items:center;gap:4px;padding:0 4px;user-select:none;' +
     'font:10px/16px var(--font-sans, system-ui);color:var(--ui-text-quaternary);background:var(--ui-surface-secondary, transparent)'
   const label = document.createElement('span')
   label.textContent = '♪ REVamp'
@@ -1392,90 +1624,17 @@ function buildOverlay(ctx) {
     mkBtn('✕', EN.popIn, () => setPlayerLocation('mini'))
   )
 
-  // Drag by the grip, or by a classic title bar inside the player (the page streams
-  // those drags to us as screen coordinates); remember where it was dropped.
-  // While dragging, the box slides with a GPU transform, at most once per frame: moving a
-  // box that holds an out-of-process iframe by left/top relaid the page, repainted the
-  // shadow and resynced the iframe on every pointer event, and the drag crawled.
-  // left/top are written once, when the drag ends.
-  const clampPos = (left, top) => ({
-    left: Math.max(0, Math.min(innerWidth - 60, left)),
-    top: Math.max(0, Math.min(innerHeight - 20, top))
-  })
-  let slide = null // { left, top } where the drag started; the transform is relative to it
-  let want = null
-  let frameReq = 0
-  const paintSlide = () => {
-    frameReq = 0
-    if (!slide || !want) return
-    root.style.transform = `translate3d(${want.left - slide.left}px, ${want.top - slide.top}px, 0)`
-  }
-  const beginSlide = () => {
-    const r = root.getBoundingClientRect()
-    placeAt({ left: r.left, top: r.top })
-    slide = { left: r.left, top: r.top }
-    want = null
-    root.style.willChange = 'transform'
-  }
-  const moveTo = (left, top) => {
-    want = clampPos(left, top)
-    if (!slide) { placeAt(want); return }
-    if (!frameReq) frameReq = requestAnimationFrame(paintSlide)
-  }
-  const endSlide = () => {
-    if (frameReq) { cancelAnimationFrame(frameReq); frameReq = 0 }
-    if (slide && want) placeAt(want)
-    root.style.transform = ''
-    root.style.willChange = ''
-    slide = null
-    want = null
-  }
-  const savePos = () => {
-    const r = root.getBoundingClientRect()
-    ctx.storage.set('winampPos', { left: Math.round(r.left), top: Math.round(r.top) })
-  }
-  let drag = null
-  ctx.addEventListener(grip, 'pointerdown', e => {
-    // A press on the strip's buttons (⤢ ⇲ ✕) is a click, not a drag: capturing the pointer here
-    // sent the click to the strip and the buttons never fired.
-    if (e.button !== 0 || e.target?.closest?.('button')) return
-    const r = root.getBoundingClientRect()
-    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }
-    beginSlide()
-    grip.setPointerCapture(e.pointerId)
-    grip.style.cursor = 'grabbing'
-  })
-  ctx.addEventListener(grip, 'pointermove', e => {
-    if (drag) moveTo(e.clientX - drag.dx, e.clientY - drag.dy)
-  })
-  ctx.addEventListener(grip, 'pointerup', () => {
-    if (!drag) return
-    drag = null
-    grip.style.cursor = 'grab'
-    endSlide()
-    savePos()
-  })
-  let pageDrag = null
-  const dragFromPage = (phase, x, y) => {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return
-    if (phase === 'start') {
-      const r = root.getBoundingClientRect()
-      pageDrag = { left: r.left, top: r.top, x, y }
-      beginSlide()
-    } else if (pageDrag && phase === 'move') {
-      moveTo(pageDrag.left + x - pageDrag.x, pageDrag.top + y - pageDrag.y)
-    } else if (pageDrag && phase === 'end') {
-      moveTo(pageDrag.left + x - pageDrag.x, pageDrag.top + y - pageDrag.y)
-      pageDrag = null
-      endSlide()
-      savePos()
-    }
-  }
+  // The card belongs to Hermes: its pane header is the drag handle, so the
+  // strip only holds the label and the buttons. No host markup is queried and
+  // no synthetic pointer event is dispatched.
+  // The classic title bars inside the player stream their drags here. Only
+  // the host can move its floating card, so these are heard but not acted on:
+  // the pane header drags it instead.
+  const dragFromPage = () => {}
 
   const clip = document.createElement('div')
   clip.style.cssText = 'position:relative;overflow:hidden;width:275px;height:348px'
   root.append(grip, clip)
-  document.body.append(root)
   return { root, clip, dragFromPage }
 }
 
@@ -1547,6 +1706,7 @@ async function runEngine(ctx, signal) {
         }
         if (engine || signal.aborted || ctxRef !== ctx) { created.remove(); return }
         engine = created
+        syncFloatingPane() // the pop-out's pane exists only where the player runs
         $engineVersion.set($engineVersion.get() + 1)
         // The legacy flag is derived now; place() follows $playerLocation alone.
         $winampOpen.set($playerLocation.get() === 'floating')
@@ -1742,14 +1902,12 @@ function SmallAction({ label, icon, onClick, size = 'micro', pressed, className,
   }) })
 }
 
-function toggle() {
-  command('toggle')
-  // Optimistic: flip the cached status now; the next poll confirms it.
-  const s = $live.get()
-  const np = s?.live?.now_playing
+async function toggle() {
+  const np = $live.get()?.live?.now_playing
+  if (!(await command('toggle'))) return
   if (np) {
     heldStatus = { status: String(np.status).toUpperCase() === 'PLAYING' ? 'PAUSED' : 'PLAYING', until: Date.now() + 4000 }
-    $live.set(withHeld(s))
+    $live.set(withHeld($live.get()))
   }
   setTimeout(refreshLive, 400)
 }
@@ -1762,12 +1920,24 @@ function setVolume(percent) {
 }
 
 // ---------------------------------------------------------------- picker
-function Row({ name, sub, current, playing, onPlay, pin, extra, item }) {
+// One row, one menu. `item` is a single track/station; `items` is the whole batch an
+// album or artist row stands for (an array, or a function that fetches it on demand).
+function Row({ name, sub, current, playing, onPlay, pin, extra, item, items }) {
   const t = usePluginI18n(ID)
   const [menu, setMenu] = useState(null)
+  const [playlistsOpen, setPlaylistsOpen] = useState(false)
+  const [newPl, setNewPl] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [busy, setBusy] = useState(false)
   const menuRef = useRef(null)
   const rowRef = useRef(null)
+  const hasMenu = Boolean(item || items)
   const activate = () => (current ? toggle() : onPlay())
+  // Only fetched while the playlist submenu is open (the first open caches it).
+  const plQuery = useQuery({
+    queryKey: [ID, 'playlists'], queryFn: () => rest('/playlists'),
+    enabled: Boolean(menu) && playlistsOpen, staleTime: 30_000
+  })
 
   // The menu is a Hermes Popover (it renders above everything): a plain fixed-position box
   // inside the mini player's panel was clipped by the panel and never showed. Escape, a click
@@ -1781,40 +1951,112 @@ function Row({ name, sub, current, playing, onPlay, pin, extra, item }) {
   function openMenu(x, y) {
     const box = rowRef.current?.getBoundingClientRect()
     if (!box) return
+    setPlaylistsOpen(false)
+    setNewPl(false)
+    setNewName('')
     setMenu({ x: Math.max(0, x - box.left), y: Math.max(0, y - box.top) })
   }
 
-  function choose(action) {
-    setMenu(null)
+  // The batch a menu action works on: an album/artist row fetches its tracks only when
+  // something is actually picked.
+  async function batch() {
+    const list = typeof items === 'function' ? await items() : (items || (item ? [item] : []))
+    return Array.isArray(list) ? list.filter(Boolean) : []
+  }
+
+  async function choose(action) {
     if (action === 'now') {
+      setMenu(null)
       activate()
       return
     }
-    if (!item) return
-    if (action === 'next') {
-      command('load', { items: [item], mode: 'next' })
-      host.notify({ kind: 'success', message: t('addedNext') })
-      return
+    if (busy) return
+    setBusy(true)
+    try {
+      const list = await batch()
+      if (!list.length) return
+      if (action === 'next') {
+        if (!(await command('load', { items: list, mode: 'next' }))) return
+        host.notify({ kind: 'success', message: list.length === 1 ? t('addedNext') : t('addedNextMany').replace('{n}', list.length) })
+      } else {
+        if (!(await command('load', { items: list, mode: 'append' }))) return
+        host.notify({ kind: 'success', message: list.length === 1 ? t('addedToQueue') : t('addedToQueueMany').replace('{n}', list.length) })
+      }
+      setMenu(null)
+    } catch (err) {
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
+    } finally {
+      setBusy(false)
     }
-    command('load', { items: [item], mode: 'append' })
-    host.notify({ kind: 'success', message: t('addedToQueue') })
+  }
+
+  async function addToPlaylist(p) {
+    if (busy) return
+    setBusy(true)
+    try {
+      const list = await batch()
+      if (!list.length) return
+      const path = `/playlists/${encodeURIComponent(p.id)}`
+      const cur = await rest(path)
+      await rest(path, { method: 'PUT', body: { items: [...(cur?.items || []), ...list] } })
+      host.notify({ kind: 'success', message: t('addedToPlaylist').replace('{n}', list.length).replace('{name}', p.name) })
+      setMenu(null)
+    } catch (err) {
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function createPlaylist() {
+    const wanted = newName.trim()
+    if (!wanted || busy) return
+    setBusy(true)
+    try {
+      const list = await batch()
+      if (!list.length) return
+      await rest('/playlists', { method: 'POST', body: { name: wanted, items: list } })
+      host.notify({ kind: 'success', message: t('createdPlaylist').replace('{name}', wanted).replace('{n}', list.length) })
+      setMenu(null)
+    } catch (err) {
+      notifyError(`REVamp: ${err?.message || t('failed')}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const menuItem = (action, label) => jsx('button', {
-    type: 'button', role: 'menuitem', className: 'revamp-menu-item',
-    onClick: () => choose(action), children: label
+    type: 'button', role: 'menuitem', className: 'revamp-menu-item', disabled: busy,
+    onClick: () => void choose(action), children: label
   }, action)
+
+  // Arrow keys walk the open menu (including the playlist list); Escape closes it.
+  function onMenuKeyDown(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setMenu(null)
+      return
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    const buttons = [...(menuRef.current?.querySelectorAll('button:not([disabled])') || [])]
+    if (!buttons.length) return
+    e.preventDefault()
+    const at = buttons.indexOf(document.activeElement)
+    buttons[(at + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length].focus()
+  }
+
+  const savedPlaylists = Array.isArray(plQuery.data) ? plQuery.data : []
 
   return jsxs('div', {
     ref: rowRef, className: 'revamp-row', 'data-current': current, 'data-pinned': Boolean(pin?.pinned),
     // Hermes catches every right-click on the window (capture phase) and stops it, unless the
     // target sits inside an element with this marker: then the row's own menu gets the click.
-    'data-hermes-context-menu-trigger': item ? '' : undefined,
-    onContextMenu: item ? e => {
+    'data-hermes-context-menu-trigger': hasMenu ? '' : undefined,
+    onContextMenu: hasMenu ? e => {
       e.preventDefault()
       openMenu(e.clientX, e.clientY)
     } : undefined,
-    onKeyDown: item ? e => {
+    onKeyDown: hasMenu ? e => {
       if ((e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu') {
         e.preventDefault()
         const box = rowRef.current?.getBoundingClientRect()
@@ -1851,11 +2093,40 @@ function Row({ name, sub, current, playing, onPlay, pin, extra, item }) {
             side: 'bottom', align: 'start', sideOffset: 2, className: 'revamp-menu-pop',
             children: jsxs('div', {
               ref: menuRef, className: 'revamp-menu', role: 'menu', 'aria-label': t('rowMenu'),
-              onContextMenu: e => e.preventDefault(),
+              onContextMenu: e => e.preventDefault(), onKeyDown: onMenuKeyDown,
               children: [
                 menuItem('now', t('playNow')),
                 menuItem('next', t('playNext')),
-                menuItem('queue', t('addToQueue'))
+                menuItem('queue', t('addToQueue')),
+                jsx('button', {
+                  type: 'button', role: 'menuitem', className: 'revamp-menu-item', disabled: busy,
+                  'aria-haspopup': 'menu', 'aria-expanded': String(playlistsOpen),
+                  onClick: () => setPlaylistsOpen(open => !open), children: `${t('addToPlaylist')} ▸`
+                }, 'pl'),
+                playlistsOpen ? jsxs('div', { className: 'revamp-menu-sub', role: 'group', 'aria-label': t('playlists'), children: [
+                  plQuery.isLoading ? jsx('div', { className: 'revamp-note', children: t('loadingMore') }) : null,
+                  ...savedPlaylists.map(p => jsx('button', {
+                    type: 'button', role: 'menuitem', className: 'revamp-menu-item', disabled: busy,
+                    onClick: () => void addToPlaylist(p), children: p.name
+                  }, p.id)),
+                  plQuery.error ? jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }) : null,
+                  jsx('button', {
+                    type: 'button', role: 'menuitem', className: 'revamp-menu-item', disabled: busy,
+                    onClick: () => { setNewName(''); setNewPl(true) }, children: t('newPlaylist')
+                  }, 'new')
+                ] }) : null,
+                newPl ? jsxs('form', {
+                  className: 'revamp-ask',
+                  onSubmit: e => { e.preventDefault(); void createPlaylist() },
+                  children: [
+                    jsx('input', {
+                      value: newName, autoFocus: true, disabled: busy,
+                      onChange: e => setNewName(e.target.value), 'aria-label': t('newPlaylist')
+                    }),
+                    jsx('button', { type: 'submit', disabled: busy || !newName.trim(), children: t('save') }),
+                    jsx('button', { type: 'button', onClick: () => setNewPl(false), children: t('cancel') })
+                  ]
+                }) : null
               ]
             })
           })
@@ -1973,6 +2244,8 @@ function RadioList({ text, np, onPending, onText }) {
     staleTime: 3_600_000
   })
   const favorites = useQuery({ queryKey: [ID, 'favorites'], queryFn: () => rest('/radio/favorites'), staleTime: 30_000 })
+  // Hermes Agent Radio leads the list (its six channels); a fixed lineup, so it is fetched once.
+  const agentRadio = useQuery({ queryKey: [ID, 'agent-radio'], queryFn: () => rest('/radio/agent-radio'), staleTime: Infinity })
   const searchActive = (tag ? tag.length >= 2 : query.length >= 2) && query === text
   const search = usePagedList({
     queryKey: [ID, 'radio-search', tag, query],
@@ -1988,7 +2261,7 @@ function RadioList({ text, np, onPending, onText }) {
   })
   const searchItems = searchActive ? search.items : []
   const pinned = Array.isArray(favorites.data) ? favorites.data : []
-  const isPinned = s => pinned.some(p => p.id === s.id || p.url === s.url)
+  const favoriteFor = s => pinned.find(p => p.id === s.id || p.url === s.url)
   // Same fold the server applies (NFKD, strip marks): 'cafe' must find 'Café' even
   // when only the local favourites/presets are reachable (offline path).
   const fold = v => String(v ?? '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
@@ -1997,11 +2270,13 @@ function RadioList({ text, np, onPending, onText }) {
     ? s => (s.tags || []).some(v => fold(v).includes(fold(tag)))
     : s => !needle || [s.name, ...(s.tags || [])].some(v => fold(v).includes(needle))
   const seen = new Set()
-  const rows = [...pinned, ...(Array.isArray(presets.data) ? presets.data : []), ...searchItems]
+  const leading = Array.isArray(agentRadio.data) ? agentRadio.data : []
+  const rows = [...leading, ...pinned, ...(Array.isArray(presets.data) ? presets.data : []), ...searchItems]
     .filter(s => s?.url && (matches(s) || searchItems.includes(s)) && !seen.has(s.url) && seen.add(s.url))
   async function pinToggle(s) {
     try {
-      if (isPinned(s)) await rest(`/radio/favorites?${new URLSearchParams({ id: s.id })}`, { method: 'DELETE' })
+      const favorite = favoriteFor(s)
+      if (favorite) await rest(`/radio/favorites?${new URLSearchParams({ id: favorite.id })}`, { method: 'DELETE' })
       else await rest('/radio/favorites', { method: 'POST', body: s })
       favorites.refetch()
     } catch (err) {
@@ -2025,7 +2300,7 @@ function RadioList({ text, np, onPending, onText }) {
       // The whole list is queued, so next/previous move between stations.
       onPlay: () => playItems(rows.map(stationItem), rows.indexOf(s)),
       item: stationItem(s),
-      pin: { pinned: isPinned(s), toggle: () => void pinToggle(s) }
+      pin: { pinned: Boolean(favoriteFor(s)), toggle: () => void pinToggle(s) }
     }, s.url)),
     searchActive ? jsx(LoadMore, {
       hasMore: search.hasMore, loading: search.loading && Boolean(searchItems.length),
@@ -2038,6 +2313,7 @@ function RadioList({ text, np, onPending, onText }) {
 
 function LibraryList({ text, np, onPending, kind = 'music' }) {
   const t = usePluginI18n(ID)
+  const [view, setView] = useState('tracks')
   const query = useDebounced(text, 250)
   const version = useValue($libVersion)
   const scanning = useValue($scanning)
@@ -2051,32 +2327,149 @@ function LibraryList({ text, np, onPending, kind = 'music' }) {
   })
   const tracks = result.items
   const pending = text !== query || (result.loading && !tracks.length)
-  useEffect(() => onPending(pending), [pending])
+  const browse = kind === 'music'
+  useEffect(() => onPending(view === 'tracks' ? pending : false), [pending, view])
   return jsx(Fragment, { children: [
-    tracks.length > 1 ? jsx('div', { className: 'revamp-list-action', children: jsx(SmallAction, {
-      label: t('shuffleVisible'), icon: ShuffleIcon, size: 'icon-xs', onClick: () => void shuffleVisible(tracks, trackItem)
-    }) }, 'shuffle') : null,
-    scanning && jsx('div', { className: 'revamp-note', role: 'status', children: progress?.total
-      ? t('scanningOf').replace('{done}', progress.done.toLocaleString()).replace('{total}', progress.total.toLocaleString())
-      : t('scanning') }, 'scan'),
-    ...tracks.map((tr, i) => jsx(Row, {
-      name: tr.title || tr.path?.split('/').pop() || '?',
-      sub: [tr.artist, tr.album, tr.resume > 0 && t('leftOff').replace('{time}', clock(tr.resume))].filter(Boolean).join(' · '),
-      current: np.kind !== 'stream' && np.kind !== 'focus' && sameUrl(np.url, tr.url), playing: np.playing,
-      // Play from here, with the rest of the results queued behind it.
-      onPlay: () => playItems(tracks.map(trackItem), i),
-      item: trackItem(tr)
-    }, tr.id)),
-    jsx(LoadMore, {
-      hasMore: result.hasMore, loading: result.loading && Boolean(tracks.length),
-      onLoad: result.loadMore, label: t('loadingMore')
-    }, 'more'),
-    result.error && jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }, 'err'),
-    !pending && !scanning && !tracks.length && jsx('div', { className: 'revamp-note', role: 'status', children: t(query ? 'noResults' : kind === 'audiobook' ? 'emptyBooks' : 'emptyLibrary') }, 'none')
+    // Albums and artists are rows with the same menu as a track; their menu acts on every
+    // track of the album or artist. Books keep the plain track list.
+    browse ? jsx('div', { className: 'revamp-subtabs', children: jsx(SegmentedControl, {
+      options: [
+        { id: 'tracks', label: t('tracksView') },
+        { id: 'albums', label: t('albums') },
+        { id: 'artists', label: t('artists') }
+      ],
+      value: view, sizing: 'equal', onChange: id => setView(id)
+    }) }, 'view') : null,
+    browse && view === 'albums' ? jsx(AlbumList, { text: query, np, onPending })
+      : browse && view === 'artists' ? jsx(ArtistList, { text: query, np, onPending })
+        : jsx(Fragment, { children: [
+          tracks.length > 1 ? jsx('div', { className: 'revamp-list-action', children: jsx(SmallAction, {
+            label: t('shuffleVisible'), icon: ShuffleIcon, size: 'icon-xs', onClick: () => void shuffleVisible(tracks, trackItem)
+          }) }, 'shuffle') : null,
+          scanning && jsx('div', { className: 'revamp-note', role: 'status', children: progress?.total
+            ? t('scanningOf').replace('{done}', progress.done.toLocaleString()).replace('{total}', progress.total.toLocaleString())
+            : t('scanning') }, 'scan'),
+          ...tracks.map((tr, i) => jsx(Row, {
+            name: tr.title || (tr.path && baseName(tr.path)) || '?',
+            sub: [tr.artist, tr.album, tr.resume > 0 && t('leftOff').replace('{time}', clock(tr.resume))].filter(Boolean).join(' · '),
+            current: np.kind !== 'stream' && np.kind !== 'focus' && sameUrl(np.url, tr.url), playing: np.playing,
+            // Play from here, with the rest of the results queued behind it.
+            onPlay: () => playItems(tracks.map(trackItem), i),
+            item: trackItem(tr)
+          }, tr.id)),
+          jsx(LoadMore, {
+            hasMore: result.hasMore, loading: result.loading && Boolean(tracks.length),
+            onLoad: result.loadMore, label: t('loadingMore')
+          }, 'more'),
+          result.error && jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }, 'err'),
+          !pending && !scanning && !tracks.length && jsx('div', { className: 'revamp-note', role: 'status', children: t(query ? 'noResults' : kind === 'audiobook' ? 'emptyBooks' : 'emptyLibrary') }, 'none')
+        ] })
   ] })
 }
 
 const BooksList = props => jsx(LibraryList, { ...props, kind: 'audiobook' })
+
+// Every track of an album or artist, in the server's order (disc then track number), for the
+// row menu. Cached per library version so Play and a menu action share one fetch.
+const albumCache = new Map()
+const artistCache = new Map()
+
+function cached(cache, key, make) {
+  if (!cache.has(key)) {
+    if (cache.size > 100) cache.clear() // a long session should not keep every album
+    const pending = make().catch(err => { cache.delete(key); throw err })
+    cache.set(key, pending)
+  }
+  return cache.get(key)
+}
+
+async function allTrackItems(params, key, cache) {
+  return cached(cache, key, async () => {
+    const items = []
+    let offset = 0
+    for (;;) {
+      const out = await rest(`/library/tracks?${new URLSearchParams({
+        ...params, sort: 'album', limit: '200', offset: String(offset)
+      })}`)
+      const rows = Array.isArray(out?.tracks) ? out.tracks : []
+      items.push(...rows.map(trackItem))
+      offset += rows.length
+      if (!rows.length || offset >= (Number(out?.total) || items.length)) break
+    }
+    return items
+  })
+}
+
+const albumItems = (a, version) => allTrackItems(
+  { album: a.album || '', album_artist: a.artist || '', kind: 'music' },
+  `${version}|${a.artist || ''}|${a.album || ''}`, albumCache
+)
+const artistItems = (name, version) => allTrackItems(
+  { artist: name || '', kind: 'music' },
+  `${version}|${name || ''}`, artistCache
+)
+
+const foldName = v => String(v ?? '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+
+function AlbumList({ text, np, onPending }) {
+  const t = usePluginI18n(ID)
+  const version = useValue($libVersion)
+  const albums = useQuery({
+    queryKey: [ID, 'albums', version],
+    queryFn: () => rest('/library/albums?kind=music'), staleTime: 20_000
+  })
+  const needle = foldName(text)
+  const rows = (Array.isArray(albums.data) ? albums.data : [])
+    .filter(a => !needle || [a.album, a.artist].some(v => foldName(v).includes(needle)))
+  const pending = albums.isLoading && !rows.length
+  useEffect(() => onPending(pending), [pending])
+  const play = a => {
+    albumItems(a, version)
+      .then(items => items.length && playItems(items))
+      .catch(err => notifyError(`REVamp: ${err?.message || t('failed')}`))
+  }
+  return jsx(Fragment, { children: [
+    ...rows.map(a => jsx(Row, {
+      name: a.album || '?',
+      sub: [a.artist, a.year, `${a.tracks} ${t('tracks')}`].filter(Boolean).join(' · '),
+      current: false, playing: false,
+      onPlay: () => play(a),
+      items: () => albumItems(a, version)
+    }, `${a.artist}|${a.album}`)),
+    albums.error && jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }, 'err'),
+    !pending && !rows.length && jsx('div', { className: 'revamp-note', role: 'status', children: t(text ? 'noResults' : 'emptyLibrary') }, 'none')
+  ] })
+}
+
+function ArtistList({ text, np, onPending }) {
+  const t = usePluginI18n(ID)
+  const version = useValue($libVersion)
+  const artists = useQuery({
+    queryKey: [ID, 'artists', version],
+    queryFn: () => rest('/library/artists?kind=music'), staleTime: 20_000
+  })
+  const needle = foldName(text)
+  const rows = (Array.isArray(artists.data) ? artists.data : [])
+    .filter(a => !needle || foldName(a.name).includes(needle))
+  const pending = artists.isLoading && !rows.length
+  useEffect(() => onPending(pending), [pending])
+  const play = a => {
+    artistItems(a.name, version)
+      .then(items => items.length && playItems(items))
+      .catch(err => notifyError(`REVamp: ${err?.message || t('failed')}`))
+  }
+  return jsx(Fragment, { children: [
+    ...rows.map(a => jsx(Row, {
+      name: a.name || '?',
+      sub: `${a.tracks} ${t('tracks')} · ${Array.isArray(a.albums) ? a.albums.length : a.albums} ${t('albums').toLowerCase()}`,
+      current: false, playing: false,
+      onPlay: () => play(a),
+      items: () => artistItems(a.name, version)
+    }, a.name)),
+    artists.error && jsx('div', { className: 'revamp-note', role: 'alert', children: t('failed') }, 'err'),
+    !pending && !rows.length && jsx('div', { className: 'revamp-note', role: 'status', children: t(text ? 'noResults' : 'emptyLibrary') }, 'none')
+  ] })
+}
 
 // After the folders change: poll the scan, refreshing the track lists every few
 // seconds (a big network folder takes minutes and fills in as it goes).
@@ -2107,7 +2500,7 @@ async function watchScan() {
   }
 }
 
-const baseName = path => path.replace(/\/+$/, '').split('/').pop() || path
+const baseName = path => path.replace(/[/\\]+$/, '').split(/[/\\]/).pop() || path
 
 // Music folders: list, remove, and add one by browsing (the renderer has no
 // native folder dialog for plugins, so the Revamp server lists directories).
@@ -2186,7 +2579,9 @@ function FolderPanel({ kind = 'music', onClose }) {
     ] })
   }
   const here = dirs.data
-  const jumps = [{ label: t('home'), path: '' }, { label: '/', path: '/' }, { label: '/mnt', path: '/mnt' }]
+  const windows = here?.path ? /^(?:[a-z]:|\\\\)/i.test(here.path) : /^Win/i.test(navigator.platform)
+  const jumps = [{ label: t('home'), path: '' }]
+  if (!windows) jumps.push({ label: '/', path: '/' }, { label: '/mnt', path: '/mnt' })
   return jsxs('div', { children: [
     head,
     jsxs('form', {
@@ -2377,7 +2772,10 @@ function QueuePanel({ np }) {
     $live.set(withHeld($live.get()))
     queueEdits = queueEdits
       .then(() => command(next.action, next.extra))
-      .then(() => setTimeout(refreshLive, 500))
+      .then(ok => {
+        if (ok) setTimeout(refreshLive, 500)
+        else { heldQueue = null; void refreshLive() }
+      })
       // One failed edit used to leave the chain rejected, so every later edit silently
       // never ran. Drop the optimistic view and re-read the real queue instead.
       .catch(() => { heldQueue = null; refreshLive() })
@@ -2621,11 +3019,11 @@ function Transport({ np, compact = false, extended = false }) {
     jsx(SmallAction, { label: t('next'), icon: NextIcon, size, onClick: () => command('next') }),
     extended ? jsx(SmallAction, {
       label: t('shuffle'), icon: ShuffleIcon, size, pressed: np.shuffle,
-      onClick: () => { holdNp('shuffle', !np.shuffle); command('shuffle', { on: !np.shuffle }) }
+      onClick: async () => { if (await command('shuffle', { on: !np.shuffle })) holdNp('shuffle', !np.shuffle) }
     }) : null,
     extended ? jsx(SmallAction, {
       label: t('repeat'), icon: RepeatIcon, size, pressed: np.repeat,
-      onClick: () => { holdNp('repeat', !np.repeat); command('repeat', { on: !np.repeat }) }
+      onClick: async () => { if (await command('repeat', { on: !np.repeat })) holdNp('repeat', !np.repeat) }
     }) : null,
     jsx('span', { className: 'revamp-space' }),
     compact ? null : jsx(SmallAction, {
@@ -2663,24 +3061,24 @@ function placeItems(item, extra, t) {
   ]
 }
 
-// Where the player lives; the dot marks the active one.
+// The menu's footer actions are pills, like the genre chips above them.
+const Pill = ({ on, onClick, children, label }) => jsx('button', {
+  type: 'button', className: 'revamp-chip revamp-menu-pill',
+  ...(on === undefined ? {} : { 'data-active': on, 'aria-pressed': on }),
+  'aria-label': label, onClick, children
+})
+
+// Where the player lives; the filled pill marks the active one.
 function LocationRow() {
   const t = usePluginI18n(ID)
   const location = useValue($playerLocation)
   useValue($dockedPlayerSide); useValue($desktop); useValue($frameHidden)
   const active = loc => loc === location && !$desktop.get()
-  const item = (loc, key, suffix = '') => jsxs(Button, {
-    variant: 'ghost', size: 'micro',
-    'data-active': active(loc),
-    'aria-pressed': active(loc),
-    onClick: () => setPlayerLocation(loc),
-    children: [active(loc) ? '● ' : '', t(key) + suffix]
+  const item = (loc, key, suffix = '') => jsx(Pill, {
+    on: active(loc), onClick: () => setPlayerLocation(loc), children: t(key) + suffix
   }, loc)
-  const extra = (key, label, on, onClick) => jsxs(Button, {
-    variant: 'ghost', size: 'micro', 'data-active': on, 'aria-pressed': on, onClick,
-    children: [on ? '● ' : '', label]
-  }, key)
-  return jsxs('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, padding: '2px 8px' }, 'aria-label': t('location'), children: placeItems(item, extra, t) })
+  const extra = (key, label, on, onClick) => jsx(Pill, { on, onClick, children: label }, key)
+  return jsxs('div', { className: 'revamp-menu-pills', 'aria-label': t('location'), children: placeItems(item, extra, t) })
 }
 
 function LocationRowWithTip() {
@@ -2716,10 +3114,10 @@ function ReportBugRow({ compact = false }) {
     children: [
       compact ? null : jsx('span', { style: { fontSize: 12, color: 'var(--ui-text-secondary)' }, children: t('reportBug') }),
       compact ? null : jsx('span', { style: { fontSize: 11, color: 'var(--ui-text-tertiary)', marginBottom: 4 }, children: t('reportBugHint') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(false), children: t('reportBug') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void openBugReport(true), children: t('copyBugDetails') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void recoverPlayer(), children: t('recoverPlayer') }),
-      jsx(Button, { variant: 'ghost', size: 'micro', onClick: () => void ctxRef?.os.writeClipboard(formatDiagnostics()), children: t('copyDiagnostics') })
+      jsx(Pill, { onClick: () => void openBugReport(false), children: t('reportBug') }, 'bug'),
+      jsx(Pill, { onClick: () => void openBugReport(true), children: t('copyBugDetails') }, 'details'),
+      jsx(Pill, { onClick: () => void recoverPlayer(), children: t('recoverPlayer') }, 'recover'),
+      jsx(Pill, { onClick: () => void copyReportText(formatDiagnostics(), 'Diagnostics copied'), children: t('copyDiagnostics') }, 'diag')
     ]
   })
 }
@@ -2765,15 +3163,33 @@ function RevampBar() {
     const timer = setTimeout(() => setClearArmed(false), 3000)
     return () => clearTimeout(timer)
   }, [clearArmed])
-  const clearQueue = () => {
+  const clearQueue = async () => {
     if (!clearArmed) { setClearArmed(true); return }
+    setClearArmed(false)
+    if (!(await command('queue_clear'))) return
     heldQueue = { playlist: [], index: -1, until: Date.now() + 3000 }
     $live.set(withHeld($live.get()))
-    command('queue_clear')
-    setClearArmed(false)
+    setTimeout(refreshLive, 500)
   }
   const np = nowPlaying(live)
+  // Menu only: the bar keeps just the REVamp pill; transport and the rest are in its menu.
+  const full = useValue($barControls) !== 'menu'
   const triggerRef = useRef(null)
+  // The hidden dock's home: a zero-size holder the engine parks the player
+  // iframe in while no visible surface shows it. The bar is always mounted
+  // in Hermes, so the dock never needs the host page's body. The effect runs
+  // in the host only (the bar's unit test stubs useEffect and never calls it).
+  const dockRef = useRef(null)
+  useEffect(() => {
+    const el = dockRef.current
+    if (!el) return undefined
+    barDockHolder = el
+    engine?.dockMounted()
+    return () => {
+      if (barDockHolder === el) barDockHolder = null
+      engine?.dockGone()
+    }
+  }, [])
   const [browseWidth, setBrowseWidth] = useState(null)
   maybeAnnounce(np)
   const name = np.kind === 'stream' ? np.title : np.title || ''
@@ -2783,13 +3199,21 @@ function RevampBar() {
     $open.set(value)
   }
   return jsxs('div', { className: 'revamp-bar', 'data-playing': np.playing, style: { position: 'relative' }, children: [
+    jsx('span', { ref: dockRef, 'aria-hidden': true, style: { position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' } }),
     jsx(BarToast, {}),
-    jsx(Waveform, { compact: true }),
+    full ? jsx(Waveform, { compact: true }) : null,
     jsxs(Popover, { open, onOpenChange, children: [
       jsx(PopoverTrigger, { asChild: true, children: jsx(Button, {
-        ref: triggerRef, variant: 'ghost', size: 'micro', style: { width: open ? browseWidth : undefined },
+        ref: triggerRef, variant: 'ghost', size: 'micro', className: 'revamp-pill revamp-np-pill',
+        style: { width: open ? browseWidth : undefined },
         'aria-label': `${t('browse')}: ${label(np) || t('title')}`, title: label(np) || undefined,
-        children: jsx('span', { className: 'revamp-name', children: name || t('title') })
+        'aria-haspopup': 'dialog', 'aria-expanded': open,
+        children: jsxs(Fragment, { children: [
+          // Play state, not an action: lit while playing, dim while paused. The
+          // pill next to it is the actual play/pause control.
+          jsx('span', { className: 'revamp-np-state', 'aria-hidden': true, children: jsx(np.playing ? icons.Pause : icons.Play, { style: { width: 10, height: 10 } }) }),
+          jsx('span', { className: 'revamp-name', children: name || t('title') })
+        ] })
       }) }),
       jsx(PopoverContent, { side: 'top', align: 'end', className: 'revamp-panel', 'aria-label': t('title'), children:
         np.online
@@ -2798,7 +3222,7 @@ function RevampBar() {
               jsx(LocationRowWithTip, {}),
               jsx(ReportBugRow, { compact: true }),
               jsx(Signal, { np }),
-              jsx(Transport, { np, extended: true })
+              np.connected ? jsx(Transport, { np, extended: true }) : null
             ] })
           : jsxs('div', { style: { padding: 8 }, children: [
             jsx(EmptyState, { title: t('offline'), description: t('offlineHint') }),
@@ -2809,16 +3233,17 @@ function RevampBar() {
           ] })
       })
     ] }),
-    np.online ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, onClick: toggle }) : null,
-    np.online ? jsx(SmallAction, { label: t('next'), icon: NextIcon, onClick: () => command('next') }) : null,
-    hasQueue ? jsx(SmallAction, {
+    full && np.connected ? jsx(SmallAction, { label: t('prev'), icon: PrevIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('prev') }) : null,
+    full && np.connected ? jsx(SmallAction, { label: t(np.playing ? 'pause' : 'play'), icon: np.playing ? icons.Pause : icons.Play, className: 'revamp-pill revamp-pill-icon', onClick: toggle }) : null,
+    full && np.connected ? jsx(SmallAction, { label: t('next'), icon: NextIcon, className: 'revamp-pill revamp-pill-icon', onClick: () => command('next') }) : null,
+    full && np.connected && hasQueue ? jsx(SmallAction, {
       label: clearArmed ? t('clearConfirm') : t('clearQueue'), icon: TrashIcon, pressed: clearArmed,
-      onClick: clearQueue
+      className: 'revamp-pill revamp-pill-icon', onClick: clearQueue
     }) : null,
-    jsx(SmallAction, {
-      label: t(frameOpen ? 'hideFrame' : 'showFrame'), icon: DockIcon, pressed: frameOpen, className: 'revamp-dock-toggle',
+    full ? jsx(SmallAction, {
+      label: t(frameOpen ? 'hideFrame' : 'showFrame'), icon: DockIcon, pressed: frameOpen, className: 'revamp-pill revamp-pill-icon revamp-dock-toggle',
       onClick: () => frameOpen ? setFrameHidden(true) : setPlayerLocation('docked')
-    })
+    }) : null
   ] })
 }
 
@@ -2888,7 +3313,7 @@ function ClassicPaneSpike() {
       jsxs('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 },
         children: [
           jsx('div', { ref: hostRef, style: playerHere
-            ? { position: 'relative', overflow: 'hidden', width: '275px', height: '348px', flex: 'none', margin: '6px auto 0' }
+            ? { position: 'relative', overflow: 'hidden', width: '100%', height: '100%', flex: 'none' }
             : { display: 'none' } }),
           playerHere ? null : jsxs('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 12 },
             children: [
@@ -2907,12 +3332,46 @@ function ClassicPaneSpike() {
   })
 }
 
+// The floating pane's body: a stable mount point the engine adopts the
+// overlay into. The overlay is plain DOM, not React, so the iframe survives
+// every re-render (and every in-place size re-registration). The host's pane
+// header drags the card and persists its position; lifecycleKeepAlive keeps
+// this body — and the music — alive while the card is collapsed.
+function FloatPane() {
+  const version = useValue($engineVersion)
+  const where = useValue($where)
+  const hostRef = useRef(null)
+  // Layout effect: cleanup runs before React removes the mount point, so the
+  // player moves out while it can still move without a reload.
+  useLayoutEffect(() => {
+    const el = hostRef.current
+    if (!el) return undefined
+    engine?.showFloat(el)
+    return () => engine?.hideFloat(el)
+  }, [version])
+  const playerHere = where === 'winamp'
+  const note =
+    where === 'desktop' ? `${EN.playingIn} desktop window.` :
+    where === 'elsewhere' ? EN.elsewhere :
+    EN.starting
+  return jsxs('div', {
+    style: { position: 'relative', width: '100%', height: '100%', overflow: 'hidden' },
+    children: [
+      jsx('div', { ref: hostRef, style: { width: '100%', height: '100%' } }),
+      playerHere ? null : jsx('div', {
+        style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, color: 'var(--ui-text-secondary)', fontSize: 12, textAlign: 'center' },
+        children: note
+      })
+    ]
+  })
+}
+
 // The full player route either holds the one live iframe (mini / explicit
 // borrow), or hosts the audio-free control shell (Frame / Pop-out / desktop).
 function Page() {
   const t = usePluginI18n(ID)
+  const version = useValue($engineVersion)
   const where = useValue($where)
-  const desktop = useValue($desktop)
   const location = useValue($playerLocation)
   const hostRef = useRef(null)
   const np = nowPlaying(useValue($live))
@@ -2925,7 +3384,7 @@ function Page() {
     if (!el || !engine) return undefined
     engine.showPage(el)
     return () => engine?.hidePage(el)
-  }, [where === 'none' || where === 'elsewhere', desktop])
+  }, [where === 'none' || where === 'elsewhere', version])
 
   if (where === 'none' || (where === 'elsewhere' && !np.online)) {
     return jsx('div', { style: { padding: 24 }, children: jsx(EmptyState, { title: t('offline'), description: t('offlineHint') }) })
@@ -2977,12 +3436,35 @@ function NowPlayingCard() {
 // ---------------------------------------------------------------- settings
 // Settings → REVamp: where the player lives. The pressed button follows
 // $playerLocation (useValue), and picking one moves the player at once.
+// The one MilkDrop on/off choice, surfaced where anyone can find it. It is the
+// player's own saved `milkdropOn` (the same key its window watcher writes), not a
+// second setting: the command persists it AND closes/opens the renderer.
+function MilkdropSettings() {
+  const t = k => EN[k] || k
+  const live = useValue($live)
+  const st = live?.settings || {}
+  // Before the unified key existed, the page's own open choice stood in for it.
+  const on = st.milkdropOn ?? st.milkdropOpen ?? !hostRendersInSoftware()
+  const set = want => {
+    void command('settings', { milkdropOn: want })
+  }
+  return jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 }, children: [
+    jsx('h3', { style: { margin: 0, fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('milkdropTitle') }),
+    jsx('span', { style: { fontSize: 11, color: 'var(--ui-text-tertiary)' }, children: t('milkdropHelp') }),
+    jsxs('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('milkdropTitle'), children: [
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': on, onClick: () => set(true), children: t('on') }),
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': !on, onClick: () => set(false), children: t('off') })
+    ] })
+  ] })
+}
+
 function RevampSettings() {
   const t = k => EN[k] || k
   const location = useValue($playerLocation)
   const dockedSide = useValue($dockedPlayerSide)
   const frameHidden = useValue($frameHidden)
   const crisp = useValue($crispScale)
+  const barControls = useValue($barControls)
   useValue($desktop)
   const item = (loc, key, suffix = '') => jsx(Button, {
     variant: 'ghost', size: 'sm',
@@ -2992,7 +3474,14 @@ function RevampSettings() {
   }, loc)
   const extra = (key, label, on, onClick) => jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': on, onClick, children: label }, key)
   return jsxs('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, padding: 12, alignItems: 'flex-start' }, children: [
-    jsx('h3', { style: { margin: 0, fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('location') }),
+    jsx(MilkdropSettings, {}),
+    jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('barControls') }),
+    jsx('span', { style: { fontSize: 11, color: 'var(--ui-text-tertiary)' }, children: t('barControlsHelp') }),
+    jsxs('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('barControls'), children: [
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': barControls !== 'menu', onClick: () => setBarControls('full'), children: t('barControlsFull') }),
+      jsx(Button, { variant: 'ghost', size: 'sm', 'aria-pressed': barControls === 'menu', onClick: () => setBarControls('menu'), children: t('barControlsMenu') })
+    ] }),
+    jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('location') }),
     jsx('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 }, role: 'group', 'aria-label': t('location'), children: placeItems(item, extra, t) }),
     jsx('h3', { style: { margin: '8px 0 0', fontSize: 13, color: 'var(--ui-text-primary)' }, children: t('dockedPlayerSide') }),
     jsxs('div', { style: { display: 'flex', gap: 6 }, role: 'group', 'aria-label': t('dockedPlayerSide'), children: [
@@ -3010,15 +3499,13 @@ function RevampSettings() {
   ] })
 }
 
-// Volume dips for approvals: saved by the player, so changes go to it as a "settings" command.
+// Volume dips for approvals follow the same saved settings as the player.
 function DuckSettings() {
   const t = k => EN[k] || k
   const live = useValue($live)
   const st = live?.settings || {}
-  const [local, setLocal] = useState({})
-  const value = k => local[k] ?? st[k]
+  const value = k => st[k]
   const set = patch => {
-    setLocal(cur => ({ ...cur, ...patch }))
     void command('settings', patch)
   }
   const on = value('duck_on_approval') === true
@@ -3098,6 +3585,10 @@ export default {
     lastPetTitle = ''
     lastPetAt = 0
     disposeDockedPlayerPane = null
+    disposeFloatingPlayerPane = null
+    floatPaneSize = { w: 275, h: 348 }
+    if (floatResizeTimer) { clearTimeout(floatResizeTimer); floatResizeTimer = 0 }
+    floatResizeWant = null
     $where.set('none')
     pageBorrowRequested = false
     // The saved home: docked by default; an old winampOpen=yes migrates to floating,
@@ -3116,6 +3607,7 @@ export default {
     // persisted (possibly left-drifted) layout cannot win over this fresh id.
     const savedUi = ctx.storage.get('ui', null)
     $crispScale.set(!!(savedUi && typeof savedUi === 'object' && savedUi.crispScale === true))
+    $barControls.set(savedUi && typeof savedUi === 'object' && savedUi.barControls === 'menu' ? 'menu' : 'full')
     const savedSide = ctx.storage.get('dockedPlayerSide', 'right')
     const dockedSide = DOCKED_PLAYER_SIDES.includes(savedSide) ? savedSide : 'right'
     if (savedSide !== dockedSide) ctx.storage.set('dockedPlayerSide', dockedSide)
@@ -3142,6 +3634,7 @@ export default {
       ctxRef = null
       engine = null
       disposeDockedPlayerPane = null
+      disposeFloatingPlayerPane = null
       $where.set('none')
     })
     ctx.i18n.register({ en: EN })
@@ -3156,6 +3649,11 @@ export default {
     // The desktop window took over (from any Hermes window) or closed: park or resume here.
     const offDesktop = $desktop.listen(open => (open ? engine?.park() : engine?.unpark()))
     ctx.onDispose(offDesktop)
+    // The pop-out's floating pane follows the chosen home (and follows the
+    // engine: it is registered in runEngine once this window holds the lock).
+    const offFloat = $playerLocation.listen(() => syncFloatingPane())
+    ctx.onDispose(offFloat)
+    syncFloatingPane()
     const refreshIfShown = () => { if (!document.hidden) void refreshLive() }
     const likesIfShown = () => { if (!document.hidden) void loadLikes() }
     void refreshIfShown()
@@ -3189,7 +3687,7 @@ export default {
         ['winamp', 'cmdWinamp', () => setPlayerLocation($playerLocation.get() === 'floating' ? 'docked' : 'floating'), ['mod+alt+w']],
         ['mini', 'cmdMini', () => setPlayerLocation('mini'), ['mod+alt+m']],
         ['reload', 'cmdReload', () => { engine?.reload(); void refreshLive() }, ['mod+alt+r']],
-        ['visualizer', 'cmdVisualizer', () => engine?.visualizer(), ['mod+alt+shift+v']],
+        ['visualizer', 'cmdVisualizer', () => ($desktop.get() || !engine) ? command('visualizer') : engine.visualizer(), ['mod+alt+shift+v']],
         ['desktop', 'cmdDesktop', () => void ($desktop.get() ? bringBackFromDesktop() : openOnDesktop()), ['mod+alt+shift+w']]
       ].flatMap(([id, key, run, defaults]) => [
         {
@@ -3204,6 +3702,6 @@ export default {
         }
       ])
     ])
-    if (PANE_SPIKE && !$frameHidden.get()) disposeDockedPlayerPane = ctx.register(dockedPlayerPane(dockedSide))
+    if (DOCKED_PANE && !$frameHidden.get()) disposeDockedPlayerPane = ctx.register(dockedPlayerPane(dockedSide))
   }
 }

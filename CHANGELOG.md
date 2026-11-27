@@ -2,11 +2,97 @@
 
 Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets a new number that is never reused, so you can tell which one you have: the header chip shows it, and clicking copies the line.
 
+## Unreleased
+
+- Bug reports from Hermes Desktop now include the Hermes version instead of "unknown".
+- Settings: Dip length reads in seconds ("2 s") instead of "200%".
+- Disabling or reloading REVamp in Hermes Desktop cancels a pending reload of the library controls.
+- The desktop window never opens a DevTools network port: where the private channel is not available it keeps its launch size.
+- The MCP server (`revampctl mcp`) reports REVamp's real version instead of an old alpha number.
+- A lyrics cache written by another tool (the screenshot script) is found again, and the screenshot script waits for the skin and the lyrics before taking those pictures.
+- The install disclosure explains who can read the player’s API token on macOS and Windows.
+- The privacy notes list port files, rotating logs and the read-only Music Studio folder check.
+- The install disclosure covers checkout identification, pop-out cleanup and the Linux account check when the socket table is unavailable.
+- The cover art notes explain where REVamp looks for images without mutagen.
+- The README drops the obsolete 1.0 alpha label.
+- The settings guide points to the player’s backups, event log and library folder controls.
+- The privacy notes give the Linux pop-out icon directory.
+- The diagnostics notes list the current health fields and two warnings.
+- The radio guide gives the retry delay and Hermes Agent Radio host. The DJ skill covers player location, station lookup and choosing between local music and radio.
+- The version chip examples show the tagged release and development builds in display order.
+- Artists list: clicking an artist who only appears on a compilation shows that album instead of "No albums yet", and songs without an album tag count as an album, as the Albums view shows them.
+- An opened artist's albums stay that artist's while a library scan runs (they no longer switch to every album), and leaving for another tab clears the artist's name from the search box.
+- A setting, skin or equalizer change made while the REVamp server was briefly unreachable is saved once it is back, instead of being lost on the next start.
+- Activity previews hide quoted passwords and tokens before shortening long commands.
+- Restore stops if it cannot save a complete undo copy of the current profile.
+- Renaming an unreadable playlist preserves its tracks and reports the read error.
+- Playlist commands honor an exact ID even when another playlist uses it as a display name.
+- Export reports an error if the playlists folder cannot be listed.
+- Restore and import can now be undone on a previously empty profile.
+- A failed playlist removal during restore rolls back the changes and reports the error.
+- Import checks that every playlist name is distinct on the destination volume.
+- Backups refuse a redirected playlists folder to protect the linked collection.
+- Creating a playlist reports unresolved tracks before saving it.
+- Simultaneous playlist additions keep tracks from both requests.
+- A retired port watcher now exits if its pending health check finishes after retirement.
+- Music list in the side panel: Title and Artist are readable again (Album gives way in a narrow panel), and the actions button keeps its own small column.
+- Artists list: the full artist name shows, and the count reads "4 tracks · 1 album" instead of listing album names.
+- Cover art: an oversized embedded picture is skipped when the optional `mutagen` reads it too, as the built-in readers already did.
+- Tests: two Windows tests set up the home folder and the DevTools path they meant to test; port-watcher tests no longer race a watcher left over from the previous test.
+- Screenshots retaken on the current build.
+- The health log no longer reads the process entries under `/proc`: Windows reports current and peak working-set memory, POSIX reports peak memory from `getrusage` and the open-file count is gone, so Hermes's install scanner no longer rates REVamp "caution" and a plain install from the repository works.
+- Bug hunt 3, 33 fixes, each with a test that fails on the previous build:
+  - Player: a library rescan can no longer freeze REVamp; adding to the queue while an audiobook resumes keeps its place; Like in a song's menu during a scan likes only that song; playlists are no longer listed twice; a failed library load shows the error.
+  - Backups and playlists: an export with an unreadable playlist fails instead of leaving it out; a playlist save with an unknown track is refused instead of dropping it; undoing a restore removes what it added; restored folders are rescanned; the "Welcome back" offer shows on a profile that holds only defaults.
+  - Library: album menus play only that album artist's tracks; Unknown Artist and Unknown Album play the right tracks; the artist list counts albums.
+  - Status bar and settings: settings changed with no player open are kept; a command that reaches no player says so instead of a success toast; Report a bug shows the real build; Bring the player here, the visualizer shortcut and Recover player work while the player is popped out; unpinning a Hermes Agent Radio favourite works; the MilkDrop switch matches what is playing; Settings in the library pane read and save the player's settings.
+  - Windows: folder names, folder jumps and the now-playing file path are right.
+  - Safety: Radio Browser redirects keep the private-network guard; messages with no sender are ignored.
+- The status-bar menu no longer shows the hermesagentradio.com link; it stays on the full Radio page.
+- When Hermes refuses to open a link, REVamp now says so instead of doing nothing.
+- The "Check out the new Hermes Radio on the web" link on the Radio page now opens your browser inside Hermes Desktop (the page's frame cannot open tabs itself).
+- Hermes Radio: switching from one playing channel to another keeps the new one's "Starting…" state; leaving the Radio page stops its checks; no false "didn't start" warning after the window was hidden or another station was started.
+- Fixed: an empty Playlists page now shows the Music Studio pointer (it failed silently); resizing the Hermes window no longer throws an error each time; moving the player no longer posts to a removed channel. Dead code and unused styles removed.
+- New setting, Settings → REVamp → Status bar: **Full controls** (as before) or **Menu only**, which keeps just the REVamp pill in the status bar. Play, pause, skip, the queue and the player's place stay inside its menu.
+- The status-bar menu's bottom buttons (Mini player, Frame, Pop into Hermes, Pop out to desktop, Full screen, Report a bug, Copy details, Recover player, Copy diagnostics) are now pills like the genre chips; the active place is the filled pill.
+- Hermes Radio now lists only Hermes Agent Radio's six channels. The older desktop lineup (Nightride, Radio Paradise, EVE Radio) and the "Hermes FM — coming soon" card are gone. Pressing play shows "Starting…" straight away while the stream connects; pressing again cancels, and a station that does not start within 20 seconds says so. Browse lists Hermes Agent Radio first among the genres.
+- The optional desktop pop-out no longer opens a DevTools port on Windows: nothing else on the machine can connect to it, and the window keeps the size it was opened at. Linux and macOS keep using a private pipe that no other account can reach.
+- Radio station search now only talks to public addresses, ignores `HTTP(S)_PROXY` like stream playback does, and refuses a mirror redirect into your own network.
+- Lyrics and Skin Museum requests only contact `lrclib.net`, `api.webamp.org` and `r2.webampskins.org`. A name that resolves to a private address, or a redirect that leaves those hosts, is refused instead of fetched.
+- The version chip no longer reads Hermes's internal `.install-metadata.json`; it reads the build's own `BUILD_INFO.json` and the repository, so a change in Hermes's install records cannot alter or break the line.
+- On Linux, the pop-out's Wayland desktop entry now claims REVamp's own window class instead of one shared with every Chrome app window on `127.0.0.1`, so those windows no longer pick up the REVamp icon.
+- In Claude Code, a tool argument shown in REVamp's agent ticker is credential-masked before the helper command starts, so a token in a command no longer appears in the process list.
+- Audiobook chapter reading runs at the same low priority as the library's own probes.
+- The player frames now ask only for scripts and downloads, not form submission, which the page never uses.
+- The plugin's disclosure and the README now say plainly that the same-user check on the loopback server exists only on Linux, that macOS and Windows let other local accounts reach it, that `mutagen` is optional, and that the pop-out opens no DevTools port on Windows.
+- Errors REVamp used to swallow now leave a line in its private log: a failed library scan is a warning and one unreadable file is a debug line. Set `REVAMP_LOG_LEVEL=DEBUG` to see the per-file lines.
+- Fixes around the library and the Hermes pages: the album list no longer mixes in other artists whose names merely contain the one you clicked, an album or artist with no artist tag finds its songs instead of an empty list, a compilation stays in its own album instead of leaking into another album of the same name, song rows on a touch screen now have the same ⋯ menu (Play next, queue, playlist) as album cards, an opened album keeps its "← All albums" way back when you select a row or load more, "Load more" can try again after a failure, the Music Studio folder button keeps folders you added or removed after it was drawn, "Find … in Plugins" works from the library page, dismissing the place-menu tip is remembered for a new profile, and an upgrade hand-over no longer leaves the old process writing the log.
+- Nothing visible changes: REVamp now lives only inside Hermes's own panes. The hidden player park and the pop-out window are no longer attached to the page itself — the pop-out is a normal Hermes floating pane you drag by its header, and Hermes remembers where you put it.
+- The Hermes status bar now wears Aura-style pills: one compact now-playing pill (play state + title, ellipsised) and round pill buttons for previous / play-pause / next, with the same height, radius, border and focus ring in light and dark themes. The filter chips in the chooser match them.
+- MilkDrop is now easy to turn off: a labelled "MilkDrop visualizer" On/Off switch at the top of Settings → REVamp (with a note that off saves CPU/GPU), and a "Turn off" pill on the visualizer itself. Both use the one saved choice the player already keeps, and turning it off really closes the renderer — no hidden canvas keeps drawing.
+- REVamp no longer uses CPU in the terminal plugin while you aren't playing music. Each terminal session used to start a small Python program every 4 seconds to check what was playing; with a dozen sessions open that took about two thirds of a CPU core all the time. The REVamp server now keeps a tiny `now.json` file up to date while a player is open, and sessions just read it. Agent activity is sent only while a player is open, to feed the ticker.
+- The version chip now reads like every other InovinLabs plugin: `v1.0.0-dev.N · short sha · date`. It is always visible, under the REVamp name, sideways in the narrow rail and under the nav icons inside Hermes Desktop, where it used to be hidden. Click it to copy the line for a bug report.
+- REVamp keeps a private log at `~/.hermes/revamp/logs/revamp.log`, rotating at 1 MB with three backups. Once a minute it writes one line with memory, threads, SSE clients and uptime. It warns when memory jumps by more than 100 MB in ten minutes or threads pass 200, so a slow leak is visible in the log. The latest health line and the log path are also at the token-gated `/api/diagnostics`.
+- Albums and artists now have the song menu. Right-click an album in the Albums view or an artist in the Artists view — or long-press, use the new ⋯ button, Shift+F10 or the context-menu key — for Play, Play next, Add to queue and Add to playlist ▸ (your saved playlists, or a new one). It acts on every track of the album or artist, in disc/track order, and confirms with a toast like the song menu does ("Added 12 tracks to “Road trip”"). The Hermes mini player's Music tab gained the same Albums and Artists views, with the same menu, and can create a playlist from it.
+- REVamp now mentions its two sibling plugins where they genuinely help, and nowhere else. Settings shows one quiet line about Aura — but only when you have turned the visualiser off — and the empty library, the empty playlist screen and the library's ⋯ menu can point at Music Studio, whose finished songs REVamp can add to your library with one click (only when that folder exists). Both suggestions hide for good on "Not now", and the only thing their buttons do is open that plugin's page in Capabilities → Plugins.
+- **If your REVamp server is older than this release:** sessions fall back to asking it once a minute until it is updated.
+- The pop-out window's top strip no longer competes with Hermes for the drag: Hermes's own floating-pane header moves the card, the strip keeps its buttons (full player, dock, close), and REVamp no longer reaches into the app's markup or adds a listener on the whole window.
+- Links in the player now work inside Hermes: "Open GitHub issue", a station's "Open website" and the skin museum credit used to do nothing in the sandboxed player frame. They are handed to Hermes, which opens your browser; only http and https links are passed on.
+- The "Welcome back" restore offer appears again inside Hermes. Reading the browser's per-tab storage failed in the sandboxed frame, so the offer never showed; it now falls back to remembering the choice for the page load.
+- Bug-report buttons say plainly when the host has no clipboard or link-opening support, instead of failing with an error.
+- The docked player is measured on REVamp's own holder, which fills the space the pane gives it, rather than on a Hermes container around it. Scaling behaves as before.
+- The data folder, the lease folder and backups follow the standard XDG locations (`XDG_STATE_HOME`, `XDG_DATA_HOME`) and `%LOCALAPPDATA%` on Windows. When those variables are not set, every path stays exactly where it was, so nothing moves.
+- The player server and `revampctl` resolve the profile folder through Hermes's own resolver, so switching profiles is followed instead of reading the gateway's home.
+- Housekeeping: the docked-pane switch lost its "research spike" name, and the diagnostics report "unknown" for the Hermes version when the host does not provide one.
+- Browser-side failures now reach the private server log, not just Hermes. The page forwards `window.onerror` and unhandled promise rejections to a new token-gated `POST /api/client_log`: message bounded to 500 characters and stack to 2000, at most 20 reports a minute per server, logged at WARNING as `page error: …`, with URL queries and tokens stripped so a copied media link never carries its key into the log.
+- The README was rewritten to match the rest of the suite: one hero, a copy-paste "Try it in five minutes", a feature tour with current screenshots, a "Turning off MilkDrop" section, a symptom-to-fix troubleshooting table and a "Send a useful bug report" guide. New `docs/TROUBLESHOOTING.md` explains every log line, the once-a-minute health fields and the two warning thresholds; new `docs/ARCHITECTURE.md` maps the processes and where state lives. `EXTENDING.md`, `NOTES.md` and `CONTRIBUTING.md` were brought up to date (every test suite, the no-AI-names commit rule).
+- Three new screenshots (`album-menu.png`, `milkdrop-off.png`, `version-chip.png`) and all web screenshots regenerated against the current UI. The screenshot script now sets the canonical `milkdropOn` key so the visualizer state cannot leak between shots.
+
 ## 1.0.0 — next catalog version
 
 The first stable release, following 1.0.0-alpha.6 in the Hermes plugin catalog. It is released when
 the catalog accepts its pin. The version chip in the header now reads the running build from the
-server's own stamp — `v1.0.0-dev.N · date · short sha`, amber while the tree it came from is
+server's own stamp — `v1.0.0 · sha · date` on the tag or `v1.0.0-dev.N · sha · date` on development builds, amber while the tree it came from is
 dirty — and clicking it copies that line for a bug report. A number is no longer typed into the
 page, so the chip cannot announce an old version.
 

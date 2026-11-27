@@ -20,6 +20,7 @@ same function for the browser, keep the two in step.
 
 from __future__ import annotations
 
+import math
 import re
 import urllib.parse
 from typing import Any, Dict, List, Optional
@@ -70,7 +71,7 @@ def _num(v: Any) -> Optional[float]:
         f = float(v)
     except (TypeError, ValueError):
         return None
-    return f if f == f and f >= 0 else None  # NaN / negative -> unknown
+    return f if math.isfinite(f) and f >= 0 else None
 
 
 def _legacy(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:

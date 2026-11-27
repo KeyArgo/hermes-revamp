@@ -10,11 +10,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 import urllib.parse
 import urllib.request
 from typing import Optional
+
+log = logging.getLogger("revamp")
 
 _NONCE = re.compile(r"^[0-9a-f]{16,64}$")
 
@@ -48,12 +51,13 @@ def listener_identity(base: str, token: str, timeout: float = 2.0) -> Optional[b
         with local_opener().open(req, timeout=timeout) as resp:
             payload = json.loads(resp.read(4096).decode("utf-8-sig"))
     except Exception:
+        log.debug("listener proof probe failed", exc_info=True)
         return None
     got: Optional[str] = payload.get("proof") if isinstance(payload, dict) else None
     if not isinstance(got, str):
         return None
     # As bytes: compare_digest raises TypeError on a str that isn't ASCII, and a stranger's garbage
-    # must read as "not ours", not kill the caller (claude + grok a10r21).
+    # must read as "not ours", not kill the caller (review a10r21).
     return hmac.compare_digest(got.encode("utf-8", "replace"), health_proof(token, nonce, port).encode())
 
 
@@ -77,6 +81,7 @@ def verify_listener(base: str, token: str, timeout: float = 2.0) -> bool:
         with opener.open(req, timeout=timeout) as resp:
             payload = json.loads(resp.read(4096).decode("utf-8-sig"))
     except Exception:
+        log.debug("listener verification failed", exc_info=True)
         return False
     proof: Optional[str] = payload.get("proof") if isinstance(payload, dict) else None
     return isinstance(proof, str) and hmac.compare_digest(proof.encode("utf-8", "replace"), health_proof(token, nonce, port).encode())

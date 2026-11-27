@@ -39,8 +39,8 @@ def test_open_status_close(server, fake_browser):
     assert "--user-data-dir=" in args and "float-browser" in args  # its own profile
     if window.USE_CDP_PIPE:  # Linux/macOS: DevTools over a private pipe, no port
         assert "--remote-debugging-pipe" in args and "--remote-debugging-port" not in args
-    else:
-        assert "--remote-debugging-port=0" in args and "--remote-debugging-address=127.0.0.1" in args
+    else:  # Windows, or no Python to pass the pipe: no DevTools, so no listening socket
+        assert "--remote-debugging-port" not in args and "--remote-debugging-pipe" not in args
     if sys.platform.startswith("linux"):
         assert "--class=REVamp" in args
     _, _, state = c.get("/api/state")
@@ -121,8 +121,9 @@ def test_linux_desktop_identity_is_idempotent(tmp_path, monkeypatch):
             f"StartupWMClass={wm_class}\nNoDisplay=true\n"
         )
         mtimes[filename] = entry.stat().st_mtime_ns
-    # Never claim every Chrome window: only the pop-out's own identities.
-    assert set(window.LINUX_DESKTOP_ENTRIES.values()) == {"REVamp", "chrome-127.0.0.1__-Default"}
+    # Never claim a class shared with other apps: X11's own class and REVamp's own Wayland
+    # app_id (its profile is named REVamp), never the shared "-Default" one.
+    assert set(window.LINUX_DESKTOP_ENTRIES.values()) == {"REVamp", "chrome-127.0.0.1__-REVamp"}
     assert all((icons / name).is_file() for name in window._ICON_NAMES)
 
     window.install_linux_desktop_identity()
@@ -176,7 +177,7 @@ def test_finds_edge_and_chrome_where_windows_and_macos_install_them(monkeypatch,
 
 
 def test_windows_skips_the_windowsapps_alias_for_a_real_install(monkeypatch, tmp_path):
-    # Grok a10r7: PATH on Windows holds WindowsApps app-execution aliases (msedge.exe), stubs that
+    # review a10r7: PATH on Windows holds WindowsApps app-execution aliases (msedge.exe), stubs that
     # hand off and exit at once ("exited immediately"); the real install must win.
     monkeypatch.delenv("REVAMP_FLOAT_BROWSER", raising=False)
     alias = r"C:\Users\e\AppData\Local\Microsoft\WindowsApps\msedge.exe"

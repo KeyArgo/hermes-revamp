@@ -1,14 +1,18 @@
 # Extending REVamp
 
-REVamp’s player server is local-only and deliberately small: it is a stdlib HTTP server on `127.0.0.1`. This guide describes the supported seams for an extension such as an agent that picks music.
+REVamp's player server is local-only and deliberately small: it is a stdlib HTTP server on `127.0.0.1`. This guide describes the supported seams for an extension such as an agent that picks music. For the process model and where state lives, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Local API and events
 
-`GET /api/health` is the only unauthenticated API endpoint. All other `/api/*` routes require `X-Revamp-Token: <token>` (or `?t=` for media/page URLs). The token is `<REVAMP_HOME>/token`, or `<HERMES_HOME>/revamp/token`, or `~/.hermes/revamp/token`. Do not pass it to a model, browser extension, or remote service.
+`GET /api/health` is the only unauthenticated API endpoint. All other `/api/*` routes require `X-Revamp-Token: <token>` (or `?t=` for media/page URLs). The token is `<REVAMP_HOME>/token`, or `<profile home>/revamp/token` (the active Hermes profile, falling back to `$HERMES_HOME`), or `~/.hermes/revamp/token`. Do not pass it to a model, browser extension, or remote service.
 
 Useful endpoints include `GET /api/state`, `GET /api/playback`, `GET /api/library/tracks?q=`, `GET/POST/PUT/DELETE /api/playlists`, `GET /api/radio/presets`, `POST /api/command`, and `POST /api/agent_event`. `POST /api/command` accepts playback actions including `play`, `pause`, `next`, `prev`, `seek`, `volume`, `shuffle`, `repeat`, and `load`. Use `GET /api/playback` to discover the active backend and its capabilities first.
 
-`GET /api/events` is authenticated server-sent events. It carries `command` events for page players and state-related updates; clients must reconnect and re-read `/api/state` after a disconnect. Agent activity is persisted separately and readable at `GET /api/agent_events`; post it with `POST /api/agent_event` using a small object such as `{"kind":"tool_start","tool":"search","source":"codex"}`.
+`GET /api/diagnostics` returns the latest health sample and the log path. `POST /api/client_log` accepts a browser-side failure (`{"message", "stack", "placement"}`); it is bounded (message 500 chars, stack 2000), rate-limited to 20 a minute per server, logged at WARNING as `page error: …`, and strips URL queries and tokens. The page forwards `window.onerror` and unhandled rejections here. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+Terminal readers (the now-playing band) do not call the API at all: they read `<data dir>/now.json`, which the server keeps current while a player reports. A file older than 15 seconds means no player.
+
+`GET /api/events` is authenticated server-sent events. It carries `command` events for page players and state-related updates; clients must reconnect and re-read `/api/state` after a disconnect. Agent activity is persisted separately and readable at `GET /api/agent_events`; post it with `POST /api/agent_event` using a small object such as `{"kind":"tool_start","tool":"search","source":"terminal-app"}`.
 
 ## revampctl and MCP
 

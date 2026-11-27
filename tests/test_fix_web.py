@@ -127,8 +127,8 @@ def test_title_bar_close_stops_the_active_backend():
 
 def test_album_search_matches_exact_album_and_artist(monkeypatch):
     text = source("revamp_core/library.py")
-    assert 'a == (t.get("artist") or "").casefold()' in text
-    assert 'al == (t.get("album") or "").casefold()' in text
+    assert 'a == _artist_key(t.get("artist"))' in text
+    assert 'al == (t.get("album") or "Unknown Album").casefold()' in text  # an untagged album is listed as Unknown Album
     tracks = {
         "a": {"id": "a", "artist": "Artist A", "album": "Live", "title": "A"},
         "b": {"id": "b", "artist": "Artist B", "album": "Live", "title": "B"},

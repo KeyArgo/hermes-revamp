@@ -91,10 +91,12 @@ def chapters_for(path: str) -> List[Dict[str, Any]]:
             chapters = []
         else:
             # Local file only: a crafted container (HLS, concat...) must not make ffprobe
-            # open other files or the network.
-            cmd = [ffprobe, "-v", "quiet", "-protocol_whitelist", "file",
-                   "-format_whitelist", tags.FFPROBE_FORMATS, "-print_format", "json",
-                   "-show_chapters", real]
+            # open other files or the network. Low priority like the library's probes:
+            # an audiobook is not worth competing with whatever else the machine is doing.
+            cmd = tags._background_prefix() + [
+                ffprobe, "-v", "quiet", "-protocol_whitelist", "file",
+                "-format_whitelist", tags.FFPROBE_FORMATS, "-print_format", "json",
+                "-show_chapters", real]
             try:
                 proc = subprocess.run(cmd, capture_output=True,
                                       timeout=FFPROBE_TIMEOUT, check=False)

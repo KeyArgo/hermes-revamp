@@ -19,7 +19,8 @@ Agent events carry $REVAMP_SOURCE (e.g. "codex") when it is set, so the player
 knows which harness is asking.
 
 Port: $REVAMP_PORT or 8114. Token: <data dir>/token, data dir = $REVAMP_HOME,
-else $HERMES_HOME/revamp, else ~/.hermes/revamp.
+else Hermes's profile home (its own resolver, falling back to $HERMES_HOME)/revamp,
+else ~/.hermes/revamp.
 """
 from __future__ import annotations
 
@@ -35,12 +36,32 @@ from pathlib import Path
 def data_dir() -> Path:
     if os.environ.get("REVAMP_HOME"):
         return Path(os.environ["REVAMP_HOME"]).expanduser()
-    if os.environ.get("HERMES_HOME"):
-        return Path(os.environ["HERMES_HOME"]).expanduser() / "revamp"
+    # Hermes's own resolver follows the active profile; the env var is the fallback
+    # when this script runs outside a Hermes install (same order as revamp_core.config).
+    try:
+        from hermes_constants import get_hermes_home
+        home = str(get_hermes_home())
+    except ImportError:
+        home = os.environ.get("HERMES_HOME")
+    if home:
+        return Path(home).expanduser() / "revamp"
     return Path.home() / ".hermes" / "revamp"
 
 
 BASE = f"http://127.0.0.1:{os.environ.get('REVAMP_PORT', '8114')}"
+
+
+def declared_version() -> str:
+    """plugin.yaml's version: (read the same way as revamp_core/version_stamp.py; this script
+    stays standalone)."""
+    try:
+        text = (Path(__file__).resolve().parent.parent / "plugin.yaml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "unknown"
+    for line in text.splitlines():
+        if line.startswith("version:"):
+            return line.split(":", 1)[1].strip().strip('"').strip("'") or "unknown"
+    return "unknown"
 
 
 def token() -> str:
@@ -223,7 +244,7 @@ def mcp_serve() -> int:
             send({"jsonrpc": "2.0", "id": mid, "result": {
                 "protocolVersion": params.get("protocolVersion") or "2025-06-18",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "revamp", "version": "1.0.0-alpha.10"},
+                "serverInfo": {"name": "revamp", "version": declared_version()},
                 "instructions": "REVamp is the user's music player. Use these tools only when the user asks about or for music."}})
         elif method == "ping":
             send({"jsonrpc": "2.0", "id": mid, "result": {}})

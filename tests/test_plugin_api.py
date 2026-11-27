@@ -203,3 +203,76 @@ def test_gateway_library_tracks_passes_offset(api, monkeypatch):
     monkeypatch.setattr(api, "_proxied", lambda *a: a)
     api.library_tracks(q="x", limit=100, offset=200, kind="music")
     assert "offset=200" in seen["path"] and "limit=100" in seen["path"]
+
+
+def test_library_tracks_forwards_album_artist_and_sort(api, monkeypatch):
+    """The album/artist menu asks for one album (or artist) in disc/track order."""
+    seen = []
+
+    def fake_request(method, path, body=None, timeout=5.0):
+        seen.append(path)
+        return 200, {"tracks": [], "total": 0}
+
+    monkeypatch.setattr(api, "_request", fake_request)
+    api.library_tracks(album="Great Album", artist="The Artists", sort="album", kind="music")
+    from urllib.parse import parse_qs, urlparse
+    q = parse_qs(urlparse(seen[0]).query)
+    assert q["album"] == ["Great Album"]
+    assert q["artist"] == ["The Artists"]
+    assert q["sort"] == ["album"]
+
+
+def test_library_albums_and_artists_routes(api, monkeypatch):
+    seen = []
+    monkeypatch.setattr(api, "_request", lambda m, path, body=None, timeout=5.0: (seen.append(path), (200, []))[1])
+    api.library_albums(kind="music")
+    api.library_albums(artist="The Artists")
+    api.library_artists(kind="music")
+    assert seen == [
+        "/api/library/albums?kind=music",
+        "/api/library/albums?artist=The+Artists",
+        "/api/library/artists?kind=music",
+    ]
+
+
+def test_library_albums_and_artists_proxy_the_server(api):
+    _wait_tracks(api, n=2)
+    albums = _json(api.library_albums(kind="music"))
+    assert albums and all("album" in a for a in albums)
+    artists = _json(api.library_artists(kind="music"))
+    assert artists and all("name" in a for a in artists)
+
+
+def test_album_tracks_come_back_in_disc_track_order(api):
+    _wait_tracks(api, n=2)
+    al = _json(api.library_albums(kind="music"))[0]
+    out = _json(api.library_tracks(album=al["album"], artist=al["artist"], sort="album", limit=200))
+    assert out["total"] >= 1
+    order = [(t.get("disc_no") or 0, t.get("track_no") or 0) for t in out["tracks"]]
+    assert order == sorted(order)
+
+
+def test_playlist_create_route(api):
+    """The mini player's New playlist… goes through POST /playlists."""
+    resp = api.playlist_create({"name": "Mini menu", "items": []})
+    assert resp.status_code in (200, 201), resp.body
+    created = json.loads(resp.body)
+    assert any(p["id"] == created["id"] and p["name"] == "Mini menu" for p in _json(api.playlists()))
+
+
+def test_library_tracks_forwards_exact_album_artist(monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
+    _stub_fastapi()
+    api = importlib.import_module("dashboard.plugin_api")
+    paths = []
+
+    def request(method, path):
+        paths.append(path)
+        return 200, {}
+
+    monkeypatch.setattr(api, "_request", request)
+    api.library_tracks(album="Greatest Hits", album_artist="A & B")
+    query = parse_qs(urlsplit(paths[0]).query)
+    assert query["album_artist"] == ["A & B"]
+    assert query["album"] == ["Greatest Hits"]

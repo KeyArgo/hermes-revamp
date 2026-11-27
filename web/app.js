@@ -67,7 +67,7 @@ async function api(method, path, body) {
       try { msg = (await res.json()).error || msg; } catch { /* keep status */ }
       // Only the server refusing OUR key means it changed; a music source may answer 401 too.
       if (res.status === 401 && msg === KEY_REFUSED) keyRejected();
-      throw new Error(`API ${path}: ${msg}`);
+      throw Object.assign(new Error(`API ${path}: ${msg}`), { status: res.status });
     }
   return res.headers.get("content-type")?.includes("json") ? res.json() : res.text();
 }
@@ -96,7 +96,7 @@ export function authedUrl(path, extra = {}) {
 
 // ---------------------------------------------------------------- shell: nav + views
 const VIEWS = [
-  { id: "hermes-radio", icon: "✦", label: "Hermes Radio", render: renderRadio },
+  { id: "hermes-radio", icon: "✦", label: "Hermes Radio", render: (root, api) => renderRadio(root, api, { tab: "hermes" }) },
   { id: "library", icon: "♬", label: "Music", render: renderMusic }, // id kept: the file picker opens it
   { id: "books", icon: "📖", label: "Books", render: renderBooks },
   { id: "focus", icon: "◎", label: "Focus", render: renderFocus },
@@ -189,10 +189,13 @@ export function setNowPlaying({ title, artist, art, isStream, time, duration, st
 }
 
 // ---------------------------------------------------------------- connection pill
+let wasConnected = false;
 function setConn(ok, text) {
   const el = document.getElementById("conn-pill");
   el.classList.toggle("on", !!ok);
   el.textContent = text || (ok ? "connected" : "offline");
+  if (ok && !wasConnected) window.dispatchEvent(new Event("revamp:connected"));  // only on the way up
+  wasConnected = !!ok;
 }
 
 // ---------------------------------------------------------------- build line
@@ -219,34 +222,48 @@ async function copyText(t) {
   } catch { return false; }
 }
 
+let versionLine = "";
+let versionWired = false;
+
 async function showVersion() {
   const chip = document.getElementById("app-version");
   if (!chip) return;
-  let build;
-  try { build = await apiGet("/api/version"); } catch { return; }   // no guess beats a wrong number
-  if (!build || !build.version) return;
-  const parts = ["v" + build.version];
-  if (build.commit_date) parts.push(String(build.commit_date).slice(0, 10));
-  const sha = build.commit_short || build.commit;
-  if (sha) parts.push(String(sha).slice(0, 8));
-  const line = parts.join(" · ") + (build.dirty ? " · modified" : "");
-  chip.textContent = line;
-  chip.classList.toggle("dirty", !!build.dirty);
-  chip.title = [
-    "REVamp " + build.version,
-    build.commit ? "commit " + build.commit : "no commit (installed copy)",
-    build.commit_date ? "committed " + build.commit_date : "",
-    build.built_at ? "installed " + build.built_at : "",
-    build.channel ? "channel " + build.channel : "",
-    "click to copy this line",
-  ].filter(Boolean).join("\n");
-  chip.addEventListener("click", async () => {
-    const copied = await copyText("REVamp " + line);
-    // Say "copied" only when something was copied: a badge that lies is worse than no badge.
-    chip.dataset.copied = copied ? "1" : "failed";
-    chip.textContent = copied ? "copied ✓" : "copy failed";
-    setTimeout(() => { delete chip.dataset.copied; chip.textContent = line; }, 1400);
-  });
+  if (!versionLine) chip.hidden = true;   // no guess beats a wrong number
+  const paint = (build) => {
+    if (!build?.line) return;
+    versionLine = String(build.line);
+    chip.textContent = versionLine;
+    chip.classList.toggle("dirty", !!build.dirty);
+    chip.title = [
+      "REVamp " + build.version,
+      build.commit ? "commit " + build.commit : "",
+      build.commit_date ? "committed " + build.commit_date : "",
+      build.built_at ? "installed " + build.built_at : "",
+      build.channel ? "channel " + build.channel : "",
+      build.source ? "read from " + build.source : "",
+      "Click to copy",
+    ].filter(Boolean).join("\n");
+    chip.setAttribute("aria-label", "Copy version " + versionLine);
+    chip.hidden = false;
+  };
+  const load = async () => {
+    try { paint(await apiGet("/api/version")); } catch { /* show nothing; retry when connected */ }
+  };
+  if (!versionWired) {
+    versionWired = true;
+    chip.addEventListener("click", async () => {
+      if (!versionLine) return;
+      const copied = await copyText("REVamp " + versionLine);
+      // Say "copied" only when something was copied: a badge that lies is worse than no badge.
+      chip.dataset.copied = copied ? "1" : "failed";
+      chip.textContent = copied ? "copied ✓" : "copy failed";
+      setTimeout(() => { delete chip.dataset.copied; chip.textContent = versionLine; }, 1400);
+    });
+    window.addEventListener("revamp:connected", load);
+    setInterval(() => { if (!document.hidden) load(); }, 60000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+  }
+  await load();
 }
 
 // ---------------------------------------------------------------- ticker
@@ -547,8 +564,8 @@ function fitDesktopWindow() {
 
 function kickDesktopFit() {
   if (!desktopFloat) return;
-  // A hidden window (minimised, or occluded on Chrome) must not be resized: it used to shrink to
-  // the stack and grow back, restarting MilkDrop (claude a10r19). visibilitychange refits on show.
+  // A hidden window (minimised, or occluded on Chrome) must not be resized: doing so shrank it to
+  // the stack and grew it back, restarting MilkDrop. visibilitychange refits on show.
   if (document.hidden) return;
   fitDesktopWindow();
   requestAnimationFrame(fitDesktopWindow);
@@ -798,8 +815,21 @@ runWhileVisible(400, reportBox);
 function installControlPlayerApi() {
   if (window.revampPlayerApi) return;
   const cmd = (body) => apiPost("/api/command", body);
+  // Saved settings (Settings toggles, hint dismissals) belong to the live player: read its
+  // last saved copy, and send changes to it as a command. Never PUT them here, or the live
+  // player's next save would overwrite them.
+  let settings = {};
   window.revampPlayerApi = {
     control: true,
+    getSettings: () => ({ ...settings }),
+    setSavedSettings(patch) {
+      settings = { ...settings, ...patch };
+      return cmd({ action: "settings", ...patch });
+    },
+    async refreshSettings() {
+      try { settings = { ...((await apiGet("/api/state"))?.settings || {}) }; } catch { /* keep the last copy */ }
+      return this.getSettings();
+    },
     loadTracks: (items, o = {}) => cmd({ action: "load", items: items || [], mode: o.mode || "replace", play: o.play !== false }),
     playIndex: (index) => cmd({ action: "play_index", index: Math.max(0, index | 0) }),
     async playItemsAt(index, list) {
@@ -818,6 +848,19 @@ function installControlPlayerApi() {
     setSkin: (id) => cmd({ action: "skin", id }),
     setLiked: (trackId, liked) => trackId ? apiPost("/api/likes", { track_id: trackId, liked: !!liked }) : Promise.resolve(),
     nowStatus: () => "STOPPED",
+    // What the live player is doing, as the server last heard it. There is no Webamp store
+    // here, so views that show play/pause (Hermes Radio) read this and call refreshLive.
+    live: { url: null, status: "STOPPED" },
+    liveStream() { return this.live; },
+    async refreshLive() {
+      try {
+        const st = await apiGet("/api/state");
+        const np = st?.live?.now_playing;
+        const on = st?.live?.player_connected !== false && np;
+        this.live = { url: on && np.kind === "stream" ? np.url || null : null, status: on ? np.status || "STOPPED" : "STOPPED" };
+      } catch { /* keep the last answer; the connection pill shows the outage */ }
+      return this.live;
+    },
   };
   window.revampFocusActivate = window.revampPlayerApi.focusStart;
 }
@@ -944,6 +987,7 @@ async function boot() {
       const h = await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());
       setConn(true, `v${h.version || "?"}`);
     } catch { setConn(false, "server down"); }
+    await window.revampPlayerApi.refreshSettings();
     showStartView();
     if (hosted) window.parent.postMessage({ type: "revamp:ready", bridge: Boolean(BRIDGE_KEY), control: true }, "*");
     return;

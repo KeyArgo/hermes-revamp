@@ -1,4 +1,4 @@
-"""Regression tests for the release bug hunt (Codex findings)."""
+"""Regression tests for the release bug hunt (review findings)."""
 
 from __future__ import annotations
 

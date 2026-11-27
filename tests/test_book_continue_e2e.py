@@ -167,7 +167,7 @@ def test_a_book_in_several_files_continues_and_previous_does_not_bounce(tmp_path
         assert pos < 10
 
         # 5. The way a person starts a book in Hermes: double-click part 1 in the Books list of
-        # the library page (two server commands once; Grok a10r14). It goes on in part 3.
+        # the library page (two server commands once; review a10r14). It goes on in part 3.
         call("/api/resume", {"key": f"local:track:{ids[2]}", "position": 50}, tok=tok)
         control = tab(f"{base}/?control=1")
         for _ in range(80):
@@ -184,7 +184,7 @@ def test_a_book_in_several_files_continues_and_previous_does_not_bounce(tmp_path
         tid, pos, _ = wait_for(lambda t, p, s: t == ids[2] and p >= 48 and s == "PLAYING")
         assert pos < 70
 
-        # 6. A slow continue lookup must never undo the person's own seek (codex a10r16/a10r17:
+        # 6. A slow continue lookup must never undo the person's own seek (review a10r16/a10r17:
         # Webamp's own seek bar does not bump actSeq, so the resume pulled playback back).
         song_items = as_items(srows[:1])
         book_items = as_items(parts)
@@ -214,7 +214,7 @@ def test_a_book_in_several_files_continues_and_previous_does_not_bounce(tmp_path
         assert tid == ids[0], "the pending continue jumped to another part after the person seeked"
         assert pos >= 55, f"the pending resume pulled back to the saved place: {pos}"
 
-        # 6b. The same with a native seek that stays inside the opening 15 s (codex a10r17: the
+        # 6b. The same with a native seek that stays inside the opening 15 s (review a10r17: the
         # jump guard only looked at "under 15 s", so a nudge from 0:01 to 0:10 still jumped).
         start_part_one_after_a_song()
         assert ev(player, "window.__webamp.seekToTime(10), 'ok'") == "ok"
@@ -222,7 +222,7 @@ def test_a_book_in_several_files_continues_and_previous_does_not_bounce(tmp_path
         tid, pos, _ = now()
         assert tid == ids[0] and pos < 35, f"a small native seek was overridden: {tid} {pos}"
 
-        # 7. A slow lookup must not look like the person seeking (claude a10r19): playing part 2
+        # 7. A slow lookup must not look like the person seeking (review a10r19): playing part 2
         # (never a continue) with a 6 s delay still seeks to its own saved place, and the place
         # stays 40 instead of being overwritten by the opening seconds.
         ev(player, "window.__bookDelay = 6000, 'ok'")
@@ -239,7 +239,7 @@ def test_a_book_in_several_files_continues_and_previous_does_not_bounce(tmp_path
             "the opening seconds overwrote the saved place"
 
         # 8. A pause while the lookup is still out keeps the saved place, and Play then goes to it
-        # (codex a10r21: the opening second replaced a 40 s place, and Play never looked again).
+        # (review a10r21: the opening second replaced a 40 s place, and Play never looked again).
         def clock():
             return ev(player, "window.__webamp.store.getState().media.timeElapsed") or 0
 
@@ -259,7 +259,7 @@ def test_a_book_in_several_files_continues_and_previous_does_not_bounce(tmp_path
         assert ev(player, "window.__webamp.play(), 'ok'") == "ok"
         wait_for(lambda t, p, s: t == ids[2] and s == "PLAYING" and p >= 43)   # goes on in part 3
 
-        # 9. A retry of a dropped seek must not undo the person's own seek (grok a10r21): the page's
+        # 9. A retry of a dropped seek must not undo the person's own seek (review a10r21): the page's
         # first seek is lost, the person scrubs to 0:20, and they stay there.
         ev(player, "window.__bookDelay = 0, 'ok'")
         call("/api/resume", {"key": f"local:track:{ids[2]}", "position": 50}, tok=tok)
@@ -304,7 +304,7 @@ def test_a_book_in_several_files_continues_and_previous_does_not_bounce(tmp_path
         assert clock() < 15, f"resume overrode native pointer seek: {clock()}"
 
         # 11. Paused while a resume is held, the person drags the seek bar: that place is saved
-        # right away (they may close the player now), and Play leaves them there (grok a10r21).
+        # right away (they may close the player now), and Play leaves them there (review a10r21).
         assert ev(player, "window.__webamp.seekToTime = window.__realSeek, window.__bookDelay = 3000, 'ok'") == "ok"
         start_part_one_after_a_song()
         assert ev(player, "window.__webamp.pause(), 'ok'") == "ok"

@@ -26,7 +26,7 @@ class _Resp:
 
 def test_a_listener_answering_with_a_non_ascii_proof_is_not_ours(monkeypatch):
     # compare_digest raises TypeError on a non-ASCII str, which killed the caller instead of
-    # answering "not us" (Claude + Grok a10r21).
+    # answering "not us" (review a10r21).
     class Opener:
         def open(self, req, timeout=None):
             return _Resp('{"proof": "caf\u00e9"}'.encode())

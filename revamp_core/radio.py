@@ -12,6 +12,7 @@ import hashlib
 import http.client
 import ipaddress
 import json
+import logging
 import os
 import re
 import socket
@@ -24,6 +25,8 @@ import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import data_dir
+
+log = logging.getLogger("revamp")
 
 UA = "Revamp/0.1"
 RADIO_BROWSER_SEARCH = "https://all.api.radio-browser.info/json/stations/search"
@@ -45,7 +48,7 @@ RADIO_BROWSER_SERVERS = list(dict.fromkeys(RADIO_BROWSER_SERVERS))
 SEARCH_TIMEOUT = 8.0
 # All mirrors together get this long, so a dead network still answers (with presets)
 # inside the Hermes dashboard proxy's 10 s timeout; after a full failure, skip
-# Radio Browser for a minute instead of waiting on every request.
+# Radio Browser for 5 seconds instead of waiting on every request.
 RB_TOTAL_BUDGET = 7.0
 RB_DOWN_COOLDOWN = 5.0  # radio.js retries a failed page after 6 s: keep this below that
 # Per address: an IPv6 route that silently drops packets (common on Windows with
@@ -63,7 +66,7 @@ NP_CACHE_TTL = 15.0
 BROWSE_PAGE = 50            # endless-scroll page size (~ what the UI asks for)
 
 # Quality bar for the curated "Popular" list (raw clickcount alone is full of
-# spam and vote-stuffed entries — see RADIO-codex.md for the live evidence).
+# spam and vote-stuffed entries).
 POPULAR_LIMIT = 40
 POPULAR_WINDOW = 150        # raw stations fetched per extension round
 POPULAR_WINDOWS_MAX = 6     # …and at most this many rounds per cache fill
@@ -276,57 +279,39 @@ PRESETS: List[Dict[str, Any]] = [
 ]
 
 
-# Hermes Desktop's bundled radio plugin is the lineup for the Hermes Radio hero
-# (apps/desktop/src/plugins/radio/plugin.js PRESETS). Kept separate from PRESETS
-# above: those are the Radio Browser fallback, and several URLs differ
-# (Radio Paradise AAC/FLAC, Spacesynth, EVE Radio).
-_NIGHTRIDE = "https://stream.nightride.fm/"
-HERMES_LINEUP: List[Dict[str, Any]] = [
-    {"id": "chillsynth", "name": "Chillsynth", "description": "Soft focus · warm synths",
-     "provider": "Nightride FM", "url": f"{_NIGHTRIDE}chillsynth.mp3",
-     "homepage": "https://nightride.fm/?station=chillsynth",
-     "tags": ["chillsynth", "synthwave"], "codec": "MP3", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "nightride", "name": "Nightride", "description": "Synthwave · after hours",
-     "provider": "Nightride FM", "url": f"{_NIGHTRIDE}nightride.mp3",
-     "homepage": "https://nightride.fm/",
-     "tags": ["synthwave", "retrowave"], "codec": "MP3", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "darksynth", "name": "Darksynth", "description": "Dark electronics · high energy",
-     "provider": "Nightride FM", "url": f"{_NIGHTRIDE}darksynth.mp3",
-     "homepage": "https://nightride.fm/?station=darksynth",
-     "tags": ["darksynth", "synthwave"], "codec": "MP3", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "spacesynth", "name": "Spacesynth", "description": "Cosmic synths · retro futures",
-     "provider": "Nightride FM", "url": f"{_NIGHTRIDE}spacesynth.mp3",
-     "homepage": "https://nightride.fm/?station=spacesynth",
-     "tags": ["spacesynth", "synthwave"], "codec": "MP3", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "paradise-main", "name": "Main Mix", "description": "Eclectic · human selected",
-     "provider": "Radio Paradise", "url": "https://stream.radioparadise.com/aac-128",
-     "homepage": "https://radioparadise.com/",
-     "tags": ["eclectic"], "codec": "AAC", "bitrate": 128,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "paradise-mellow", "name": "Mellow Mix", "description": "A gentler pace",
-     "provider": "Radio Paradise", "url": "https://stream.radioparadise.com/mellow-flac",
-     "homepage": "https://radioparadise.com/",
-     "tags": ["eclectic", "mellow"], "codec": "FLAC", "bitrate": None,
-     "favicon": "", "country": "", "source": "hermes"},
-    {"id": "eve-radio", "name": "EVE Radio", "description": "GamingNow · EVE community radio",
-     "provider": "GamingNow", "url": "https://media01.gamingnow.net:8010/erweb.mp3",
-     "homepage": "https://gamingnow.net/eve-radio/",
-     "tags": ["gaming"], "codec": "MP3", "bitrate": None,
-     "favicon": "", "country": "", "source": "hermes"},
-]
-
-
 def presets() -> List[Dict[str, Any]]:
     return [dict(s) for s in PRESETS]
 
 
+# Hermes Agent Radio (hermesagentradio.com): a 24/7 station about Hermes Agent and open-source agents,
+# with community music on six channels. Streams and taglines from its public /stations.json
+# (checked 2026-11-19: every stream is https audio/mpeg). They are the whole Hermes Radio tab and
+# lead the status-bar radio list.
+AGENT_RADIO_SITE = "https://hermesagentradio.com/"
+_AGENT_RADIO = "https://hermesagentradio.com/stream"
+AGENT_RADIO: List[Dict[str, Any]] = [
+    {"id": f"hermes-agent-radio-{cid}", "name": name, "description": tagline,
+     "provider": "Hermes Agent Radio", "url": _AGENT_RADIO + path,
+     "homepage": AGENT_RADIO_SITE, "tags": tags, "codec": "MP3", "bitrate": None,
+     "favicon": "", "country": "", "source": "hermes-agent-radio"}
+    for cid, name, tagline, path, tags in (
+        ("main", "Hermes Agent Radio", "Everything we play, one stream", "", ["hermes", "talk", "community"]),
+        ("hiphop", "Hermes Agent Radio Hip-Hop", "Bars, beats and agents with something to say", "/hiphop", ["hermes", "hiphop"]),
+        ("dance", "Hermes Agent Radio Dance", "Four on the floor, all night", "/dance", ["hermes", "dance"]),
+        ("rock", "Hermes Agent Radio Rock", "Guitars, grit and volume", "/rock", ["hermes", "rock"]),
+        ("smooth", "Hermes Agent Radio Smooth", "Slow it down and stay a while", "/smooth", ["hermes", "smooth"]),
+        ("techno", "Hermes Agent Radio Techno", "Machines, bass and no brakes", "/techno", ["hermes", "techno"]),
+    )
+]
+
+
+def agent_radio() -> List[Dict[str, Any]]:
+    return [dict(s) for s in AGENT_RADIO]
+
+
 def hermes_lineup() -> List[Dict[str, Any]]:
-    """The Hermes Radio hero. No placeholder station: Hermes FM has no stream yet."""
-    return [dict(s) for s in HERMES_LINEUP]
+    """The Hermes Radio hero: Hermes Agent Radio's six channels and nothing else."""
+    return agent_radio()
 
 
 # Windows reports the WSA codes, not the C library ones.
@@ -379,8 +364,16 @@ def read_capped(resp: Any, limit: int) -> bytes:
 
 
 def _rb_open(req: urllib.request.Request, timeout: float):
-    """One Radio Browser request (tests replace this to fake the network)."""
-    return urllib.request.build_opener(_FirstAddressHTTPSHandler()).open(req, timeout=timeout)
+    """One Radio Browser request (tests replace this to fake the network).
+
+    The mirror list is fixed, but a DNS answer or a redirect must not take the request
+    into the LAN or to a metadata address: no proxy is honoured, every address is checked
+    public before it is connected to, and a redirect is followed only to a public http(s)
+    target (see _SafeRedirect).
+    """
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SafeRedirect(),
+                                         _PinnedHTTPHandler(), _FirstAddressHTTPSHandler())
+    return opener.open(req, timeout=timeout)
 
 
 def _rb_json(path: str, params: Optional[Dict[str, Any]] = None) -> Tuple[Any, Optional[int]]:
@@ -1040,8 +1033,12 @@ def _connect_first(answers: Any, timeout: Any, source_address: Any = None) -> so
 
 
 class _FirstAddressHTTPSConnection(http.client.HTTPSConnection):
-    """Radio Browser over HTTPS, connecting with _connect_first (no address checks:
-    these are fixed public hosts, and a configured proxy is used as before)."""
+    """Radio Browser over HTTPS: connect to one of the addresses that was checked public.
+
+    The mirrors are fixed public hosts, but their DNS answer is not trusted (a mirror can
+    move, or a resolver can answer 127.0.0.1), so every answer is checked first and the
+    connection is made to an address that passed.
+    """
 
     def connect(self) -> None:
         if getattr(self, "_tunnel_host", None):
@@ -1049,8 +1046,11 @@ class _FirstAddressHTTPSConnection(http.client.HTTPSConnection):
         # One budget for connect, TLS and the reply: a slow connect followed by a stall
         # must not run past the Hermes proxy's 10 s.
         t0 = time.monotonic()
-        answers = socket.getaddrinfo(self.host, self.port, type=socket.SOCK_STREAM)
-        sock = _connect_first(answers, self.timeout, self.source_address)
+        try:
+            answers = socket.getaddrinfo(self.host, self.port, type=socket.SOCK_STREAM)
+        except (OSError, ValueError) as exc:
+            raise RadioError("radio-browser host could not be resolved") from exc
+        sock = _connect_first(_public_answers(answers), self.timeout, self.source_address)
         if isinstance(self.timeout, (int, float)):
             sock.settimeout(max(0.5, self.timeout - (time.monotonic() - t0)))
         self.sock = self._context.wrap_socket(sock, server_hostname=self.host)  # type: ignore[attr-defined]
@@ -1083,6 +1083,47 @@ class _PinnedHTTPHandler(urllib.request.HTTPHandler):
 class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
     def https_open(self, req):  # type: ignore[no-untyped-def]
         return self.do_open(_PinnedHTTPSConnection, req, context=self._context)  # type: ignore[attr-defined]
+
+
+class _FixedHostRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to another URL on the same fixed HTTPS hosts.
+
+    An API answer is data, not a redirect instruction: a redirect that leaves the plugin's
+    own hosts is refused rather than fetched with the plugin's network.
+    """
+
+    def __init__(self, hosts: Any) -> None:
+        super().__init__()
+        self._hosts = set(hosts)
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        target = urllib.parse.urlsplit(newurl)
+        host = (target.hostname or "").lower()
+        if target.scheme.lower() != "https" or host not in self._hosts:
+            raise RadioError(f"redirect left the allowed hosts: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def open_fixed_https(req: Any, hosts: Any, timeout: float):
+    """One HTTPS request to a fixed host set (LRCLIB, the Webamp Skin Museum).
+
+    Only those hosts over HTTPS; no proxy; every address checked public before it is
+    connected to, and the connection pinned to the address that was checked (including a
+    same-host redirect hop). A redirect to any other host is refused.
+    """
+    url = req.full_url if isinstance(req, urllib.request.Request) else str(req)
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError as exc:
+        raise RadioError("invalid url") from exc
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme.lower() != "https" or host not in set(hosts):
+        raise RadioError(f"not one of the allowed https hosts: {url}")
+    if not isinstance(req, urllib.request.Request):
+        req = urllib.request.Request(url)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                                         _FixedHostRedirect(hosts), _PinnedHTTPSHandler())
+    return opener.open(req, timeout=timeout)
 
 
 # Station logos: fetched by the server, never by the page directly. The page loading a
@@ -1167,6 +1208,7 @@ def resolve_playlist_url(url: str) -> str:
             geturl = getattr(resp, "geturl", None)
             base = (geturl() if callable(geturl) else None) or url
     except Exception:
+        log.debug("could not resolve playlist URL", exc_info=True)
         return url
     # pls: File1=... ; m3u: first non-comment line
     import re

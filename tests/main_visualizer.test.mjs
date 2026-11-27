@@ -69,7 +69,8 @@ test("the player applies those prefs and persists a click by merging settings", 
   assert.match(player, /alignMainVisMode\(webamp, saved\.settings\)/);
   assert.match(player, /const patch = mainVisModePatch\(saved\.settings, MAIN_VIS_MODES\[style\] \|\| "BAR"\)/);
   assert.match(player, /if \(patch\) api\.setSavedSettings\?\.\(patch\)/);
-  assert.match(player, /api\.setSavedSettings = \(s\) => \{ saved\.settings = \{ \.\.\.saved\.settings, \.\.\.s \}; stagePersist\(\{ settings: saved\.settings \}\); \}/);
+  // Only the changed keys go out: the server merges them, so a setting saved from the status bar is not overwritten.
+  assert.match(player, /api\.setSavedSettings = \(patch\) => \{\s*saved\.settings = \{ \.\.\.saved\.settings, \.\.\.patch \};\s*stagePersist\(\{ settings: \{ \.\.\.persistState\.settings, \.\.\.patch \} \}\);\s*\};/);
   assert.doesNotMatch(player, /settings:\s*\{\s*mainVisualizer/);
   assert.match(player, /classList\.toggle\("revamp-idle", status !== "PLAYING"\)/);
   assert.match(player, /ctx\.clearRect\(0, 0, canvas\.width, canvas\.height\)/);

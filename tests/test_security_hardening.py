@@ -1,4 +1,4 @@
-"""Security audit 2026-11-02 (Codex whole-repo review): one regression test per fix.
+"""Security audit 2026-11-02 (whole-repo review): one regression test per fix.
 
 Each test names the finding it guards. They are kept together so the audit's coverage is
 easy to see and to re-run.
@@ -94,7 +94,7 @@ def test_museum_answer_is_capped():
 
 
 def test_oversized_lyrics_answer_is_an_error_not_a_cached_miss(monkeypatch):
-    monkeypatch.setattr(lyrics.urllib.request, "urlopen", lambda req, timeout=None: _Resp(lyrics.LYRICS_MAX_BYTES + 10))
+    monkeypatch.setattr(lyrics, "_open", lambda req, timeout=None: _Resp(lyrics.LYRICS_MAX_BYTES + 10))
     with pytest.raises(lyrics.LyricsError):
         lyrics._fetch({"track_name": "x", "artist_name": "y"})
 
@@ -149,7 +149,7 @@ def test_a_music_folder_inside_a_hidden_folder_still_follows_its_links(tmp_path,
     # was skipped. Only hidden folders below what the link shares with the music folder count.
     if "appdata" in str(tmp_path).casefold():
         # Windows keeps temp files under AppData, a system tree links are never followed into
-        # (test_hunt_grok covers that); this test is about hidden folders only.
+        # (test_hunt_review covers that); this test is about hidden folders only.
         monkeypatch.setattr(library, "_system_link", lambda target: False)
     base = tmp_path / ".var" / "app"
     drive = base / "nas" / "Albums"
@@ -218,7 +218,7 @@ def test_send_file_refuses_a_file_swapped_around_the_check(tmp_path):
 
 
 def test_send_file_without_nofollow_serves_only_the_judged_file(tmp_path, monkeypatch):
-    # Codex/Qwen a10r2: Windows has no O_NOFOLLOW, so a file swapped between the check and the
+    # Review a10r2: Windows has no O_NOFOLLOW, so a file swapped between the check and the
     # open was served. Now the opened file must be the very file that was judged.
     monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
     song = tmp_path / "a.mp3"
@@ -240,7 +240,7 @@ def test_send_file_without_nofollow_serves_only_the_judged_file(tmp_path, monkey
 
 @pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="POSIX open flag")
 def test_send_file_refuses_a_link_swapped_in_after_the_check(tmp_path, monkeypatch):
-    # Claude a10r3: the old swap test now fails on the extension alone. This one checks the real
+    # review a10r3: the old swap test now fails on the extension alone. This one checks the real
     # audio file, then swaps that path for a link before the open: O_NOFOLLOW refuses it.
     secret = tmp_path / "secret.mp3"
     secret.write_bytes(b"SECRET")
@@ -261,7 +261,7 @@ def test_send_file_refuses_a_link_swapped_in_after_the_check(tmp_path, monkeypat
 
 @pytest.mark.skipif(os.name != "posix" or (hasattr(os, "geteuid") and os.geteuid() == 0), reason="POSIX permissions, not root")
 def test_send_file_serves_a_song_under_a_folder_it_can_only_pass_through(tmp_path):
-    # Claude a10r21: opening every parent folder for reading refused any library below a folder
+    # review a10r21: opening every parent folder for reading refused any library below a folder
     # with search but no read permission (another account's 0711 home, some NAS mounts).
     gate = tmp_path / "gate"
     inner = gate / "inner"
@@ -446,7 +446,7 @@ def test_revampctl_and_dashboard_check_the_listener_before_sending_the_token():
 
 
 def test_item_art_is_never_an_arbitrary_address():
-    # Audit round 2 (Codex): playlist item art went straight into an <img>.
+    # Audit round 2 (review): playlist item art went straight into an <img>.
     from revamp_core import items
     base = {"id": "url:x", "source": "url", "kind": "music", "title": "t",
             "playback": {"backend": "webamp", "url": "/api/media/abc"}}
@@ -457,7 +457,7 @@ def test_item_art_is_never_an_arbitrary_address():
 
 
 def test_a_relayed_proof_from_the_real_server_on_another_port_is_refused(server):
-    # Audit round 2 (Claude): an impostor on another port relays the nonce to the real
+    # Audit round 2 (review): an impostor on another port relays the nonce to the real
     # REVamp and returns its answer. The proof covers the port, so it doesn't verify.
     import urllib.request as _ur
     real = server.client.base
@@ -496,7 +496,7 @@ def test_clients_check_the_listener_before_every_request_not_once():
 
 
 def test_mcp_bridge_marks_file_text_as_data(monkeypatch):
-    # Audit round 2 (Codex): `revampctl mcp` returned titles/station names unmarked.
+    # Audit round 2 (review): `revampctl mcp` returned titles/station names unmarked.
     import importlib.machinery
     import importlib.util
     from pathlib import Path as _P
@@ -514,7 +514,7 @@ def test_mcp_bridge_marks_file_text_as_data(monkeypatch):
 
 
 def test_a_downloaded_skin_must_match_the_checksum_it_was_picked_by(monkeypatch):
-    # Audit round 2 (Codex): a substituted file from a compromised mirror was accepted.
+    # Audit round 2 (review): a substituted file from a compromised mirror was accepted.
     import hashlib as _h
     good = b"PK\x03\x04 a real skin"
     md5 = _h.md5(good).hexdigest()
@@ -525,7 +525,7 @@ def test_a_downloaded_skin_must_match_the_checksum_it_was_picked_by(monkeypatch)
         museum.install(md5, "x")
 
 
-# ---- Round 2 (Claude): other local accounts -----------------------------------------
+# ---- Round 2 (review): other local accounts -----------------------------------------
 
 linux_only = pytest.mark.skipif(not server.SAME_USER_ONLY, reason="peer account lookup is Linux-only")
 
@@ -592,7 +592,7 @@ def test_the_pop_out_uses_a_private_devtools_pipe_not_a_port(monkeypatch, tmp_pa
         monkeypatch.setattr(window, "_proc", None)
 
 
-# ---- Round 3 (Claude + Codex) --------------------------------------------------------
+# ---- Round 3 (review) --------------------------------------------------------
 
 def _req(server, path, method="GET", body=None, token_header=True):
     import json as _j
@@ -708,7 +708,7 @@ def server_module_for_test():
     return __import__("revamp_core.server", fromlist=["x"])
 
 
-# ---- Round 4 (2026-11-02, Codex + Claude) ------------------------------------------
+# ---- Round 4 (2026-11-02 review) ------------------------------------------
 
 @pytest.mark.skipif(os.name != "posix", reason="symlinks")
 def test_folder_cover_must_be_a_real_image_in_that_folder(tmp_path, monkeypatch):
@@ -849,7 +849,7 @@ def test_folder_cover_that_is_a_fifo_does_not_hang(tmp_path, monkeypatch):
     assert tags.read_cover(str(song)) is None
 
 
-# ---- Round 5 (2026-11-02, Codex + Claude) ------------------------------------------
+# ---- Round 5 (2026-11-02 review) ------------------------------------------
 
 def test_bridge_dot_segment_cannot_reach_a_refused_route():
     import json as _json
@@ -972,11 +972,21 @@ def fcntl_dup(fd):
 def _retire_watchers():
     # A watcher a test started must not outlive it: it would call the next test's ensure_server.
     yield
-    server._watch_gen += 1
+    _wait_for_watchers()
+
+
+def _wait_for_watchers():
+    import threading
+    with server._lock:
+        server._watch_gen += 1
+    for thread in threading.enumerate():
+        if thread.name == "revamp-watch":
+            thread.join(timeout=15)
+            assert not thread.is_alive(), "retired port watcher did not exit"
 
 
 def _reset_server_globals(monkeypatch):
-    server._watch_gen += 1
+    _wait_for_watchers()
     for name, val in (("_started", False), ("_watching", False), ("_owned", False)):
         monkeypatch.setattr(server, name, val)
 
@@ -1063,7 +1073,7 @@ def test_health_carries_a_per_server_instance_id(server):
 
 
 def test_a_timeout_is_not_proof_of_another_profile(monkeypatch):
-    # Council round 2 (Codex, GLM): one slow proof used to mark our own service "not ours",
+    # Council round 2: one slow proof used to mark our own service "not ours",
     # so the watcher never rescued it. "Can't tell" keeps what was known.
     import threading as _t
     _reset_server_globals(monkeypatch)
@@ -1103,11 +1113,11 @@ def test_the_service_restarts_itself_when_a_newer_version_is_installed(monkeypat
     server._restart_when_updated()
     assert done.wait(3)
     assert seen["argv"] == list(server.sys.orig_argv)  # the exact command line it was started with
-    assert len(checks) >= 2, "Grok a10r2: one quiet check right after a page reconnects is not enough"
+    assert len(checks) >= 2, "review a10r2: one quiet check right after a page reconnects is not enough"
 
 
 def test_a_failed_self_restart_keeps_the_update_check_alive(monkeypatch):
-    # GLM a10r4: an exec that failed (a half-finished update) killed the checking thread for good.
+    # review a10r4: an exec that failed (a half-finished update) killed the checking thread for good.
     import threading as _t
     monkeypatch.setattr(server, "UPDATE_CHECK", 0.01)
     monkeypatch.setattr(server, "VERSION", "1.0.0-alpha.9")
@@ -1128,7 +1138,7 @@ def test_a_failed_self_restart_keeps_the_update_check_alive(monkeypatch):
 
 
 def test_another_profiles_revamp_on_the_port_is_reported(monkeypatch, caplog):
-    # Grok a10r4: a REVamp that proved it is a different library was used silently.
+    # review a10r4: a REVamp that proved it is a different library was used silently.
     _reset_server_globals(monkeypatch)
     monkeypatch.setattr(server, "_probe_health", lambda p: {
         "app": "revamp", "owner": "plugin", "version": "1.0.0-alpha.10", "build": "b", "instance": "X"})
@@ -1137,7 +1147,7 @@ def test_another_profiles_revamp_on_the_port_is_reported(monkeypatch, caplog):
     # Nothing real is asked to step aside: on a CI machine something may answer on 18114, and
     # a granted shutdown skipped the warning this test is about (macOS CI, flaky).
     monkeypatch.setattr(server, "_request_upgrade_shutdown", lambda *a: False)
-    for build in ("b", "other-build"):  # Claude a10r6: other profiles' builds usually differ
+    for build in ("b", "other-build"):  # review a10r6: other profiles' builds usually differ
         _reset_server_globals(monkeypatch)
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger=server.logger.name):
@@ -1198,7 +1208,7 @@ def test_watcher_never_takes_another_profiles_port_within_a_lease(monkeypatch):
 
 
 def test_a_fresh_foreign_lease_keeps_a_watcher_off_the_port_until_it_goes_stale(monkeypatch):
-    # Claude a10r6: the "within a lease" test never wrote a lease; this one does, with a short TTL.
+    # review a10r6: the "within a lease" test never wrote a lease; this one does, with a short TTL.
     import json as _json
     import threading as _t
     import time as _time
@@ -1224,7 +1234,7 @@ def test_a_fresh_foreign_lease_keeps_a_watcher_off_the_port_until_it_goes_stale(
 
 
 def test_a_service_that_takes_over_stays_a_service(monkeypatch):
-    # Codex a10r6: the watcher's takeover started the server as owner "plugin", so a later plugin
+    # review a10r6: the watcher's takeover started the server as owner "plugin", so a later plugin
     # upgrade could ask the systemd process to shut its server down.
     import threading as _t
     _reset_server_globals(monkeypatch)
@@ -1241,12 +1251,12 @@ def test_a_service_that_takes_over_stays_a_service(monkeypatch):
 
 
 def test_a_service_waits_while_another_profiles_revamp_holds_the_port():
-    # Codex/Claude a10r6: a service that found another profile's plugin on the port exited (2) and
+    # Review a10r6: a service that found another profile's plugin on the port exited (2) and
     # systemd gave up on it; it now waits while its watcher runs and takes the port when it frees.
     import inspect
     src = inspect.getsource(server.main)
     assert "_lease_retrying or _watching or _taking_over" in src and "idle < 3" in src
-    # Grok a10r7: a takeover's probes take seconds (health, proof, hand-over): the watcher keeps
+    # review a10r7: a takeover's probes take seconds (health, proof, hand-over): the watcher keeps
     # _taking_over set for the whole ensure_server call, so main() can't give up mid-takeover.
     watch = inspect.getsource(server._watch_owner)
     assert watch.index("_taking_over = True") < watch.index("ensure_server(port, owner=as_owner)")
@@ -1574,7 +1584,7 @@ def test_a_server_we_never_saw_voids_our_old_proof(monkeypatch, tmp_path):
 
 
 
-# ---- Pre-release hunt (alpha.10): Codex + Claude ---------------------------------------
+# ---- Pre-release hunt (alpha.10): review ---------------------------------------
 
 def test_the_lease_folder_does_not_depend_on_xdg_runtime_dir(monkeypatch, tmp_path):
     # A systemd unit and the Hermes gateway can differ in XDG_RUNTIME_DIR: both must see one lease.
@@ -1590,7 +1600,7 @@ def test_the_lease_folder_does_not_depend_on_xdg_runtime_dir(monkeypatch, tmp_pa
 
 @pytest.mark.skipif(os.name != "posix", reason="symlinks")
 def test_send_file_serves_exactly_the_file_it_checked(tmp_path):
-    # Codex: a link swapped between the check and the open must not change what is served.
+    # a link swapped between the check and the open must not change what is served.
     real = tmp_path / "real.mp3"
     real.write_bytes(b"ID3 audio")
     secret = tmp_path / "secret.txt"
@@ -1634,11 +1644,11 @@ def test_the_self_update_waits_while_music_plays_or_a_window_is_open(monkeypatch
     monkeypatch.setattr(server.window, "is_open", lambda: False)
     monkeypatch.setattr(server.store, "get_state", lambda: {"live": {"player_connected": True, "now_playing": {"status": "PLAYING"}}})
     assert server._quiet_for_restart() is False
-    # Claude a10r2: a "PLAYING" left by a page that went away does not hold the update back forever.
+    # review a10r2: a "PLAYING" left by a page that went away does not hold the update back forever.
     monkeypatch.setattr(server.store, "get_state", lambda: {"live": {"player_connected": False, "now_playing": {"status": "PLAYING"}}})
     monkeypatch.setattr(server.store, "heartbeat_age", lambda: 3600.0)
     assert server._quiet_for_restart() is True
-    # Grok a10r4: Hermes minimised heartbeats about once a minute; that music is still playing.
+    # review a10r4: Hermes minimised heartbeats about once a minute; that music is still playing.
     monkeypatch.setattr(server.store, "heartbeat_age", lambda: 60.0)
     assert server._quiet_for_restart() is False
     # A state that can't be read counts as busy.
@@ -1652,7 +1662,7 @@ def test_the_self_update_waits_while_music_plays_or_a_window_is_open(monkeypatch
 
 
 def test_a_watcher_takes_a_port_whose_other_library_is_gone_for_good(monkeypatch, tmp_path):
-    # Claude: a REVamp that watched another profile's server never served its own library after
+    # a REVamp that watched another profile's server never served its own library after
     # that server quit for good. After LEASE_TTL of nothing (no fresh lease) it may, as a start-up would.
     import threading as _t
     monkeypatch.setenv("REVAMP_HOME", str(tmp_path / "ours"))
@@ -1669,7 +1679,7 @@ def test_a_watcher_takes_a_port_whose_other_library_is_gone_for_good(monkeypatch
 
 
 def test_a_failed_lease_refresh_does_not_end_the_lease_thread(monkeypatch):
-    # GLM a10r2: one exception in the refresher killed it, and the lease went stale after 30 s.
+    # review a10r2: one exception in the refresher killed it, and the lease went stale after 30 s.
     import inspect
     src = inspect.getsource(server._keep_lease)
     body = src[src.index("def run()"):]
@@ -1677,7 +1687,7 @@ def test_a_failed_lease_refresh_does_not_end_the_lease_thread(monkeypatch):
 
 
 def test_a_profile_that_loses_a_start_up_race_watches_instead_of_blaming_a_foreign_app(monkeypatch, caplog):
-    # Codex a10r8: two profiles start together; both see an empty port, the other binds first. The
+    # review a10r8: two profiles start together; both see an empty port, the other binds first. The
     # loser saw a listener under the lock, called it a NON-Revamp app and stopped (no watcher).
     _reset_server_globals(monkeypatch)
     answers = iter([None])  # empty at the first look; another REVamp answers from then on
@@ -1704,7 +1714,7 @@ def test_a_real_foreign_app_is_still_reported(monkeypatch, caplog):
 
 
 def test_a_lease_retry_refused_again_keeps_trying(monkeypatch):
-    # GLM a10r8: the "answering, ours" branch returned after one ensure_server even when that was
+    # review a10r8: the "answering, ours" branch returned after one ensure_server even when that was
     # refused (a lease appeared in between), leaving no retry and no watcher.
     import threading as _t
     _reset_server_globals(monkeypatch)
@@ -1728,7 +1738,7 @@ def test_a_lease_retry_refused_again_keeps_trying(monkeypatch):
 
 
 def test_health_reports_the_page_files_on_disk_now(monkeypatch):
-    # Grok a10r8: health reported the build the server started with, while "/" stamps the page
+    # review a10r8: health reported the build the server started with, while "/" stamps the page
     # with the files on disk; after an in-place update the library frame reloaded every 20 s.
     class Srv:
         revamp_build = "started-with"
@@ -1738,7 +1748,7 @@ def test_health_reports_the_page_files_on_disk_now(monkeypatch):
 
 
 def test_files_changes_when_the_page_files_change(monkeypatch, tmp_path):
-    # GLM a10r9: the 'files' value must follow an update (the 5 s cache expires).
+    # review a10r9: the 'files' value must follow an update (the 5 s cache expires).
     web = tmp_path / "web"
     web.mkdir()
     (web / "app.js").write_text("a")
@@ -1751,7 +1761,7 @@ def test_files_changes_when_the_page_files_change(monkeypatch, tmp_path):
 
 
 def test_a_start_up_race_is_decided_again_at_most_twice(monkeypatch, caplog):
-    # GLM a10r11: a REVamp that answers only inside the lock, every time, must not recurse forever.
+    # review a10r11: a REVamp that answers only inside the lock, every time, must not recurse forever.
     _reset_server_globals(monkeypatch)
     state = {"n": 0}
 
@@ -1790,3 +1800,32 @@ def test_a_retired_watcher_never_claims_the_watching_flag_again(monkeypatch):
     _time.sleep(0.2)
     assert calls and server._watching is False
 
+
+
+def test_watcher_retired_during_probe_skips_takeover(monkeypatch):
+    import threading
+
+    _reset_server_globals(monkeypatch)
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    def probe(port):
+        entered.set()
+        assert release.wait(5)
+        return None
+
+    monkeypatch.setattr(server, "WATCH_INTERVAL", 0.001)
+    monkeypatch.setattr(server, "_probe_health", probe)
+    monkeypatch.setattr(server, "_read_lease", lambda port: None)
+    monkeypatch.setattr(server, "_may_take_port", lambda *args: True)
+    monkeypatch.setattr(server, "_foreign_holder", lambda port: False)
+    monkeypatch.setattr(server, "ensure_server", lambda *a, **kw: calls.append(a) or 1)
+    server._watch_owner(18114, ours=True)
+    assert entered.wait(5)
+    watcher = next(t for t in threading.enumerate() if t.name == "revamp-watch")
+    with server._lock:
+        server._watch_gen += 1
+    release.set()
+    watcher.join(5)
+    assert not watcher.is_alive()
+    assert not calls

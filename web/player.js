@@ -60,8 +60,19 @@ export async function initPlayer(ctx) {
   const persist = debounce(persistNow, 1000);
   let persistState = {};
   function persistNow() {
-    apiPut("/api/state", persistState).catch(() => {});
+    const patch = persistState;
     persistState = {};
+    if (!Object.keys(patch).length) return; // the heartbeat flushes every 2 s; nothing new, no request
+    apiPut("/api/state", patch).catch((e) => requeuePatch(patch, e));
+  }
+  // A save that failed (server restarting) goes out again with the next one; a change made
+  // since then to the same key wins. A patch the server refused (4xx) is not sent again,
+  // or it would sink every later save with it.
+  function requeuePatch(patch, e) {
+    if (e?.status >= 400 && e.status < 500) return;
+    const settings = (patch.settings || persistState.settings) && { ...patch.settings, ...persistState.settings };
+    persistState = { ...patch, ...persistState };
+    if (settings) persistState.settings = settings;
   }
   const stagePersist = (patch) => { Object.assign(persistState, patch); persist(); };
 
@@ -433,13 +444,14 @@ export async function initPlayer(ctx) {
     webamp,
     get items() { return webampItems(); },
     async loadTracks(tracks, { mode = "replace", play = true } = {}) {
-      // A new queue or track (or another backend, Focus): no old place, and no pending start
-      // left to fire alongside it; a list loaded to play plays itself.
-      if (play || mode === "replace") { actSeq++; place = null; startPending = false; endSilence(); }
       if (mode === "replace") playedTid = null; // a book started from the list goes on where you were
       const all = normalizeItems(tracks);
       // A list for another backend (focus...) goes to that backend; Webamp keeps its queue.
       const other = all[0] && all[0].playback.backend !== "webamp" ? all[0].playback.backend : null;
+      // A new queue or track (or another backend, Focus): no old place, and no pending start
+      // left to fire alongside it; a list loaded to play plays itself. Append and next only
+      // edit Webamp's queue and play nothing: a resuming book keeps its place.
+      if (mode === "replace" || (play && other)) { actSeq++; place = null; startPending = false; endSilence(); }
       if (other) {
         const ex = backends.get(other);
         if (!ex) { toast(`Can't play that here (${other})`, { kind: "error" }); return; }
@@ -623,7 +635,11 @@ export async function initPlayer(ctx) {
       // classic: base skin, simplest reliable path is a reload. Save first, or the
       // reload restores the old skin.
       const patch = persistState; persistState = {};
-      apiPut("/api/state", patch).catch(() => {}).finally(() => location.reload());
+      // A failed save keeps the old skin on screen instead of reloading back into it.
+      apiPut("/api/state", patch).then(() => location.reload(), (e) => {
+        requeuePatch(patch, e);
+        toast("Couldn't save the skin; REVamp will try again", { kind: "error" });
+      });
     },
     skinList: () => skins,
     toast,
@@ -803,10 +819,10 @@ export async function initPlayer(ctx) {
   let bookStart = null;
   // A paused-early hold remembers the clock it held at: on Play it is compared with the live
   // clock, so a seek the person made while paused wins and the hold's own clock does not read
-  // as one (grok a10r21).
+  // as one (review a10r21).
   let heldClock = null, heldSeekVersion = null;
   // A seek during the hold is the person's new place: stop holding, save it now (they may close
-  // the player while paused) and leave it alone on Play (grok a10r21).
+  // the player while paused) and leave it alone on Play (review a10r21).
   releaseHold = () => {
     if (heldClock == null) return;
     heldClock = null; heldSeekVersion = null; bookStart = null;
@@ -818,12 +834,12 @@ export async function initPlayer(ctx) {
   };
   // Webamp's own seek bar and buttons never bump actSeq, so a pending resume also checks that the
   // audio is where its own clock says it should be. A jump or a pause meanwhile means the person
-  // acted, and their place wins (codex a10r16; a playhead that has not started yet is a slow disk,
-  // not a seek -- grok a10r18).
+  // acted, and their place wins (review a10r16; a playhead that has not started yet is a slow disk,
+  // not a seek -- review a10r18).
   function movementWatch(start = null) {
     const base = { at: 0, pos: 0 };  // when, and where, the audio really started
     // Books play up to 3x, so audio time runs faster than the clock; a lookup that returns late
-    // must not look like a seek (claude a10r19).
+    // must not look like a seek (review a10r19).
     const rate = () => Math.min(3, Math.max(0.5, Number(api.rate) || 1));
     return function moved() {
       const now = media().timeElapsed || 0;
@@ -840,7 +856,7 @@ export async function initPlayer(ctx) {
   }
   // A file can report PLAYING for many seconds before its first sample arrives. Wait as long as
   // reachPlace does, and leave resumingId set when it never starts, so the opening seconds cannot
-  // overwrite the place (grok a10r18).
+  // overwrite the place (review a10r18).
   async function waitFirstAudio(seconds = 15) {
     for (let i = 0; i < seconds * 10; i++) {
       if ((media().timeElapsed || 0) > 0) return true;
@@ -850,14 +866,14 @@ export async function initPlayer(ctx) {
     return (media().timeElapsed || 0) > 0;
   }
   // A disc or a NAS can take longer than that wait. Giving up there used to leave resumingId set
-  // for ever: no seek *and* no saves, so an hour of listening returned to the old place (codex
+  // for ever: no seek *and* no saves, so an hour of listening returned to the old place (review
   // a10r19). Watch for the first sample instead, apply the same checks, then let go.
   // A seek can be dropped while the element is still warming up, so confirm it landed and try
   // again (reachPlace does the same). resumingId stays set until it lands, or a person acts, so
-  // the opening seconds cannot replace the saved place (grok a10r19).
+  // the opening seconds cannot replace the saved place (review a10r19).
   function applySeek(pos, rk, gen, acted, tries = 3) {
     let attempt = 0;
-    // A retry must never undo something the person did after the first attempt (codex a10r20).
+    // A retry must never undo something the person did after the first attempt (review a10r20).
     const gone = () => resumeKeyOf(currentInfo().item) !== rk || gen !== handoffGen
       || acted !== actSeq - transportSeq || placeHere();
     const release = () => { if (resumingId === rk) resumingId = null; };
@@ -898,13 +914,13 @@ export async function initPlayer(ctx) {
         return;
       }
       // Still buffering, or paused in the middle of it: keep waiting (a pause must not cost the
-      // place -- claude a10r19).
+      // place -- review a10r19).
       if ((media().timeElapsed || 0) <= 0 || currentInfo().status !== "PLAYING") return;
       clearInterval(timer);
       const pos = Number(target()) || 0;
       const dur = currentInfo().duration || 0;
       // Same rules as the immediate path: never seek into the last 30 s, and never over the
-      // person's own move (a native Webamp seek does not bump actSeq -- codex a10r20).
+      // person's own move (a native Webamp seek does not bump actSeq -- review a10r20).
       if (pos > 0 && !(dur && pos >= dur - 30) && !moved()) applySeek(pos, rk, gen, acted);
       else if (resumingId === rk) resumingId = null;
     }, 250);
@@ -932,14 +948,14 @@ export async function initPlayer(ctx) {
     if (held != null) {
       const clockNow = media().timeElapsed || 0;
       if (seekIntent(curTrack).version !== heldSeek || (clockNow > 0 && Math.abs(clockNow - held) > 2)) {
-        // The person seeked while we were held: their place wins (grok a10r21).
+        // The person seeked while we were held: their place wins (review a10r21).
         if (resumingId === rk) resumingId = null;
         return;
       }
     }
     if (placeHere()) {
       // A handoff claimed the track during the hold: the pending resume must not keep saves
-      // frozen for the rest of the track (grok a10r21).
+      // frozen for the rest of the track (review a10r21).
       if (held != null && resumingId === rk) resumingId = null;
       return;
     }
@@ -949,12 +965,12 @@ export async function initPlayer(ctx) {
     const heldBase = held == null ? 0 : held; // a hold's clock is where the file really is
     const moved = movementWatch(held); // did the person take over since this started?
     // Sampled only once the work starts: every early return above would have leaked this timer
-    // on ordinary playback changes (codex a10r20).
+    // on ordinary playback changes (review a10r20).
     const sampler = setInterval(() => moved(), 250);  // record the real start of audio
     resumingId = rk;
     let keepResuming = false; // still waiting for the first sample: the old place must survive
     // Paused in the opening seconds while this was loading: a pause is not a new place. Keep the
-    // saved one safe and look again on Play (codex a10r21: 0:01 replaced it, and Play never did).
+    // saved one safe and look again on Play (review a10r21: 0:01 replaced it, and Play never did).
     const pausedEarly = () => storeState()?.playlist?.currentTrack === curTrack
       && currentInfo().status === "PAUSED" && (media().timeElapsed || 0) < 15
       && gen === handoffGen && !placeHere() && seekIntent(curTrack).version === startSeekVersion;
@@ -981,7 +997,7 @@ export async function initPlayer(ctx) {
           // Not over the person's own seek or pause meanwhile, nor over a newer handed-over place.
           // (Webamp's own seek bar doesn't move actSeq: a file that ran on far past its start was
           // moved by the person, so it is left where they put it.) Resuming a hold, the clock
-          // legitimately sits at the held place, so the window widens by it (grok a10r21).
+          // legitimately sits at the held place, so the window widens by it (review a10r21).
           if (localTid(currentInfo().item) === tid && gen === handoffGen && acted === actSeq - transportSeq
               && !placeHere() && currentInfo().status === "PLAYING"
               && (media().timeElapsed || 0) < heldBase + 10
@@ -999,10 +1015,10 @@ export async function initPlayer(ctx) {
         if (pausedEarly()) { holdForPlay(); return; }
         // Still the same file, still playing, not moved by the person (Webamp's own buttons and
         // seek bar don't go through actSeq): only then may the book jump. Resuming a hold, the
-        // clock legitimately sits at the held place, so the window widens by it (grok a10r21).
+        // clock legitimately sits at the held place, so the window widens by it (review a10r21).
         // Anything else stops the
         // whole pending resume here, so the per-file lookup below cannot pull playback back to an
-        // older place either (codex a10r16).
+        // older place either (review a10r16).
         const still = storeState()?.playlist?.currentTrack === curTrack && currentInfo().status === "PLAYING"
           && (media().timeElapsed || 0) < heldBase + 15;
         if (!still || gen !== handoffGen || acted !== actSeq - transportSeq || placeHere()
@@ -1038,7 +1054,7 @@ export async function initPlayer(ctx) {
       if ((dur && pos >= dur - 30) || Math.abs((media().timeElapsed || 0) - pos) < 5) return;
       if (pausedEarly()) { holdForPlay(); return; }
       // A handoff arrived while this was loading (pending or already reached): it is newer.
-      // So is the person's own move: a seek with Webamp's bar, or a pause (codex a10r16).
+      // So is the person's own move: a seek with Webamp's bar, or a pause (review a10r16).
       if (placeHere() || gen !== handoffGen || acted !== actSeq - transportSeq) return;
       if (currentInfo().status !== "PLAYING" || moved()) return;
       keepResuming = true;          // applySeek clears it once the seek has landed
@@ -1177,9 +1193,7 @@ export async function initPlayer(ctx) {
   let milkdropSuspended = false;
   let resumeMilkdropOnVisible = false;
   const isMiniVisible = () => !!document.querySelector(".revamp-mini:not([hidden])");
-  // One open/closed choice for MilkDrop that follows the player to every place. It used to be
-  // remembered per place and start closed in the desktop window and the floating overlay, so
-  // popping out "lost" MilkDrop, and closing it there once hid it in that place for good.
+  // One shared open/closed choice for MilkDrop across every player place.
   const milkdropSetting = () => "milkdropOn";
   // The per-place choices of alpha.9 and earlier ("milkdropOpen" was the page's own) still count
   // in their place until the first choice under the new shared key, so an upgrade does not flip
@@ -1316,15 +1330,15 @@ export async function initPlayer(ctx) {
       lastMilkdrop = open;
       if (!milkdropSuspended && !autoMilkdrop) api.setSavedSettings?.({ [milkdropSetting()]: open });
       paintNpExtras();
+      paintMilkdropOff();
       // Off Webamp's dispatch: pin the stack and ask the desktop window to refit.
       if (visualizerPlacement === "desktop") setTimeout(desktopLayoutChanged, 0);
     });
   } catch { /* store shape changed: the button still toggles */ }
 
-  // A closed EQ unmounts its window, so the playlist would stay where the EQ
-  // used to be — 116px of empty page between the two windows. Watch the EQ's
-  // open state in the compact homes and re-place the stack when it changes.
-  // (The desktop pop-out keeps its EQ open on purpose; ensureClassicOpen owns it.)
+  // A closed EQ unmounts its window and leaves a gap between the windows.
+  // Watch its open state in the compact homes and re-place the stack when it changes.
+  // The desktop pop-out keeps its EQ open; ensureClassicOpen owns that.
   function eqOpen() {
     try { return !!webamp.store.getState().windows.genWindows.equalizer?.open; } catch { return false; }
   }
@@ -1459,6 +1473,23 @@ export async function initPlayer(ctx) {
     paintNpExtras();
     return lastMilkdrop;
   };
+  // A visible way out on the visualizer itself: a labelled pill over the picture,
+  // bottom-right so it never covers Webamp's own title-bar close button. Closing
+  // the window unmounts MilkDrop's canvas, so the renderer really stops; the
+  // open-state watcher above remembers milkdropOn=false for every home.
+  function paintMilkdropOff() {
+    const win = document.querySelector("#milkdrop-window, #webamp-host .gen-window");
+    if (!win || win.querySelector(".revamp-md-off")) return;
+    try { if (getComputedStyle(win).position === "static") win.style.position = "relative"; } catch { /* detached */ }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "revamp-md-off";
+    btn.textContent = "Turn off";
+    btn.setAttribute("aria-label", "Turn off MilkDrop visualizer");
+    btn.addEventListener("click", (event) => { event.stopPropagation(); api.toggleVisualizer(false); });
+    win.appendChild(btn);
+  }
+  paintMilkdropOff();
   function suspendMilkdrop() {
     if (milkdropSuspended) return;
     // Marked hidden even when MilkDrop is already closed, so a placement change while hidden
@@ -1542,7 +1573,7 @@ export async function initPlayer(ctx) {
   };
   document.addEventListener("dblclick", (event) => {
     const target = event.target instanceof Element ? event.target : null;
-    if (!target?.closest("#milkdrop-window, .gen-window")) return;
+    if (!target?.closest("#milkdrop-window, .gen-window") || target.closest(".revamp-md-off")) return;
     event.preventDefault();
     api.fullscreenVisualizer();
   }, true);
@@ -1663,7 +1694,7 @@ export async function initPlayer(ctx) {
   } catch { /* a click still cycles; it just is not remembered */ }
   const visHost = document.getElementById("webamp-host");
   if (visHost && typeof MutationObserver === "function") {
-    const mo = new MutationObserver(() => applyMainVis());
+    const mo = new MutationObserver(() => { applyMainVis(); paintMilkdropOff(); });
     mo.observe(visHost, { childList: true, subtree: true });
   }
   applyMainVis();
@@ -1861,7 +1892,22 @@ export async function initPlayer(ctx) {
           if (Number.isFinite(cmd.duck_level)) patch.duck_level = Math.min(1, Math.max(0, cmd.duck_level));
           if (typeof cmd.duck_toast === "boolean") patch.duck_toast = cmd.duck_toast;
           if (cmd.duck_approval_scope === "app" || cmd.duck_approval_scope === "all") patch.duck_approval_scope = cmd.duck_approval_scope;
-          if (Object.keys(patch).length) api.setSavedSettings(patch);
+          if (typeof cmd.milkdropOn === "boolean") patch.milkdropOn = cmd.milkdropOn;
+          // The place-menu tip is dismissed through this command too: keep the flag
+          // the desktop half sends, or a new profile shows the tip again.
+          if (typeof cmd.place_menu_tip_seen === "boolean") patch.place_menu_tip_seen = cmd.place_menu_tip_seen;
+          // The library control frame saves these through here as well (its Settings and hints).
+          if (typeof cmd.ticker === "boolean") patch.ticker = cmd.ticker;
+          const hints = cmd.siblingHintsDismissed;
+          if (hints && typeof hints === "object" && !Array.isArray(hints)
+            && Object.values(hints).every((v) => Number.isFinite(v))) patch.siblingHintsDismissed = { ...hints };
+          if (Object.keys(patch).length) {
+            api.setSavedSettings(patch);
+            // The switch must really stop (or start) the renderer, not just remember
+            // a wish. applyMilkdropChoice marks the toggle automatic, so the window
+            // watcher does not write the key a second time.
+            if (typeof patch.milkdropOn === "boolean") applyMilkdropChoice(patch.milkdropOn && hasWebGL());
+          }
           break;
         }
         default: break;
@@ -2111,7 +2157,10 @@ export async function initPlayer(ctx) {
 
   // expose for views (library picker, playlist save, agent settings)
   window.revampPlayerApi = api;
-  api.setSavedSettings = (s) => { saved.settings = { ...saved.settings, ...s }; stagePersist({ settings: saved.settings }); };
+  api.setSavedSettings = (patch) => {
+    saved.settings = { ...saved.settings, ...patch };
+    stagePersist({ settings: { ...persistState.settings, ...patch } });
+  };
   api.mainVisualizerPrefs = () => mainVisPrefs(saved.settings);
   api.getSettings = () => ({ ...saved.settings });
   api.nowStatus = () => safe(() => currentInfo().status) || "STOPPED"; // PLAYING / PAUSED / STOPPED
@@ -2171,7 +2220,13 @@ export async function initPlayer(ctx) {
     handleCommand,
     (evs, bulk) => handleAgentEvents(evs, bulk),
     () => window.revampRefreshView?.(), // library changed
-    (state) => { if (state?.settings) { saved.settings = state.settings; applyMainVis(); } }, // state broadcast: adopt settings
+    (state) => {
+      if (!state?.settings) return;
+      const changed = state.settings.milkdropOn !== saved.settings?.milkdropOn;
+      saved.settings = state.settings;
+      if (changed && !milkdropSuspended) applyMilkdropChoice(hasWebGL() && wantsMilkdropOpen());
+      applyMainVis();
+    },
   );
 
   return api;

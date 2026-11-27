@@ -124,12 +124,14 @@ def _meta_from_items(items: List[Dict[str, Any]]) -> tuple[int, float]:
     return count, duration
 
 
-def _read_m3u(path: Path, origin_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
+def _read_m3u(path: Path, origin_dir: Optional[Path] = None, *, strict: bool = False) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     pending_meta: Optional[Dict[str, Any]] = None
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
+        if strict:
+            raise
         return items
     canon: Optional[Dict[str, Any]] = None
     for line in lines:
@@ -292,7 +294,7 @@ def list_playlists() -> List[Dict[str, Any]]:
     return out
 
 
-def get_playlist(pid: str) -> Optional[Dict[str, Any]]:
+def get_playlist(pid: str, *, strict: bool = False) -> Optional[Dict[str, Any]]:
     """id | slug; name match fallback for friendlier lookups."""
     with _LOCK:
         # Display names can normalize to another playlist's slug ("Rock!"
@@ -313,12 +315,16 @@ def get_playlist(pid: str) -> Optional[Dict[str, Any]]:
             if not candidate.exists():
                 return None
             p = candidate
-        items = _read_m3u(p)
+        items = _read_m3u(p, strict=strict)
         return {"id": p.stem, "name": _stored_name(p), "items": items}
 
 
-def _write_and_return(slug: str, name: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
-    items = [n for n in map(_normalize, items) if n is not None]
+def _write_and_return(slug: str, name: str, items: List[Dict[str, Any]],
+                      *, strict: bool = False) -> Dict[str, Any]:
+    normalized = [n for n in map(_normalize, items) if n is not None]
+    if strict and len(normalized) != len(items):
+        raise ValueError("playlist contains an invalid or unresolved item")
+    items = normalized
     with _LOCK:
         p = playlists_dir() / f"{slug}.m3u8"
         _write_m3u(p, name, items)
@@ -329,20 +335,22 @@ def create_playlist(name: str, items: Optional[List[Dict[str, Any]]] = None) -> 
     name = str(name or "").strip() or "Untitled"
     with _LOCK:
         slug = _unique_slug(name)
-        return _write_and_return(slug, name, list(items or []))
+        return _write_and_return(slug, name, list(items or []), strict=True)
 
 
 def update_playlist(pid: str, name: Optional[str] = None,
-                    items: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+                    items: Optional[List[Dict[str, Any]]] = None, *, append: bool = False) -> Optional[Dict[str, Any]]:
     with _LOCK:
-        existing = get_playlist(pid)
+        existing = get_playlist(pid, strict=True)
         if existing is None:
             return None
         new_name = str(name).strip() if name else existing["name"]
         new_items = list(items) if items is not None else existing["items"]
+        if append and items is not None:
+            new_items = existing["items"] + new_items
         # The id never changes: the display name is stored in the file, so a rename keeps
         # every link, open view and queue reference to this playlist working.
-        return _write_and_return(existing["id"], new_name, new_items)
+        return _write_and_return(existing["id"], new_name, new_items, strict=items is not None)
 
 
 def delete_playlist(pid: str) -> bool:

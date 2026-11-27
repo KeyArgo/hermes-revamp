@@ -6,12 +6,24 @@ and scroll past on the ticker. The server applies this to every agent event, wha
 """
 from __future__ import annotations
 
+import logging
 import re
 
+log = logging.getLogger("revamp")
+
+# A sender may already have shortened the preview in the middle of a quote or escape.
+_VALUE = (
+    r'"(?:\\[\s\S]|[^"\\])*(?:"|\\?\Z)'
+    r"|'(?:\\[\s\S]|[^'\\])*(?:'|\\?\Z)"
+    r"""|(?:\\[\s\S]|[^\s'"\\]|\\\Z)+"""
+)
+_SEPARATOR = r"(?:[ \t]*[=:][ \t]*|[ \t]+|(?=\*{3}))"
 _KEYWORD = re.compile(
-    r"((?:authorization|api[-_]?key|api[-_]?secret|access[-_]?key|client[-_]?secret|token|secret"
-    r"|password|passwd|pwd|bearer|basic)[-_ ]?[=: ]*(?:bearer|basic)?[ \t]*)(?:[^\s'\"&]+)",
-    re.IGNORECASE)
+    rf"(authorization{_SEPARATOR}(?:(?:bearer|basic)[ \t]+)?|"
+    r"(?:api[-_]?key|api[-_]?secret|access[-_]?key|client[-_]?secret|token|secret"
+    rf"|password|passwd|pwd|bearer|basic|\bkey){_SEPARATOR})"
+    r"""(?:\*{3}(?=['"]))?"""  # a legacy hook masked the separator before a quoted value
+    rf"(?:{_VALUE})", re.IGNORECASE)
 # Well-known credential shapes that appear without a keyword in front of them.
 _SHAPES = re.compile(
     r"\b(?:sk-[A-Za-z0-9_-]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}"
@@ -20,7 +32,7 @@ _SHAPES = re.compile(
 # user:password@host in URLs
 _URL_AUTH = re.compile(r"(\w+://[^/\s:@]+:)[^@\s/]+@")
 # curl -u user:password / --user user:password
-_USER_FLAG = re.compile(r"((?:^|\s)(?:-u|--user)[ =]+[^\s:'\"]+:)[^\s'\"]+")
+_USER_FLAG = re.compile(rf"""((?:^|\s)(?:-u|--user)[ =]+(?:[^\s:'"]+:)?)(?:{_VALUE})""")
 
 
 def mask(text: str) -> str:
@@ -32,7 +44,8 @@ def mask(text: str) -> str:
         text = _USER_FLAG.sub(lambda m: f"{m.group(1)}***", text)
         return _URL_AUTH.sub(lambda m: f"{m.group(1)}***@", text)
     except Exception:
-        return text
+        log.debug("could not redact event text", exc_info=True)
+        return "***"
 
 
 def _mask_value(value):

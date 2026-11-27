@@ -1,6 +1,7 @@
 // skins.js — My skins (Classic + skins you picked) and the Winamp Skin Museum.
 // Clicking a museum skin downloads it once (the server caches it), applies it and saves the choice.
 import { toast } from "./modal.js";
+import { openExternal } from "../open-external.js";
 
 const BASE_SHOT = "https://r2.webampskins.org/screenshots/5e4f10275dcb1fb211d4a8b4f1bda236.png";
 const PAGE = 30;
@@ -51,6 +52,12 @@ export async function render(root, api) {
   credit.innerHTML = `Over 100,000 classic skins, made by their original authors and archived at
     <a href="https://skins.webamp.org" target="_blank" rel="noopener">skins.webamp.org</a>.
     Click one to download and apply it; it stays in My skins.`;
+  // Inside Hermes the page is a sandboxed iframe (no allow-popups), so target="_blank"
+  // does nothing there: hand the URL to the host instead.
+  credit.querySelector("a").addEventListener("click", (e) => {
+    e.preventDefault();
+    openExternal("https://skins.webamp.org");
+  });
   const search = document.createElement("div");
   search.className = "searchbox";
   search.style.marginBottom = "10px";
@@ -136,7 +143,7 @@ function card({ name, shot, active, onApply, onRemove, link, badge }) {
     const a = document.createElement("a");
     a.href = link; a.target = "_blank"; a.rel = "noopener"; a.textContent = "↗";
     a.title = "Open in the Skin Museum"; a.setAttribute("aria-label", `${name} in the Skin Museum`);
-    a.addEventListener("click", (e) => e.stopPropagation());
+    a.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); openExternal(link); });
     // Keyboard Enter on the link must not also run the card's apply handler.
     a.addEventListener("keydown", (e) => { if (e.key === "Enter") e.stopPropagation(); });
     row.appendChild(a);

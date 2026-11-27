@@ -28,24 +28,79 @@ export function diagnosticRecord(kind, detail = {}) {
 }
 
 function placement() {
-  const body = document.body;
+  const body = globalThis.document?.body;
   if (body?.classList.contains("embed")) return "frame";
   if (body?.classList.contains("mode-winamp")) return "pop-out";
   return "page";
 }
 
 // An error inside an animation loop fires every frame: pass each distinct message on
-// at most once, and nothing at all faster than once a second.
+// at most once, and nothing at all faster than once a second. A different message that
+// comes sooner waits its turn (a start-up cascade's second error is often the useful one).
 const seen = new Set();
 let lastSent = 0;
+const waiting = [];
+let flushTimer = null;
+
+// The server keeps its own private log (revamp.log). A failure in a plain browser tab
+// or the pop-out never reaches Hermes' diagnostic storage, so the page also POSTs it to
+// /api/client_log. The server bounds and re-cleans this; the limits here keep the request
+// small and strip URL queries (which carry the bridge token) before anything is sent.
+const SERVER_MAX_MESSAGE = 500;
+const SERVER_MAX_STACK = 2000;
+
+function stripQueries(value, limit) {
+  let text = String(value ?? "");
+  text = text.replace(/https?:\/\/[^\s"'<>]+/gi, (u) => u.split(/[?#]/)[0]);
+  text = text.replace(/([?&](?:t|access_token|token|key)=)[^&#\s"']+/gi, "$1[redacted]");
+  text = text.replace(/[\r\n\t]+/g, " ");
+  return text.slice(0, limit);
+}
+
+export function clientLogRecord(kind, detail = {}) {
+  const fallback = kind === "rejection" ? "Unhandled promise rejection" : "Unhandled browser error";
+  return {
+    message: stripQueries(detail.message || fallback, SERVER_MAX_MESSAGE),
+    stack: stripQueries(detail.stack, SERVER_MAX_STACK),
+    placement: placement(),
+  };
+}
+
+function sendClientLog(record) {
+  try {
+    if (typeof fetch !== "function") return;
+    const token = globalThis.document?.querySelector?.('meta[name="revamp-token"]')?.content || "";
+    if (!token) return; // no key (e.g. a unit harness): nothing to authenticate with
+    fetch("/api/client_log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Revamp-Token": token },
+      body: JSON.stringify(record),
+      keepalive: true,
+    }).catch(() => { /* the log is best-effort; never surface a second error */ });
+  } catch { /* a broken report must never break the page */ }
+}
+
+function send({ kind, detail, record }) {
+  lastSent = Date.now();
+  if (window.parent !== window && !untrustedEmbed()) window.parent.postMessage({ type: "revamp:diagnostic", record }, "*");
+  sendClientLog(clientLogRecord(kind, detail));
+}
+
+function flush() {
+  flushTimer = null;
+  const wait = 1000 - (Date.now() - lastSent);
+  if (wait > 0) { flushTimer = setTimeout(flush, wait); return; }
+  const next = waiting.shift();
+  if (next) send(next);
+  if (waiting.length) flushTimer = setTimeout(flush, 1000);
+}
 
 function report(kind, detail) {
   const key = `${kind}:${detail?.message}`;
-  const now = Date.now();
-  if (seen.has(key) || now - lastSent < 1000 || seen.size >= 20) return;
-  seen.add(key); lastSent = now;
-  const record = diagnosticRecord(kind, { ...detail, placement: placement() });
-  if (window.parent !== window && !untrustedEmbed()) window.parent.postMessage({ type: "revamp:diagnostic", record }, "*");
+  if (seen.has(key) || seen.size >= 20) return;
+  seen.add(key);
+  waiting.push({ kind, detail, record: diagnosticRecord(kind, { ...detail, placement: placement() }) });
+  if (!flushTimer) flush();
 }
 
 if (typeof window !== "undefined") {

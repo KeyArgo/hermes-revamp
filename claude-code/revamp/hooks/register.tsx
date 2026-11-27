@@ -23,8 +23,11 @@ async function ctl($: EngineInterface, args: readonly string[], timeoutMs = 8000
   }
 }
 
-// Fire and forget: agent activity must never slow a tool call down.
+// Fire and forget: agent activity must never slow a tool call down. Each event is a process,
+// so none go out while no player is open to show them (the ticker has no one to tell).
 function emit($: EngineInterface, args: readonly string[]) {
+  // An answer always follows its request, or a player that reconnects shows a stale "waiting".
+  if (!connected && args[0] !== 'approval_response') return
   $.process.run(['revampctl', 'event', ...args], { timeoutMs: 2000 }).catch(() => {})
 }
 
@@ -42,13 +45,32 @@ function settleApproval($: EngineInterface, tool: string) {
   }
 }
 
-function preview(e: Record<string, unknown>): string {
+// ---- credential masking (ported from revamp_core/redact.py, same patterns) ----
+// The preview travels to `revampctl event` as an argv word, so it is visible in the process
+// list for the moment that process lives. The server masks the stored event, but the process
+// list must not show a token either: mask before it leaves this process.
+const KEYWORD = /((?:authorization|api[-_]?key|api[-_]?secret|access[-_]?key|client[-_]?secret|token|secret|password|passwd|pwd|bearer|basic)[-_ ]?[=: ]*(?:bearer|basic)?[ \t]*)[^\s'"&]+/gi
+const SHAPES = /\b(?:sk-[A-Za-z0-9_-]{16,}|sk-ant-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|hf_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,})\b/g
+const URL_AUTH = /(\w+:\/\/[^/\s:@]+:)[^@\s/]+@/g
+const USER_FLAG = /((?:^|\s)(?:-u|--user)[ =]+[^\s:'"]+:)[^\s'"]+/g
+
+export function maskSecrets(text: string): string {
+  if (!text) return text
+  return text
+    .replace(KEYWORD, '$1***')
+    .replace(SHAPES, '***')
+    .replace(USER_FLAG, '$1***')
+    .replace(URL_AUTH, '$1***@')
+}
+
+export function preview(e: Record<string, unknown>): string {
   // tool events nest the arguments under `input`; top-level keys are the fallback
   const input = (e.input && typeof e.input === 'object' ? e.input : {}) as Record<string, unknown>
   for (const src of [input, e]) {
     for (const k of ['command', 'file_path', 'pattern', 'url', 'query', 'description', 'prompt']) {
       const v = src[k]
-      if (typeof v === 'string' && v) return v.replace(/\s+/g, ' ').slice(0, 80)
+      // Mask the whole value first: a token cut by the 80-char slice would no longer match.
+      if (typeof v === 'string' && v) return maskSecrets(v).replace(/\s+/g, ' ').slice(0, 80)
     }
   }
   return ''
@@ -64,7 +86,80 @@ export function isPlayingStatus(status: unknown): boolean {
   return String(status ?? '').toLowerCase() === 'playing'
 }
 
-async function refresh($: EngineInterface) {
+// Now playing, without a process per glance. The server writes <data dir>/now.json while a
+// player reports (revamp_core/store.py: on a change, else every 5 s), so a file older than
+// NOW_STALE_MS means no player. Each session only stats it every CHECK_MS and reads it when it
+// changed: no process, no request, nothing at all while REVamp sits unused. A server from
+// before now.json is asked with `revampctl state`, at most once per FALLBACK_MS.
+const CHECK_MS = 5000
+const NOW_STALE_MS = 15000 // store.NOW_FILE_STALE
+// A hidden Hermes window heartbeats only about once a minute; while it says "playing" it is
+// still playing (server.PLAYING_GRACE), so the band and the approval ducking stay on.
+const PLAYING_GRACE_MS = 180000
+const FALLBACK_MS = 60000
+
+let nowPath: string | null = null
+let seenFresh = false // this server writes now.json: never fall back again
+let probed = false // a stale file and no fresh one yet: asked the server once (it may be older)
+let oldServer = false // that one answer came from a server without now.json and a player open
+let lastMtime = -1
+let lastAsk = -Infinity
+let lastPlaying = false
+let connected = false // last known; agent events go out only while a player can show them
+
+export async function nowFilePath($: EngineInterface): Promise<string | null> {
+  const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
+  const tilde = (p: string) => (home && (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) ? home + p.slice(1) : p)
+  const revamp = await $.env.get('REVAMP_HOME')
+  if (revamp) return `${tilde(revamp)}/now.json`
+  const hermes = await $.env.get('HERMES_HOME')
+  if (hermes) return `${tilde(hermes)}/revamp/now.json`
+  return home ? `${home}/.hermes/revamp/now.json` : null
+}
+
+export function fromNowFile(text: string): NowPlaying | null {
+  const s = JSON.parse(text)
+  if (!s || typeof s !== 'object' || !s.connected) return null
+  const title = s.title ? `${s.title}${s.artist ? ` — ${s.artist}` : ''}` : 'nothing queued'
+  return { line: title, isPlaying: isPlayingStatus(s.status), isConnected: true }
+}
+
+async function set($: EngineInterface, next: NowPlaying | null) {
+  connected = Boolean(next?.isConnected)
+  const prev = await read($, now)
+  if (JSON.stringify(prev) !== JSON.stringify(next)) await update($, now, () => next)
+}
+
+// `force`: the person just did something; look now, and ask an old server even inside FALLBACK_MS.
+async function refresh($: EngineInterface, force = false) {
+  if (nowPath === null) nowPath = await nowFilePath($).catch(() => null)
+  const stat = nowPath ? await $.fs.stat(nowPath).catch(() => undefined) : undefined
+  const t = await $.clock.now()
+  const age = stat ? t - stat.mtimeMs : Infinity
+  if (age <= (lastPlaying ? PLAYING_GRACE_MS : NOW_STALE_MS)) {
+    seenFresh = true
+    oldServer = false
+    if (stat!.mtimeMs === lastMtime && !force) return
+    lastMtime = stat!.mtimeMs
+    let next: NowPlaying | null = null
+    try {
+      next = fromNowFile(await $.fs.read(nowPath!))
+    } catch {
+      lastMtime = -1 // caught mid-replace: read it again next time
+      return
+    }
+    lastPlaying = Boolean(next?.isPlaying)
+    return set($, next)
+  }
+  lastMtime = -1
+  lastPlaying = false
+  // Stale or missing. A server that writes now.json has nothing to say: no player. Otherwise ask
+  // once (a leftover file from a newer server must not blind us to an older one), and keep asking
+  // once a minute only while that older server reports a player.
+  if (seenFresh || (probed && !oldServer && !force)) return set($, null)
+  if (probed && !force && t - lastAsk < FALLBACK_MS) return
+  lastAsk = t
+  probed = true
   const r = await ctl($, ['state'], 4000)
   let next: NowPlaying | null = null
   if (r.ok) {
@@ -78,8 +173,22 @@ async function refresh($: EngineInterface) {
       next = null
     }
   }
-  const prev = await read($, now)
-  if (JSON.stringify(prev) !== JSON.stringify(next)) await update($, now, () => next)
+  oldServer = Boolean(next?.isConnected)
+  return set($, next)
+}
+
+let ticker: { cancel(): void } | null = null
+let busy = false
+async function tick($: EngineInterface) {
+  if (busy) return // a slow check (an old server's fallback) never overlaps the next
+  busy = true
+  try { await refresh($) } finally { busy = false }
+}
+
+// After a button or command the player reports within a heartbeat or two.
+function refreshSoon($: EngineInterface) {
+  refresh($, true).catch(() => {})
+  $.clock.after(1500, () => refresh($, true).catch(() => {}))
 }
 
 export const register: Register = on => {
@@ -104,8 +213,10 @@ export const register: Register = on => {
         required: ['action'],
       },
     })
-    $.clock.every(4000, () => refresh($))
-    await refresh($)
+    // session.start fires again on resume, /compact and /clear: one ticker per process, never stacked.
+    ticker?.cancel()
+    ticker = $.clock.every(CHECK_MS, () => tick($))
+    await refresh($, true)
     return next(e)
   })
 
@@ -116,7 +227,7 @@ export const register: Register = on => {
     if (input.action === 'volume') args.push(String(input.percent ?? 50))
     if (input.query) args.push(input.query)
     const r = await ctl($, args, 15000)
-    refresh($).catch(() => {})
+    refreshSoon($)
     return r.ok ? { result: r.out, text: r.out } : { isError: true as const, result: r.out, text: r.out }
   }).catch(() => ({ isError: true as const, result: 'Revamp tool failed', text: 'Revamp tool failed' }))
 
@@ -166,7 +277,7 @@ export const register: Register = on => {
       return { text: sub === 'hide' ? 'Revamp band hidden.' : 'Revamp band shown.' }
     }
     const r = await ctl($, sub === 'radio' || sub === 'queue' ? [sub, words.slice(1).join(' ')] : words.length ? words : ['status'], 15000)
-    await refresh($)
+    await refresh($, true)
     return { text: r.out || (r.ok ? 'ok' : 'Revamp did not answer.') }
   })
 
@@ -176,7 +287,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || np === null || !np.isConnected || (await read($, isHidden))) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const press = (action: string) => () => {
-      ctl($, [action]).then(() => refresh($))
+      ctl($, [action]).then(() => refreshSoon($))
     }
     return (
       <Box flexDirection="row" gap={1}>

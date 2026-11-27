@@ -18,9 +18,9 @@ from typing import Any
 # the plugin loader has torn down its package namespace (seen under
 # `hermes plugins doctor`), and then nothing is importable any more.
 try:
-    from .revamp_core import client as _core_client, config as _core_config, server as _core_server
+    from .revamp_core import client as _core_client, config as _core_config, redact, server as _core_server
 except ImportError:  # loaded as a plain directory, not a package
-    from revamp_core import client as _core_client, config as _core_config, server as _core_server
+    from revamp_core import client as _core_client, config as _core_config, redact, server as _core_server
 
 logger = logging.getLogger("revamp")
 
@@ -51,7 +51,6 @@ def _boot() -> None:
 
 def _client():
     RevampClient = _core_client.RevampClient
-    RevampUnavailable = _core_client.RevampUnavailable
     _ensure()
     return RevampClient()
 
@@ -199,9 +198,14 @@ def _resolve_playlist(c, name: str) -> str:
     want = name.strip().lower()
     if not want:
         return ""
-    for p in c.get("/api/playlists") or []:
-        if want in (str(p.get("id", "")).lower(), str(p.get("name", "")).lower()):
-            return quote(str(p["id"]), safe="")
+    rows = c.get("/api/playlists") or []
+    for row in rows:
+        if row.get("id") == name.strip():
+            return quote(row["id"], safe="")
+    for field in ("id", "name"):
+        for row in rows:
+            if str(row.get(field, "")).lower() == want:
+                return quote(str(row["id"]), safe="")
     return ""
 
 
@@ -230,13 +234,10 @@ def _tool_playlist(args: dict, **kw) -> str:
             res = c.get("/api/library/tracks",
                         q=args.get("query") or "", limit=200)
             items = [_track_item(t) for t in (res.get("tracks") or [])[:50]]
-            pl = c.get(f"/api/playlists/{pid}")
-            if not pl or "id" not in pl:
+            updated = c.post(f"/api/playlists/{pid}/append", {"items": items})
+            if not updated or "id" not in updated:
                 return _dump({"ok": False, "error": "no such playlist"})
-            pl["items"] = (pl.get("items") or []) + items
-            return _dump({"ok": True, "added": len(items),
-                          **c.put(f"/api/playlists/{pl['id']}",
-                                  {"items": pl["items"]})})
+            return _dump({"ok": True, "added": len(items), **updated})
         if action == "play":
             pl = c.get(f"/api/playlists/{pid}")
             if not pl or "id" not in pl:
@@ -293,8 +294,7 @@ def _tool_radio(args: dict, **kw) -> str:
     try:
         c = _client()
         if action == "hermes":
-            return _dump({"ok": True, "stations": c.get("/api/radio/hermes"),
-                          "coming_soon": "Hermes FM is not on the air yet."})
+            return _dump({"ok": True, "stations": c.get("/api/radio/hermes")})
         if action == "presets":
             return _dump({"ok": True, "stations": c.get("/api/radio/presets")})
         if action == "favorites":
@@ -391,27 +391,6 @@ def _post_agent_event(kind: str, fields: dict) -> None:
     threading.Thread(target=run, name="revamp-hook", daemon=True).start()
 
 
-_SECRET_RE = None  # compiled lazily; kept module-level so hooks share one pattern
-
-
-def _mask_secrets(text: str) -> str:
-    """Mask credential values in a preview before it is persisted/shown.
-
-    Previews end up in the state file and on the ticker; tokens passed on the
-    command line or in URLs would sit there in plain text.
-    """
-    global _SECRET_RE
-    if _SECRET_RE is None:
-        import re as _re
-        _SECRET_RE = _re.compile(
-            r"((?:authorization|api[-_]?key|api[-_]?secret|token|secret|password|passwd|pwd"
-            r"|bearer|basic)[-_ ]?[=: ]*(?:bearer|basic)?[ \t]*)(?:[^\s'\"]+)", _re.IGNORECASE)
-    try:
-        return _SECRET_RE.sub(lambda m: f"{m.group(1)}***", text)
-    except Exception:
-        return text
-
-
 def _preview_from_args(args: Any) -> str:
     if not isinstance(args, dict):
         return ""
@@ -419,7 +398,7 @@ def _preview_from_args(args: Any) -> str:
         v = args.get(k)
         if v:
             s = str(v).strip().replace("\n", " ")
-            return _mask_secrets(s)[:80]
+            return redact.mask(s)[:80]
     return ""
 
 
@@ -452,7 +431,7 @@ def _hook_session_end(**kw) -> None:
 
 def _hook_pre_approval_request(**kw) -> None:
     _post_agent_event("approval_request", {
-        "preview": str(kw.get("command") or kw.get("description") or "")[:80],
+        "preview": redact.mask(str(kw.get("command") or kw.get("description") or ""))[:80],
         "session_id": kw.get("session_id"),
         "session_key": kw.get("session_key"),
         # Hermes reserves cli for a local interactive prompt. Gateway and
@@ -543,9 +522,8 @@ SCHEMA_PLAYLIST = _schema(
 
 SCHEMA_RADIO = _schema(
     "revamp_radio",
-    "Internet radio. action=hermes lists Hermes Radio (Chillsynth, Nightride, Darksynth, "
-    "Spacesynth, Radio Paradise Main and Mellow, EVE Radio); play one that fits what the "
-    "user is doing. Hermes FM is not on the air yet — do not invent a stream for it. "
+    "Internet radio. action=hermes lists Hermes Radio: Hermes Agent Radio's six channels "
+    "(main, Hip-Hop, Dance, Rock, Smooth, Techno); play one that fits what the user is doing. "
     "Other actions: presets, search Radio Browser, play a station, manage favorites.",
     {
         "action": {"type": "string", "enum": ["hermes", "presets", "search", "play",

@@ -160,7 +160,7 @@ def test_pi_volume_zero_is_not_50():
 
 
 # ---------------------------------------------------------------------------
-# V5 — claude hook: approval preview reads e.input
+# V5 — terminal plugin hook: approval preview reads e.input
 # ---------------------------------------------------------------------------
 
 def test_register_preview_reads_tool_input():
