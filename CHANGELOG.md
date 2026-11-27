@@ -2,7 +2,7 @@
 
 Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets a new number that is never reused, so you can tell which one you have: the header chip shows it, and clicking copies the line.
 
-## Unreleased
+## 1.0.0 — 2026-11-27
 
 - Bug reports from Hermes Desktop now include the Hermes version instead of "unknown".
 - Settings: Dip length reads in seconds ("2 s") instead of "200%".
@@ -88,7 +88,7 @@ Test builds are numbered `1.0.0-dev.N`, where N counts commits. Each build gets 
 - The README was rewritten to match the rest of the suite: one hero, a copy-paste "Try it in five minutes", a feature tour with current screenshots, a "Turning off MilkDrop" section, a symptom-to-fix troubleshooting table and a "Send a useful bug report" guide. New `docs/TROUBLESHOOTING.md` explains every log line, the once-a-minute health fields and the two warning thresholds; new `docs/ARCHITECTURE.md` maps the processes and where state lives. `EXTENDING.md`, `NOTES.md` and `CONTRIBUTING.md` were brought up to date (every test suite, the no-AI-names commit rule).
 - Three new screenshots (`album-menu.png`, `milkdrop-off.png`, `version-chip.png`) and all web screenshots regenerated against the current UI. The screenshot script now sets the canonical `milkdropOn` key so the visualizer state cannot leak between shots.
 
-## 1.0.0 — next catalog version
+### Earlier 1.0.0 work (since 1.0.0-alpha.6)
 
 The first stable release, following 1.0.0-alpha.6 in the Hermes plugin catalog. It is released when
 the catalog accepts its pin. The version chip in the header now reads the running build from the
